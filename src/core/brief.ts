@@ -6,8 +6,11 @@
 import { type PriceList, estimate, totalCost } from "./cost";
 import type { House, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "./model";
 import type { Plot } from "./plot";
-import { ROOM_INFO, type Room, analyzeRooms } from "./rooms";
-import { describeIssue, validate } from "./validate";
+import { area, percent } from "./i18n/format";
+import { en } from "./i18n/en";
+import type { Lang, Messages } from "./i18n/types";
+import { type Room, analyzeRooms } from "./rooms";
+import { validate } from "./validate";
 
 export type Requirement =
   /** At least `count` rooms of a type, each at least `minArea` m². */
@@ -31,48 +34,25 @@ export interface BriefItem {
   must: boolean;
 }
 
-export interface Client {
-  id: string;
+/** A client's words, in one language. */
+export interface ClientText {
   name: string;
   /** One line: who they are. */
   who: string;
   /** What they say when they hand over the brief. */
   story: string;
+}
+
+export interface Client {
+  id: string;
+  text: Record<Lang, ClientText>;
   plot: Plot;
   budget: number;
   items: BriefItem[];
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-const roomWord = (t: RoomType) => (t === "WC" ? "WC" : ROOM_INFO[t].name.toLowerCase());
-const m2 = (x: number) => `${Number(x.toFixed(1))} m²`;
-
-export function describeRequirement(r: Requirement): string {
-  switch (r.kind) {
-    case "rooms": {
-      const name = roomWord(r.room);
-      const what = r.count === 1 ? `${/^[aeio]/.test(name) ? "An" : "A"} ${name}` : `${r.count} ${name === "storage" ? "storage rooms" : `${name}s`}`;
-      return r.minArea ? `${what} of at least ${m2(r.minArea)}` : what;
-    }
-    case "floorArea":
-      if (r.min !== undefined && r.max !== undefined) return `Floor area between ${m2(r.min)} and ${m2(r.max)}`;
-      return r.min !== undefined ? `Floor area of at least ${m2(r.min)}` : `Floor area of at most ${m2(r.max ?? 0)}`;
-    case "wallMaterial":
-      return `${r.material} exterior walls`;
-    case "roofStyle":
-      return `A ${r.styles.map((s) => s.toLowerCase()).join(" or ")} roof`;
-    case "roofMaterial":
-      return `A roof covered in ${r.material.toLowerCase()}`;
-    case "doorWidth":
-      return `Every door at least ${r.min} m wide`;
-    case "connected":
-      return `A door between the ${roomWord(r.a)} and the ${roomWord(r.b)}`;
-    case "windowArea":
-      return `At least ${m2(r.min)} of windows in the ${roomWord(r.room)}`;
-    case "underBudget":
-      return `Costs at most ${Math.round(r.share * 100)}% of the budget`;
-  }
+export function describeRequirement(r: Requirement, m: Messages = en): string {
+  return m.requirement(r);
 }
 
 export interface ItemResult {
@@ -84,7 +64,7 @@ export interface ItemResult {
 }
 
 /** Check each item of a brief against a design. */
-export function evaluateBrief(house: House, client: Client, prices: PriceList): ItemResult[] {
+export function evaluateBrief(house: House, client: Client, prices: PriceList, m: Messages = en): ItemResult[] {
   const analysis = analyzeRooms(house);
   const rooms: Room[] = analysis.ok ? analysis.value.rooms : [];
   const ofType = (t: RoomType) => rooms.filter((r) => r.type === t);
@@ -95,42 +75,42 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList): 
     switch (r.kind) {
       case "rooms": {
         const n = ofType(r.room).filter((x) => x.area >= (r.minArea ?? 0) - 1e-6).length;
-        return [n >= r.count, `${Math.min(n, r.count)} of ${r.count}`];
+        return [n >= r.count, m.brief.countOf(Math.min(n, r.count), r.count)];
       }
       case "floorArea": {
         const a = house.floorArea();
-        return [a > 0 && a >= (r.min ?? 0) - 1e-6 && a <= (r.max ?? Infinity) + 1e-6, m2(a)];
+        return [a > 0 && a >= (r.min ?? 0) - 1e-6 && a <= (r.max ?? Infinity) + 1e-6, area(m, a)];
       }
       case "wallMaterial": {
         const exterior = analysis.ok ? house.walls.filter((w) => analysis.value.layout.exterior.has(w.id)) : house.walls;
         const other = exterior.filter((w) => w.material !== r.material).length;
-        return [exterior.length > 0 && other === 0, other === 0 ? "yes" : `${plural(other, "wall")} not ${r.material.toLowerCase()}`];
+        return [exterior.length > 0 && other === 0, other === 0 ? m.brief.yes : m.brief.wallsNotMaterial(other, r.material)];
       }
       case "roofStyle":
-        return [!!house.roof && r.styles.includes(house.roof.style), house.roof?.style.toLowerCase() ?? "no roof"];
+        return [!!house.roof && r.styles.includes(house.roof.style), house.roof ? m.roofStyle[house.roof.style].toLowerCase() : m.brief.noRoof];
       case "roofMaterial":
-        return [house.roof?.material === r.material, house.roof?.material.toLowerCase() ?? "no roof"];
+        return [house.roof?.material === r.material, house.roof ? m.roofMaterial[house.roof.material].toLowerCase() : m.brief.noRoof];
       case "doorWidth": {
         const narrow = doors.filter((d) => d.width < r.min - 1e-6).length;
-        if (doors.length === 0) return [false, "no doors"];
-        return [narrow === 0, narrow === 0 ? "yes" : `${plural(narrow, "door")} too narrow`];
+        if (doors.length === 0) return [false, m.brief.noDoors];
+        return [narrow === 0, narrow === 0 ? m.brief.yes : m.brief.doorsTooNarrow(narrow)];
       }
       case "connected": {
         const ok = ofType(r.a).some((x) => x.doors.some((d) => d.to >= 0 && rooms[d.to].type === r.b));
-        return [ok, ok ? "yes" : "no"];
+        return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "windowArea": {
         const best = Math.max(0, ...ofType(r.room).map((x) => x.windows.reduce((s, o) => s + o.area(), 0)));
-        return [best >= r.min - 1e-6, m2(best)];
+        return [best >= r.min - 1e-6, area(m, best)];
       }
       case "underBudget":
-        return [cost <= r.share * client.budget, `${Math.round((cost / client.budget) * 100)}%`];
+        return [house.floorArea() > 0 && cost <= r.share * client.budget, percent(m, cost / client.budget)];
     }
   };
 
   return client.items.map((item) => {
     const [met, detail] = check(item.req);
-    return { item, text: describeRequirement(item.req), met, detail };
+    return { item, text: m.requirement(item.req), met, detail };
   });
 }
 
@@ -151,12 +131,12 @@ export interface Verdict {
 }
 
 /** Present a design to the client. */
-export function presentDesign(house: House, client: Client, prices: PriceList): Verdict {
-  const results = evaluateBrief(house, client, prices);
+export function presentDesign(house: House, client: Client, prices: PriceList, m: Messages = en): Verdict {
+  const results = evaluateBrief(house, client, prices, m);
   const issues = validate(house, client.plot, client.budget, prices);
   const problems = [
-    ...issues.map(describeIssue),
-    ...results.filter((r) => r.item.must && !r.met).map((r) => `Missing: ${r.text.charAt(0).toLowerCase()}${r.text.slice(1)} (${r.detail})`),
+    ...issues.map((i) => m.issue(i)),
+    ...results.filter((r) => r.item.must && !r.met).map((r) => m.brief.missing(r.text, r.detail)),
   ];
   const wishes = results.filter((r) => !r.item.must);
   const wishesMet = wishes.filter((r) => r.met).length;
@@ -164,12 +144,6 @@ export function presentDesign(house: House, client: Client, prices: PriceList): 
   const stars = ratio >= 0.999 ? 3 : ratio >= 0.5 ? 2 : 1;
   const accepted = problems.length === 0;
   const fee = accepted ? Math.round((client.budget * BASE_FEE_SHARE * (1 + 0.5 * ratio)) / 100) * 100 : 0;
-  const quote = !accepted
-    ? "We like where this is going, but we can't sign off on it yet."
-    : stars === 3
-      ? "It's everything we hoped for. When can they start building?"
-      : stars === 2
-        ? "This will make a lovely home. Thank you!"
-        : "It does what we asked. We'll take it.";
+  const quote = !accepted ? m.brief.quoteRejected : stars === 3 ? m.brief.quoteThreeStars : stars === 2 ? m.brief.quoteTwoStars : m.brief.quoteOneStar;
   return { accepted, problems, wishesMet, wishesTotal: wishes.length, stars, fee, quote };
 }

@@ -3,15 +3,14 @@
  * (from room labels), their doors and windows, and whether you can walk into them.
  */
 
+import { en } from "./i18n/en";
+import type { Messages } from "./i18n/types";
 import { Vec2, interiorPoint, pointInPolygon, signedArea } from "./geometry";
 import { type Layout, OUTSIDE, analyzeLayout } from "./layout";
 import type { FootprintError, House, Opening, RoomLabel, RoomType } from "./model";
 import { type Result, ok } from "./result";
 
 export interface RoomInfo {
-  name: string;
-  /** For labels in small rooms. */
-  short: string;
   /** Smallest acceptable floor area, m². */
   minArea: number;
   /** Habitable rooms need daylight. */
@@ -21,16 +20,16 @@ export interface RoomInfo {
 }
 
 export const ROOM_INFO: Record<RoomType, RoomInfo> = {
-  Living: { name: "Living room", short: "Living", minArea: 12, needsWindow: true, color: "#f3e3b5" },
-  Kitchen: { name: "Kitchen", short: "Kitchen", minArea: 5, needsWindow: true, color: "#f6cfa6" },
-  Bedroom: { name: "Bedroom", short: "Bed", minArea: 7, needsWindow: true, color: "#cfdcf5" },
-  Bathroom: { name: "Bathroom", short: "Bath", minArea: 3, needsWindow: false, color: "#bfe6e4" },
-  WC: { name: "WC", short: "WC", minArea: 1.2, needsWindow: false, color: "#d4eeec" },
-  Hall: { name: "Hall", short: "Hall", minArea: 2, needsWindow: false, color: "#e8e2d6" },
-  Office: { name: "Office", short: "Office", minArea: 5, needsWindow: true, color: "#dfd3ef" },
-  Utility: { name: "Utility room", short: "Utility", minArea: 2, needsWindow: false, color: "#dde3cf" },
-  Garage: { name: "Garage", short: "Garage", minArea: 15, needsWindow: false, color: "#d6d6d6" },
-  Storage: { name: "Storage", short: "Store", minArea: 1, needsWindow: false, color: "#e6dfd0" },
+  Living: { minArea: 12, needsWindow: true, color: "#f3e3b5" },
+  Kitchen: { minArea: 5, needsWindow: true, color: "#f6cfa6" },
+  Bedroom: { minArea: 7, needsWindow: true, color: "#cfdcf5" },
+  Bathroom: { minArea: 3, needsWindow: false, color: "#bfe6e4" },
+  WC: { minArea: 1.2, needsWindow: false, color: "#d4eeec" },
+  Hall: { minArea: 2, needsWindow: false, color: "#e8e2d6" },
+  Office: { minArea: 5, needsWindow: true, color: "#dfd3ef" },
+  Utility: { minArea: 2, needsWindow: false, color: "#dde3cf" },
+  Garage: { minArea: 15, needsWindow: false, color: "#d6d6d6" },
+  Storage: { minArea: 1, needsWindow: false, color: "#e6dfd0" },
 };
 
 export interface DoorLink {
@@ -67,8 +66,8 @@ export interface RoomAnalysis {
   misplaced: { opening: Opening; reason: MisplacedReason }[];
 }
 
-export function roomName(room: Pick<Room, "type">): string {
-  return room.type ? ROOM_INFO[room.type].name : "Room";
+export function roomName(room: Pick<Room, "type">, m: Messages = en): string {
+  return room.type ? m.rooms[room.type].name : m.ui.room;
 }
 
 /** The room containing `p`, if any. */

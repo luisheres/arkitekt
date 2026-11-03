@@ -35,12 +35,15 @@ import {
   nearestWall,
   placeOpening,
   roomAt,
+  fixed,
+  num,
   roomName,
   roundTo,
   snapPoint,
   validate,
   wallThickness,
 } from "../core";
+import { m } from "./i18n";
 import type { Store, Tool } from "./store";
 
 const PLAN_WALL_COLORS = { Wood: "#7a5134", Brick: "#8c3d2e", Plaster: "#6f6b63" } as const;
@@ -65,15 +68,8 @@ type Hit =
   | { kind: "room"; at: Vec2 }
   | null;
 
-const HINTS: Record<Tool, string> = {
-  select: "Click a room to say what it is. Drag corners to reshape, walls to push them, windows and doors to slide them, room names to move them. Drag empty space to pan.",
-  wall: "Click to place corners; start or end on a wall to divide a room. Click the first corner to close a loop. Enter or double-click finishes, Esc cancels.",
-  room: "Drag to draw a rectangular room. Sides along existing walls are shared.",
-  window: "Click an exterior wall to add a window.",
-  door: "Click a wall to add a door.",
-};
 
-const fmt = (x: number) => `${Number(x.toFixed(2))}`;
+const fmt = (x: number) => num(m, x, 2);
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export class PlanView {
@@ -487,7 +483,7 @@ export class PlanView {
     out.push(rect(vx0, -8, vx1, -1, "street"));
     const streetY = this.toScreen(new Vec2(0, -4.5))[1];
     out.push(`<line class="street-line" x1="0" x2="${this.width}" y1="${streetY}" y2="${streetY}"/>`);
-    out.push(this.label(new Vec2(plot.width / 2, -4.5), "STREET", "street-label"));
+    out.push(this.label(new Vec2(plot.width / 2, -4.5), m.ui.street, "street-label"));
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
 
     // Grid: 1 m lines, stronger every 5 m.
@@ -554,10 +550,11 @@ export class PlanView {
       const xs = room.polygon.map((p) => this.toScreen(p)[0]);
       const room_px = Math.max(...xs) - Math.min(...xs) - 6;
       const fits = (text: string, px: number) => text.length * px <= room_px;
-      const full = room.type ? roomName(room) : "Room";
-      const short = room.type ? ROOM_INFO[room.type].short : "Room";
+      const full = roomName(room, m);
+      const short = room.type ? m.rooms[room.type].short : m.ui.room;
       const name = fits(full, 7.2) ? full : fits(short, 7.2) ? short : "";
-      const area = fits(`${room.area.toFixed(1)} m²`, 6.2) ? `${room.area.toFixed(1)} m²` : fits(room.area.toFixed(0), 6.2) ? room.area.toFixed(0) : "";
+      const long = `${fixed(m, room.area, 1)} m²`;
+      const area = fits(long, 6.2) ? long : fits(fixed(m, room.area, 0), 6.2) ? fixed(m, room.area, 0) : "";
       const cls = room.type ? "room-name" : "room-name untyped";
       if (name) out.push(`<text class="${cls}" x="${x.toFixed(1)}" y="${(y - 6).toFixed(1)}">${esc(name)}</text>`);
       if (area) out.push(`<text class="room-area" x="${x.toFixed(1)}" y="${(y + (name ? 8 : 0)).toFixed(1)}">${area}</text>`);
@@ -587,7 +584,7 @@ export class PlanView {
     this.svg.innerHTML = out.join("");
     this.svg.dataset.tool = tool;
     this.svg.classList.toggle("dragging", this.drag?.kind === "pan" || this.drag?.kind === "label");
-    this.hint.textContent = HINTS[tool];
+    this.hint.textContent = m.ui.hints[tool];
   }
 
   /** The wall's footprint rectangle, extended by half its thickness at both ends. */

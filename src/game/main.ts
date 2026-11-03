@@ -8,6 +8,7 @@
  */
 
 import { allSamples, defaultPrices, presentDesign } from "../core";
+import { m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
 import { isModalOpen, showClient, showVerdict } from "./dialogs";
 import { Panel } from "./panel";
@@ -15,6 +16,7 @@ import { PlanView } from "./plan";
 import { Store, type Tool } from "./store";
 import { View3D } from "./view3d";
 
+translatePage();
 const store = new Store(defaultPrices());
 
 // --- Views --------------------------------------------------------------------------
@@ -26,7 +28,7 @@ const plan = new PlanView(document.querySelector<HTMLElement>("#plan")!, store);
 
 const meetClient = () => showClient(store.client, store.working, () => store.working || store.startCommission());
 const present = () => {
-  const verdict = presentDesign(store.house, store.client, store.prices);
+  const verdict = presentDesign(store.house, store.client, store.prices, m);
   showVerdict(store.client, verdict, () => {
     store.completeCommission(verdict.fee, verdict.stars);
     meetClient();
@@ -34,6 +36,7 @@ const present = () => {
 };
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   capture: () => showCaptures(view3d.capture()),
+  beforeReload: () => store.save(),
   present,
   showBrief: meetClient,
 });
@@ -57,17 +60,19 @@ function showCaptures(views: CapturedView[]): void {
   capturesEl.replaceChildren();
   const close = document.createElement("button");
   close.type = "button";
-  close.textContent = "Close";
+  close.textContent = m.ui.close;
   close.addEventListener("click", () => (capturesEl.hidden = true));
   const header = document.createElement("header");
-  header.innerHTML = "<strong>Appraisal views</strong>";
+  const title = document.createElement("strong");
+  title.textContent = m.ui.appraisalViews;
+  header.append(title);
   header.append(close);
   capturesEl.append(header);
   const prefix = store.client.id;
   for (const v of views) {
     const fig = document.createElement("figure");
     const img = Object.assign(document.createElement("img"), { alt: v.name, src: v.dataUrl });
-    const link = Object.assign(document.createElement("a"), { href: v.dataUrl, download: `${prefix}-${v.name}.png`, textContent: `Download ${v.name}.png` });
+    const link = Object.assign(document.createElement("a"), { href: v.dataUrl, download: `${prefix}-${v.name}.png`, textContent: m.ui.download(`${v.name}.png`) });
     const caption = document.createElement("figcaption");
     caption.append(link);
     fig.append(img, caption);

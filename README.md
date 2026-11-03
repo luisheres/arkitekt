@@ -13,7 +13,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the clients and the career; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the clients and the career; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -69,6 +69,18 @@ select it.
 Other keys: `Del` delete selection (or clear a room's use), `Ctrl+Z` / `Ctrl+Shift+Z`
 undo / redo, `F` fit the plan, wheel zoom and right-drag pan in either view, `1`-`4` 3D
 preset views, `G` plot guides, `C` capture the appraisal views.
+
+## Languages
+
+The game speaks English and Swedish. It picks the browser's language the first time and
+remembers the choice from the menu next to the title.
+
+All text lives in `src/core/i18n/`: `types.ts` defines `Messages`, and `en.ts` / `sv.ts`
+implement it. Client stories and plot names sit with each client in `clients.ts` and
+`plot.ts`, one text per language. To add a language: add its code to `LANGS` in
+`types.ts`, copy `sv.ts` and translate it, register it in `i18n/index.ts`, and add the
+language to every client and plot. The compiler points out anything missing, and
+`i18n.test.ts` flags strings left identical to the English.
 
 ### In the devcontainer
 

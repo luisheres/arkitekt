@@ -9,16 +9,16 @@
   <body>
     <aside id="sidebar"></aside>
     <main id="main" data-layout="split">
-      <div class="layout-switch" role="group" aria-label="Layout">
-        <button type="button" data-layout="plan">Plan</button>
-        <button type="button" data-layout="split">Split</button>
-        <button type="button" data-layout="3d">3D</button>
+      <div class="layout-switch" role="group" aria-label="Layout" data-i18n-label="layout">
+        <button type="button" data-layout="plan" data-i18n="layoutPlan">Plan</button>
+        <button type="button" data-layout="split" data-i18n="layoutSplit">Split</button>
+        <button type="button" data-layout="3d" data-i18n="layout3d">3D</button>
       </div>
       <div id="plan" class="pane"></div>
       <div id="view3d" class="pane">
         <canvas id="view"></canvas>
-        <button type="button" id="roof-toggle" class="pane-button" title="Show or hide the roof to look inside (H)">Roof <kbd>H</kbd></button>
-        <div class="pane-hint">Drag to orbit · right-drag to pan · wheel to zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views · <kbd>G</kbd> plot guides</div>
+        <button type="button" id="roof-toggle" class="pane-button" title="Show or hide the roof to look inside (H)" data-i18n-title="roofToggleTitle"><span data-i18n="roofToggle">Roof</span> <kbd>H</kbd></button>
+        <div class="pane-hint" data-i18n-html="viewHint">Drag to orbit · right-drag to pan · wheel to zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views · <kbd>G</kbd> plot guides</div>
       </div>
     </main>
     <section id="captures" class="overlay" hidden></section>

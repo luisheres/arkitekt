@@ -159,6 +159,27 @@ try {
   assert.equal(reloaded.walls, 4);
   assert.equal(await page.locator("#modal").isHidden(), true, "no intro while a commission is in progress");
 
+  // Switch to Swedish: the page reloads in Swedish with the game where it was.
+  await page.selectOption("#sidebar header select", "sv");
+  await page.waitForLoadState("load");
+  await page.waitForFunction(() => window.architect);
+  assert.equal(await page.locator("html").getAttribute("lang"), "sv");
+  assert.equal((await model()).walls, 4, "the design survives the switch");
+  assert.equal(await page.locator(".client-section button.primary").textContent(), "Presentera för kunden");
+  assert.match(await page.locator("#sidebar header").innerText(), /Intjänat 7\s200 · 1 hus sålt/);
+  assert.match(await page.locator(".brief").first().innerText(), /Ett arbetsrum på minst 8 m²/);
+  assert.match(await page.locator(".plan-hint").textContent(), /Klicka på ett rum/);
+  assert.equal(await page.locator("#view3d .pane-hint kbd").count(), 3);
+  await page.click("text=Presentera för kunden");
+  assert.equal(await page.locator("#modal h2").textContent(), "Inte riktigt än");
+  assert.match(await page.locator("#modal .problems").innerText(), /Saknas: ett arbetsrum på minst 8 m² \(0 av 1\)/);
+  await shot("swedish");
+  await page.keyboard.press("Escape");
+  await page.selectOption("#sidebar header select", "en");
+  await page.waitForLoadState("load");
+  await page.waitForFunction(() => window.architect);
+  assert.equal(await page.locator(".client-section button.primary").textContent(), "Present to client");
+
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");
 } catch (e) {

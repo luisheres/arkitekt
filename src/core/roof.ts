@@ -6,7 +6,7 @@
  */
 
 import { TriMesh, Vec2, Vec3, offsetPolygon, removeCollinear, triangulate } from "./geometry";
-import { type FootprintError, type House, type Roof, type RoofStyle, describeFootprintError } from "./model";
+import type { FootprintError, House, Roof, RoofStyle } from "./model";
 import { type Result, err, ok } from "./result";
 
 /** Thickness of a flat roof slab, in meters. */
@@ -22,17 +22,6 @@ export type RoofError =
   | { kind: "NoRoof" }
   | { kind: "Footprint"; error: FootprintError }
   | { kind: "NeedsRectangle"; style: RoofStyle };
-
-export function describeRoofError(e: RoofError): string {
-  switch (e.kind) {
-    case "NoRoof":
-      return "the house has no roof";
-    case "Footprint":
-      return `cannot place a roof: ${describeFootprintError(e.error)}`;
-    case "NeedsRectangle":
-      return `${e.style} roofs need a rectangular footprint; use a flat roof for other shapes`;
-  }
-}
 
 export interface RoofGeometry {
   /** The roof covering (shingles, tiles, ...). */

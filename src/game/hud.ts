@@ -1,14 +1,11 @@
 /** Read-only sidebar sections: the client's brief checklist, costs and issues. */
 
-import { type Issue, describeIssue, estimate, evaluateBrief, totalCost, validate } from "../core";
+import { type Issue, area, estimate, evaluateBrief, money as formatMoney, totalCost, validate } from "../core";
+import { m } from "./i18n";
 import type { Selection, Store } from "./store";
 
-/** Format money with thousands separators, e.g. 42,150. */
-export function money(v: number): string {
-  const digits = Math.abs(v).toFixed(0);
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return v < 0 && digits !== "0" ? `-${grouped}` : grouped;
-}
+/** Format money in the current language, e.g. 42,150 or 42 150. */
+export const money = (v: number): string => formatMoney(m, v);
 
 export const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -18,7 +15,6 @@ function issueTarget(i: Issue): Selection {
   if ("opening" in i) return { kind: "opening", id: i.opening };
   if (i.kind === "OpeningsOverlap") return { kind: "opening", id: i.b };
   if ("room" in i) return { kind: "room", at: i.room.at };
-  if (i.kind === "LabelOutsideRooms") return null;
   return null;
 }
 
@@ -30,15 +26,15 @@ function targetAttrs(t: Selection): string {
 
 /** Live checklist of the client's must-haves and wishes. */
 export function renderBrief(el: HTMLElement, store: Store): void {
-  const results = evaluateBrief(store.house, store.client, store.prices);
+  const results = evaluateBrief(store.house, store.client, store.prices, m);
   const item = (r: (typeof results)[number]) =>
     `<li class="${r.met ? "met" : "unmet"}"><span class="mark" aria-hidden="true">${r.item.must ? (r.met ? "✓" : "✗") : r.met ? "★" : "☆"}</span><span>${esc(r.text)}</span><span class="detail">${esc(r.detail)}</span></li>`;
   const musts = results.filter((r) => r.item.must);
   const wishes = results.filter((r) => !r.item.must);
   el.innerHTML = `
-    <h3>Must have <span class="count">${musts.filter((r) => r.met).length}/${musts.length}</span></h3>
+    <h3>${esc(m.ui.mustHave)} <span class="count">${musts.filter((r) => r.met).length}/${musts.length}</span></h3>
     <ul class="brief">${musts.map(item).join("")}</ul>
-    <h3>Would love <span class="count">${wishes.filter((r) => r.met).length}/${wishes.length}</span></h3>
+    <h3>${esc(m.ui.wouldLove)} <span class="count">${wishes.filter((r) => r.met).length}/${wishes.length}</span></h3>
     <ul class="brief wishes">${wishes.map(item).join("")}</ul>`;
 }
 
@@ -47,26 +43,27 @@ export function renderStatus(el: HTMLElement, store: Store): void {
   const cost = estimate(house, prices);
   const total = totalCost(cost);
   const issues = validate(house, plot, budget, prices);
+  const rows = m.ui.costRows;
 
-  const row = (label: string, v: number, cls = "") => `<tr class="${cls}"><td>${label}</td><td class="amount">${money(v)}</td></tr>`;
+  const row = (label: string, v: number, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="amount">${money(v)}</td></tr>`;
   const left = budget - total;
   el.innerHTML = `
-    <div class="sub">Floor area ${house.floorArea().toFixed(1)} m²</div>
+    <div class="sub">${esc(m.ui.floorArea(area(m, house.floorArea())))}</div>
     <table>
-      ${row("Exterior walls", cost.walls)}
-      ${row("Interior walls", cost.interiorWalls)}
-      ${row("Windows", cost.windows)}
-      ${row("Doors", cost.doors)}
-      ${row("Roof", cost.roof)}
-      ${row("Foundation", cost.foundation)}
-      ${row("Total", total, "total")}
-      ${row(left >= 0 ? "Budget left" : "Over budget", Math.abs(left), left >= 0 ? "" : "over")}
+      ${row(rows.walls, cost.walls)}
+      ${row(rows.interiorWalls, cost.interiorWalls)}
+      ${row(rows.windows, cost.windows)}
+      ${row(rows.doors, cost.doors)}
+      ${row(rows.roof, cost.roof)}
+      ${row(rows.foundation, cost.foundation)}
+      ${row(rows.total, total, "total")}
+      ${row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over")}
     </table>
     ${
       issues.length
-        ? `<div class="bad">Building problems</div><ul class="issues">${issues
-            .map((i) => `<li${targetAttrs(issueTarget(i))}>${esc(describeIssue(i))}</li>`)
+        ? `<div class="bad">${esc(m.ui.buildingProblems)}</div><ul class="issues">${issues
+            .map((i) => `<li${targetAttrs(issueTarget(i))}>${esc(m.issue(i))}</li>`)
             .join("")}</ul>`
-        : `<div class="ok">No building problems</div>`
+        : `<div class="ok">${esc(m.ui.noBuildingProblems)}</div>`
     }`;
 }

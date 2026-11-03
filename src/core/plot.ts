@@ -1,9 +1,10 @@
 /** Plots of land the player can buy and build on. */
 
 import { Vec2 } from "./geometry";
+import type { Localized } from "./i18n/types";
 
 export interface Plot {
-  name: string;
+  name: Localized;
   /** Size along the plan x axis, in meters. The plot spans `0..width`. */
   width: number;
   /** Size along the plan y axis, in meters. The plot spans `0..depth`. */
@@ -29,8 +30,8 @@ export function plotCenter(plot: Plot): Vec2 {
 /** The plots available in the MVP, cheapest first. */
 export function starterPlots(): Plot[] {
   return [
-    { name: "Suburban lot", width: 20, depth: 25, price: 15_000, locationMultiplier: 1.0, setback: 3 },
-    { name: "Lakeside lot", width: 28, depth: 32, price: 45_000, locationMultiplier: 1.35, setback: 4 },
-    { name: "Hillside view lot", width: 36, depth: 40, price: 110_000, locationMultiplier: 1.8, setback: 5 },
+    { name: { en: "Suburban lot", sv: "Villatomt" }, width: 20, depth: 25, price: 15_000, locationMultiplier: 1.0, setback: 3 },
+    { name: { en: "Lakeside lot", sv: "Sjötomt" }, width: 28, depth: 32, price: 45_000, locationMultiplier: 1.35, setback: 4 },
+    { name: { en: "Hillside view lot", sv: "Sluttningstomt med utsikt" }, width: 36, depth: 40, price: 110_000, locationMultiplier: 1.8, setback: 5 },
   ];
 }

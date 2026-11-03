@@ -7,7 +7,7 @@
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
 import { House, type LabelId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { analyzeRooms, roomAt } from "./rooms";
-import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./validate";
+import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./rules";
 
 /** Grid spacing for snapping, in meters. */
 export const GRID_STEP = 0.5;

@@ -6,6 +6,8 @@
  */
 
 import { Vec2, signedArea } from "./geometry";
+import { en } from "./i18n/en";
+import type { Messages } from "./i18n/types";
 import { analyzeLayout } from "./layout";
 import type { Result } from "./result";
 
@@ -111,23 +113,8 @@ export type FootprintError =
   | { kind: "SelfIntersecting" }
   | { kind: "Degenerate" };
 
-export function describeFootprintError(e: FootprintError): string {
-  switch (e.kind) {
-    case "NoWalls":
-      return "there are no walls";
-    case "Open":
-      return `the walls are not closed: a wall end at (${e.x.toFixed(1)}, ${e.y.toFixed(1)}) is not connected`;
-    case "Crossing":
-      return `two walls cross at (${e.x.toFixed(1)}, ${e.y.toFixed(1)}); walls may only meet end to end or end on another wall`;
-    case "Overlap":
-      return `two walls run on top of each other near (${e.x.toFixed(1)}, ${e.y.toFixed(1)})`;
-    case "MultipleLoops":
-      return "the walls form more than one separate building";
-    case "SelfIntersecting":
-      return "the outer walls cross each other";
-    case "Degenerate":
-      return "the enclosed area is zero";
-  }
+export function describeFootprintError(e: FootprintError, m: Messages = en): string {
+  return m.footprint(e);
 }
 
 /** Plain-JSON form of a house, for saving and for sending to the appraiser. */

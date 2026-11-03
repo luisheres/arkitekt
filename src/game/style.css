@@ -811,3 +811,17 @@ button.primary:hover:not(:disabled) {
 .dialog .actions button {
   padding: 8px 18px;
 }
+
+/* --- Language menu --------------------------------------------------------------- */
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title-row select {
+  padding: 2px 6px;
+  font-size: 13px;
+}

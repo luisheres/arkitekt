@@ -12,14 +12,21 @@ import {
   MAX_WALL_HEIGHT,
   MIN_OPENING_SIZE,
   MIN_WALL_HEIGHT,
+  OPENING_KINDS,
   OUTSIDE,
   PITCH_RANGE,
   ROOF_MATERIALS,
   ROOF_STYLES,
   ROOM_INFO,
   ROOM_TYPES,
+  LANGS,
   WALL_MATERIALS,
   Vec2,
+  area,
+  fixed,
+  messages,
+  meters,
+  num,
   analyzeLayout,
   analyzeRooms,
   clampOffset,
@@ -28,7 +35,9 @@ import {
   roomName,
   setRoomType,
 } from "../core";
+import { plotSize } from "./dialogs";
 import { money, renderBrief, renderStatus } from "./hud";
+import { lang, m, setLang } from "./i18n";
 import type { Store, Tool } from "./store";
 
 interface Field {
@@ -36,15 +45,13 @@ interface Field {
   update(): void;
 }
 
-const TOOLS: { tool: Tool; label: string; key: string }[] = [
-  { tool: "select", label: "Select", key: "V" },
-  { tool: "room", label: "Room", key: "R" },
-  { tool: "wall", label: "Wall", key: "W" },
-  { tool: "window", label: "Window", key: "N" },
-  { tool: "door", label: "Door", key: "D" },
+const TOOLS: { tool: Tool; key: string }[] = [
+  { tool: "select", key: "V" },
+  { tool: "room", key: "R" },
+  { tool: "wall", key: "W" },
+  { tool: "window", key: "N" },
+  { tool: "door", key: "D" },
 ];
-
-const OPENING_LABELS: Record<OpeningKind, string> = { Window: "Window", Door: "Door", GarageDoor: "Garage door" };
 
 const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
 
@@ -67,7 +74,7 @@ function slider(label: string, o: { min: number; max: number; step: number; unit
       const v = get();
       input.disabled = v === null;
       if (v !== null) input.value = String(v);
-      output.textContent = v === null ? "–" : `${v.toFixed(o.digits)}${o.unit}`;
+      output.textContent = v === null ? "–" : `${fixed(m, v, o.digits)}${o.unit}`;
     },
   };
 }
@@ -109,10 +116,13 @@ function readout(label: string, get: () => string): Field {
   return { el: el("div", { className: "field" }, el("span", {}, label), output), update: () => (output.textContent = get()) };
 }
 
-const opts = <T extends string>(values: readonly T[]) => values.map((v) => ({ value: v, label: v }));
+/** Options for an enum, labelled from a catalog table. */
+const opts = <T extends string>(values: readonly T[], labels: Record<T, string>) => values.map((v) => ({ value: v, label: labels[v] }));
 
 export interface PanelActions {
   capture(): void;
+  /** Save state before the page reloads in another language. */
+  beforeReload(): void;
   present(): void;
   showBrief(): void;
 }
@@ -139,21 +149,24 @@ export class Panel {
 
     // Header and career.
     this.career = el("div", { className: "sub" });
-    root.append(el("header", {}, el("h1", {}, "Architect"), this.career));
+    const langSelect = el("select", { title: m.ui.language, ariaLabel: m.ui.language }, ...LANGS.map((l) => el("option", { value: l, selected: l === lang }, messages(l).languageName)));
+    langSelect.addEventListener("change", () => setLang(langSelect.value as (typeof LANGS)[number], actions.beforeReload));
+    root.append(el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.career));
 
     // The client and their brief.
     this.clientBox = el("div", { className: "client" });
     this.brief = el("div");
-    const briefBtn = el("button", { type: "button", title: "Read the client's brief again" }, "Brief");
+    const briefBtn = el("button", { type: "button", title: m.ui.briefTitle }, m.ui.brief);
     briefBtn.addEventListener("click", actions.showBrief);
-    const presentBtn = el("button", { type: "button", className: "primary", title: "Show the design to the client" }, "Present to client");
+    const presentBtn = el("button", { type: "button", className: "primary", title: m.ui.presentTitle }, m.ui.present);
     presentBtn.addEventListener("click", actions.present);
     root.append(el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn)));
 
     // Tools.
     const tools = el("div", { className: "tools", role: "toolbar" });
     for (const t of TOOLS) {
-      const b = el("button", { type: "button", title: `${t.label} (${t.key})` }, t.label, el("kbd", {}, t.key));
+      const label = m.ui.tools[t.tool];
+      const b = el("button", { type: "button", title: `${label} (${t.key})` }, label, el("kbd", {}, t.key));
       b.addEventListener("click", () => store.setTool(t.tool));
       this.toolButtons.set(t.tool, b);
       tools.append(b);
@@ -161,13 +174,13 @@ export class Panel {
     root.append(el("section", {}, tools));
 
     // History.
-    this.undoBtn = el("button", { type: "button", title: "Undo (Ctrl+Z)" }, "Undo");
-    this.redoBtn = el("button", { type: "button", title: "Redo (Ctrl+Shift+Z)" }, "Redo");
+    this.undoBtn = el("button", { type: "button", title: m.ui.undoTitle }, m.ui.undo);
+    this.redoBtn = el("button", { type: "button", title: m.ui.redoTitle }, m.ui.redo);
     this.undoBtn.addEventListener("click", () => store.undo());
     this.redoBtn.addEventListener("click", () => store.redo());
-    const clear = el("button", { type: "button", title: "Remove everything from the plot" }, "Clear plot");
+    const clear = el("button", { type: "button", title: m.ui.clearPlotTitle }, m.ui.clearPlot);
     clear.addEventListener("click", () => store.load(new HouseClass()));
-    const captureBtn = el("button", { type: "button", title: "Render the four appraisal views (C)" }, "Capture");
+    const captureBtn = el("button", { type: "button", title: m.ui.captureTitle }, m.ui.capture);
     captureBtn.addEventListener("click", actions.capture);
     root.append(el("section", { className: "row" }, this.undoBtn, this.redoBtn, clear, captureBtn));
 
@@ -185,20 +198,20 @@ export class Panel {
     };
     this.fields.push(
       slider(
-        "Wall height",
+        m.ui.wallHeight,
         { min: MIN_WALL_HEIGHT, max: MAX_WALL_HEIGHT, step: 0.1, unit: " m", digits: 1 },
         () => house().walls[0]?.height ?? null,
         (v) => store.edit((h) => h.walls.forEach((w) => (w.height = v)), "wall-height"),
       ),
       selectField(
-        "Facade",
-        opts(WALL_MATERIALS),
+        m.ui.facade,
+        opts(WALL_MATERIALS, m.wallMaterial),
         () => exteriorWalls(house())[0]?.material ?? null,
         (v) => store.edit((h) => h.walls.forEach((w) => (w.material = v))),
       ),
       selectField(
-        "Roof",
-        [{ value: "none", label: "None" }, ...opts(ROOF_STYLES)],
+        m.ui.roof,
+        [{ value: "none", label: m.ui.noRoof }, ...opts(ROOF_STYLES, m.roofStyle)],
         () => roof()?.style ?? "none",
         (v) =>
           store.edit((h) => {
@@ -209,17 +222,17 @@ export class Panel {
             }
           }),
       ),
-      slider("Pitch", { min: PITCH_RANGE[0], max: PITCH_RANGE[1], step: 1, unit: "°", digits: 0 }, () => (pitched() ? roof()!.pitchDeg : null), (v) => editRoof((r) => (r.pitchDeg = v), "pitch")),
-      slider("Overhang", { min: 0, max: MAX_OVERHANG, step: 0.1, unit: " m", digits: 1 }, () => (pitched() ? roof()!.overhang : null), (v) => editRoof((r) => (r.overhang = v), "overhang")),
-      selectField("Covering", opts(ROOF_MATERIALS), () => roof()?.material ?? null, (v) => editRoof((r) => (r.material = v), "roof-material")),
+      slider(m.ui.pitch, { min: PITCH_RANGE[0], max: PITCH_RANGE[1], step: 1, unit: "°", digits: 0 }, () => (pitched() ? roof()!.pitchDeg : null), (v) => editRoof((r) => (r.pitchDeg = v), "pitch")),
+      slider(m.ui.overhang, { min: 0, max: MAX_OVERHANG, step: 0.1, unit: " m", digits: 1 }, () => (pitched() ? roof()!.overhang : null), (v) => editRoof((r) => (r.overhang = v), "overhang")),
+      selectField(m.ui.covering, opts(ROOF_MATERIALS, m.roofMaterial), () => roof()?.material ?? null, (v) => editRoof((r) => (r.material = v), "roof-material")),
     );
-    root.append(el("section", { className: "house" }, el("h2", {}, "House"), ...this.fields.map((f) => f.el)));
+    root.append(el("section", { className: "house" }, el("h2", {}, m.ui.house), ...this.fields.map((f) => f.el)));
 
     // Costs and issues.
     this.status = el("section", { className: "status" });
     this.status.addEventListener("click", (e) => this.selectIssue(e));
     this.status.addEventListener("keydown", (e) => e.key === "Enter" && this.selectIssue(e));
-    root.append(el("h2", { className: "status-title" }, "Cost"), this.status);
+    root.append(el("h2", { className: "status-title" }, m.ui.cost), this.status);
 
     store.subscribe((change) => this.update(change !== "ui"));
     this.update(true);
@@ -237,12 +250,12 @@ export class Panel {
   private update(houseChanged: boolean): void {
     const { store } = this;
     const { career, client } = store;
-    this.career.textContent = `Earned ${money(career.earnings)} · ${career.completed.length} ${career.completed.length === 1 ? "house" : "houses"} sold`;
+    this.career.textContent = m.ui.career(money(career.earnings), career.completed.length);
     this.clientBox.innerHTML = "";
     this.clientBox.append(
-      el("h2", {}, "Client"),
-      el("div", { className: "client-name" }, client.name),
-      el("div", { className: "sub" }, `${client.plot.name} (${client.plot.width} × ${client.plot.depth} m) · budget ${money(client.budget)}`),
+      el("h2", {}, m.ui.client),
+      el("div", { className: "client-name" }, client.text[lang].name),
+      el("div", { className: "sub" }, m.ui.clientPlot(client.plot.name[lang], plotSize(client), money(client.budget))),
     );
     for (const [tool, b] of this.toolButtons) b.classList.toggle("active", tool === store.tool);
     this.undoBtn.disabled = !store.canUndo();
@@ -276,11 +289,11 @@ export class Panel {
     box.replaceChildren();
     this.selectionFields = [];
     if (!sel || (sel.kind === "room" && !room)) {
-      box.append(el("p", { className: "sub" }, "Click a room, wall, window or door in the plan to edit it."));
+      box.append(el("p", { className: "sub" }, m.ui.selectHint));
       return;
     }
 
-    const del = el("button", { type: "button", className: "danger", title: "Delete (Del)" }, "Delete");
+    const del = el("button", { type: "button", className: "danger", title: m.ui.deleteTitle }, m.ui.delete);
     del.addEventListener("click", () => store.deleteSelection());
 
     if (sel.kind === "room" && room) {
@@ -289,32 +302,30 @@ export class Panel {
         const a = analyzeRooms(store.house);
         return a.ok ? roomAt(a.value.rooms, at) : undefined;
       };
-      const types: { value: RoomType | ""; label: string }[] = [{ value: "", label: "Not set" }, ...ROOM_TYPES.map((t) => ({ value: t, label: ROOM_INFO[t].name }))];
+      const types: { value: RoomType | ""; label: string }[] = [{ value: "", label: m.ui.notSet }, ...ROOM_TYPES.map((t) => ({ value: t, label: m.rooms[t].name }))];
       this.selectionFields.push(
-        selectField<RoomType | "">("Used as", types, () => current()?.type ?? "", (v) => store.edit((h) => void setRoomType(h, at, v === "" ? null : v))),
-        readout("Area", () => `${(current()?.area ?? 0).toFixed(1)} m²`),
-        readout("Openings", () => {
+        selectField<RoomType | "">(m.ui.usedAs, types, () => current()?.type ?? "", (v) => store.edit((h) => void setRoomType(h, at, v === "" ? null : v))),
+        readout(m.ui.area, () => area(m, current()?.area ?? 0)),
+        readout(m.ui.openings, () => {
           const r = current();
           if (!r) return "";
-          const doors = r.doors.length;
-          const outside = r.doors.some((d) => d.to === OUTSIDE);
-          return `${doors} ${doors === 1 ? "door" : "doors"}${outside ? " (one outside)" : ""}, ${r.windows.length} ${r.windows.length === 1 ? "window" : "windows"}`;
+          return m.ui.openingsSummary(r.doors.length, r.doors.some((d) => d.to === OUTSIDE), r.windows.length);
         }),
       );
-      const min = room.type ? ROOM_INFO[room.type].minArea : null;
-      const notes = el("p", { className: "sub" }, min ? `A ${ROOM_INFO[room.type!].name.toLowerCase()} needs at least ${min} m²${ROOM_INFO[room.type!].needsWindow ? " and a window" : ""}.` : "Choose what this room is for.");
-      box.append(el("h2", {}, roomName(room)), ...this.selectionFields.map((f) => f.el), notes);
+      const info = room.type && ROOM_INFO[room.type];
+      const notes = el("p", { className: "sub" }, room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : m.ui.chooseRoomUse);
+      box.append(el("h2", {}, roomName(room, m)), ...this.selectionFields.map((f) => f.el), notes);
       return;
     }
 
     if (sel.kind === "wall") {
       const wall = () => store.house.wall(sel.id);
-      this.selectionFields.push(readout("Length", () => `${(wall()?.length() ?? 0).toFixed(2)} m`));
+      this.selectionFields.push(readout(m.ui.length, () => meters(m, wall()?.length() ?? 0)));
       if (exterior) {
-        this.selectionFields.push(selectField("Material", opts(WALL_MATERIALS), () => wall()?.material ?? null, (v) => store.edit((h) => void (h.wall(sel.id)!.material = v))));
+        this.selectionFields.push(selectField(m.ui.material, opts(WALL_MATERIALS, m.wallMaterial), () => wall()?.material ?? null, (v) => store.edit((h) => void (h.wall(sel.id)!.material = v))));
       }
       const add = (kind: OpeningKind) => {
-        const b = el("button", { type: "button" }, `Add ${OPENING_LABELS[kind].toLowerCase()}`);
+        const b = el("button", { type: "button" }, m.ui.add(kind));
         b.addEventListener("click", () => {
           let id: number | null = null;
           const w = wall();
@@ -324,7 +335,7 @@ export class Panel {
         return b;
       };
       const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor"), del] : [add("Door"), del];
-      box.append(el("h2", {}, exterior ? "Exterior wall" : "Interior wall"), ...this.selectionFields.map((f) => f.el), el("div", { className: "row" }, ...buttons));
+      box.append(el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), ...this.selectionFields.map((f) => f.el), el("div", { className: "row" }, ...buttons));
       return;
     }
 
@@ -335,9 +346,9 @@ export class Panel {
         const o = op(h);
         if (o) fn(o, h);
       }, `${k}:${sel.id}`);
-    const kinds = (Object.keys(OPENING_LABELS) as OpeningKind[]).map((k) => ({ value: k, label: OPENING_LABELS[k] }));
+    const kinds = opts(OPENING_KINDS, m.opening);
     this.selectionFields.push(
-      selectField("Type", kinds, () => op()?.kind ?? null, (v) =>
+      selectField(m.ui.type, kinds, () => op()?.kind ?? null, (v) =>
         editOp((o, h) => {
           const d = DEFAULT_OPENING[v];
           o.kind = v;
@@ -348,17 +359,17 @@ export class Panel {
           if (w) o.offset = clampOffset(w, o.width, o.offset);
         }, "kind"),
       ),
-      numberField("Width", { min: MIN_OPENING_SIZE, max: 6, step: 0.1 }, () => op()?.width ?? 0, (v) =>
+      numberField(m.ui.width, { min: MIN_OPENING_SIZE, max: 6, step: 0.1 }, () => op()?.width ?? 0, (v) =>
         editOp((o, h) => {
           o.width = v;
           const w = h.wall(o.wall);
           if (w) o.offset = clampOffset(w, v, o.offset);
         }, "width"),
       ),
-      numberField("Height", { min: MIN_OPENING_SIZE, max: 4, step: 0.1 }, () => op()?.height ?? 0, (v) => editOp((o) => (o.height = v), "height")),
-      ...(opening?.kind === "Window" ? [numberField("Sill", { min: 0, max: 3, step: 0.1 }, () => op()?.sill ?? 0, (v) => editOp((o) => (o.sill = v), "sill"))] : []),
-      numberField("Position", { min: 0, max: 100, step: 0.05 }, () => op()?.offset ?? 0, (v) => editOp((o) => (o.offset = v), "offset")),
+      numberField(m.ui.height, { min: MIN_OPENING_SIZE, max: 4, step: 0.1 }, () => op()?.height ?? 0, (v) => editOp((o) => (o.height = v), "height")),
+      ...(opening?.kind === "Window" ? [numberField(m.ui.sill, { min: 0, max: 3, step: 0.1 }, () => op()?.sill ?? 0, (v) => editOp((o) => (o.sill = v), "sill"))] : []),
+      numberField(m.ui.position, { min: 0, max: 100, step: 0.05 }, () => op()?.offset ?? 0, (v) => editOp((o) => (o.offset = v), "offset")),
     );
-    box.append(el("h2", {}, OPENING_LABELS[opening?.kind ?? "Window"]), ...this.selectionFields.map((f) => f.el), el("div", { className: "row" }, del));
+    box.append(el("h2", {}, m.opening[opening?.kind ?? "Window"]), ...this.selectionFields.map((f) => f.el), el("div", { className: "row" }, del));
   }
 }
