@@ -1,0 +1,21 @@
+[package]
+name = "architect"
+description = "Build houses, sell them, get rich through good architecture."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "architect"
+path = "src/main.rs"
+
+[dependencies]
+house_core.workspace = true
+bevy.workspace = true
+# Adds wgpu's OpenGL backend. Vulkan is still preferred when available; GL lets the game
+# run in containers without a Vulkan driver (e.g. this devcontainer: WGPU_BACKEND=gl).
+bevy_render = { version = "0.20.1", default-features = false, features = ["gles"], optional = true }
+
+[features]
+default = ["gl-backend"]
+gl-backend = ["dep:bevy_render"]

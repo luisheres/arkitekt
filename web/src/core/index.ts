@@ -1,0 +1,14 @@
+/**
+ * Engine-independent core of the Architect game: the house model, geometry generation,
+ * construction costs and validation rules. Nothing here depends on the renderer, so it
+ * can be unit-tested and reused by the AI appraisal code.
+ */
+
+export * from "./cost";
+export * from "./geometry";
+export * from "./model";
+export * from "./plot";
+export * from "./result";
+export * from "./roof";
+export * from "./samples";
+export * from "./validate";

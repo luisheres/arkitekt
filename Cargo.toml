@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/house_core", "crates/game"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+house_core = { path = "crates/house_core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+bevy = { version = "0.20.1", default-features = false, features = ["3d", "ui"] }
+
+# Bevy is very slow without optimizations; optimize dependencies even in dev builds.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Architect</title>
+    <link rel="stylesheet" href="/src/game/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <section id="status" class="panel" aria-live="polite"></section>
+    <section id="controls" class="panel">
+      <div><kbd>Left-drag</kbd> rotate · <kbd>Right-drag</kbd> pan · <kbd>Wheel</kbd> zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views</div>
+      <div><kbd>Tab</kbd> next house · <kbd>R</kbd> roof style · <kbd>T</kbd> roof material · <kbd>M</kbd> wall material</div>
+      <div><kbd>[</kbd> <kbd>]</kbd> roof pitch · <kbd>O</kbd> <kbd>P</kbd> overhang · <kbd>-</kbd> <kbd>=</kbd> wall height · <kbd>G</kbd> plot guides · <kbd>C</kbd> capture views</div>
+    </section>
+    <section id="captures" class="panel" hidden></section>
+    <script type="module" src="/src/game/main.ts"></script>
+  </body>
+</html>

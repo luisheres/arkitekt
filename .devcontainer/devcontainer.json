@@ -1,0 +1,63 @@
+{
+  "name": "Architect Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "profile": "default"
+    },
+    // Talk to the host Docker daemon from inside the devcontainer so we can run
+    // the ghost-drone SITL simulator + a Zenoh router (see dev/sim). With the
+    // container on --network=host, host-network containers are reachable at
+    // localhost (e.g. the router at tcp/127.0.0.1:7447).
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    }
+  },
+  "runArgs": [
+    "--network=host",
+    "--name=dev-container-architect",
+    "--device-cgroup-rule=c 166:* rmw"
+  ],
+  "mounts": [
+    "source=/dev,target=/dev,type=bind",
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+  ],
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+    "XDG_RUNTIME_DIR": "/tmp/runtime-vscode",
+    "LIBGL_ALWAYS_SOFTWARE": "1",
+    "WEBKIT_DISABLE_COMPOSITING_MODE": "1",
+    "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+  },
+  "postCreateCommand": "bash .devcontainer/post-create-script.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "tamasfe.even-better-toml",
+        "zxh404.vscode-proto3",
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "serayuzgur.crates",
+        "fill-labs.dependi"
+      ],
+      "settings": {
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer",
+          "editor.formatOnSave": true
+        },
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.cargo.features": "all"
+      }
+    }
+  }
+}
