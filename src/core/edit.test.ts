@@ -118,7 +118,7 @@ describe("openings", () => {
     h.roof = { style: "Gable", pitchDeg: 35, overhang: 0.4, material: "Shingles" };
     const id = placeOpening(h, h.walls[0].id, "Door", 0.1);
     expect(id).not.toBeNull();
-    expect(h.opening(id!)?.offset).toBeCloseTo(0.8);
+    expect(h.opening(id!)?.offset).toBeCloseTo(0.75); // 0.3 m margin + half of 0.9 m
     expect(validate(h, plot, 1e9, defaultPrices())).toEqual([]);
   });
 

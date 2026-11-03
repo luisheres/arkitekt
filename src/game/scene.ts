@@ -7,11 +7,20 @@ import {
   type House,
   type Plot,
   type RoofMaterial,
+  type RoomType,
   type TriMesh,
   type WallMaterial,
+  FLOOR_SLAB_HEIGHT,
+  ROOM_INFO,
+  ROOM_TYPES,
+  Vec3,
+  analyzeRooms,
   buildFloor,
   buildRoof,
+  triangulate,
   wallPieces,
+  TriMesh as Mesh,
+  wallThickness,
 } from "../core";
 
 const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -25,6 +34,12 @@ function roofMat(r: number, g: number, b: number, roughness: number, metalness: 
   return new THREE.MeshStandardMaterial({ color: srgb(r, g, b), roughness, metalness, side: THREE.DoubleSide });
 }
 
+function roomMaterials(): Record<RoomType, THREE.Material> {
+  const out = {} as Record<RoomType, THREE.Material>;
+  for (const t of ROOM_TYPES) out[t] = new THREE.MeshStandardMaterial({ color: new THREE.Color(ROOM_INFO[t].color), roughness: 0.9 });
+  return out;
+}
+
 /** Shared materials, one per building material. */
 const palette = {
   wall: {
@@ -32,6 +47,7 @@ const palette = {
     Brick: matte(0.6, 0.27, 0.2, 0.95),
     Plaster: matte(0.93, 0.89, 0.8, 0.9),
   } satisfies Record<WallMaterial, THREE.Material>,
+  interior: matte(0.95, 0.94, 0.91, 0.9),
   // Gables and fascia reuse the wall colours but must render from both sides.
   gable: {
     Wood: roofMat(0.58, 0.4, 0.26, 0.85, 0),
@@ -52,16 +68,27 @@ const palette = {
   }),
   frame: matte(0.96, 0.96, 0.94, 0.6),
   door: matte(0.3, 0.18, 0.11, 0.7),
+  garageDoor: matte(0.82, 0.83, 0.84, 0.5),
   floor: matte(0.55, 0.55, 0.53, 0.95),
+  /** Room floors, tinted by what the room is for. */
+  room: roomMaterials(),
+  untypedRoom: matte(0.86, 0.84, 0.8, 0.95),
 };
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 const FRAME_WIDTH = 0.07;
 export const SKY_COLOR = srgb(0.62, 0.78, 0.93);
 
-/** The static world: ground, plot, street and lights. Returns the plot guide lines. */
-export function buildWorld(scene: THREE.Scene, plot: Plot): THREE.Object3D {
-  scene.background = SKY_COLOR;
+export interface World {
+  /** Ground, plot, street and lights. */
+  root: THREE.Group;
+  /** Plot boundary and setback lines. */
+  guides: THREE.Object3D;
+}
+
+/** The static surroundings of a plot. */
+export function buildWorld(plot: Plot): World {
+  const root = new THREE.Group();
   const center = new THREE.Vector3(plot.width * 0.5, 0, plot.depth * 0.5);
 
   const flat = (w: number, d: number, color: THREE.Color, x: number, y: number, z: number) => {
@@ -69,24 +96,24 @@ export function buildWorld(scene: THREE.Scene, plot: Plot): THREE.Object3D {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
-    scene.add(mesh);
+    root.add(mesh);
   };
   // Surrounding land, the plot's lawn, and a street along the front (low-z) edge.
   flat(400, 400, srgb(0.42, 0.55, 0.3), center.x, -0.01, center.z);
   flat(plot.width, plot.depth, srgb(0.38, 0.62, 0.28), center.x, 0, center.z);
   flat(400, 7, srgb(0.32, 0.32, 0.34), center.x, 0.002, -4.5);
 
-  scene.add(new THREE.HemisphereLight(srgb(0.85, 0.9, 1.0), srgb(0.42, 0.55, 0.3), 1.6));
+  root.add(new THREE.HemisphereLight(srgb(0.85, 0.9, 1.0), srgb(0.42, 0.55, 0.3), 1.6));
   const sun = new THREE.DirectionalLight(0xffffff, 3.2);
-  sun.position.set(-30, 50, -20);
+  sun.position.set(center.x - 30, 50, center.z - 30);
   sun.target.position.copy(center);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const extent = Math.max(plot.width, plot.depth);
-  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 150 });
+  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 200 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
-  scene.add(sun, sun.target);
+  root.add(sun, sun.target);
 
   // Plot boundary (white) and setback (yellow).
   const guides = new THREE.Group();
@@ -102,8 +129,19 @@ export function buildWorld(scene: THREE.Scene, plot: Plot): THREE.Object3D {
   };
   outline(0, 0xffffff);
   outline(plot.setback, 0xffd94d);
-  scene.add(guides);
-  return guides;
+  root.add(guides);
+  return { root, guides };
+}
+
+/** Free a world's geometry and per-world materials. */
+export function disposeWorld(world: World): void {
+  world.root.traverse((o) => {
+    if (o instanceof THREE.Mesh || o instanceof THREE.Line) {
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    }
+  });
+  world.root.removeFromParent();
 }
 
 function toGeometry(t: TriMesh): THREE.BufferGeometry {
@@ -121,8 +159,10 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
 }
 
 /** Build all objects for a house. Dispose the result with {@link disposeHouse}. */
-export function buildHouse(house: House): THREE.Group {
+export function buildHouse(house: House, options: { roof: boolean } = { roof: true }): THREE.Group {
   const group = new THREE.Group();
+  const analysis = analyzeRooms(house);
+  const layout = analysis.ok ? analysis.value.layout : null;
 
   const box = (u: number, v: number, at: (u: number, v: number) => THREE.Vector3, size: THREE.Vector3, rotY: number, mat: THREE.Material) => {
     const mesh = solid(unitBox, mat);
@@ -141,11 +181,12 @@ export function buildHouse(house: House): THREE.Group {
       const p = wall.start.add(d.scale(u));
       return new THREE.Vector3(p.x, v, p.y);
     };
-    const t = wall.thickness;
+    const t = wallThickness(layout, wall);
+    const exterior = !layout || layout.exterior.has(wall.id);
     const size = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-    for (const p of wallPieces(wall, openings)) {
-      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, palette.wall[wall.material]);
+    for (const p of wallPieces(wall, openings, t)) {
+      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, exterior ? palette.wall[wall.material] : palette.interior);
     }
 
     for (const o of openings) {
@@ -172,21 +213,38 @@ export function buildHouse(house: House): THREE.Group {
         glass.scale.set(w - fw, h - fw, 0.02);
         glass.rotation.y = rotY;
         group.add(glass);
+      } else if (o.kind === "GarageDoor") {
+        // Sectional door: a pale panel with horizontal grooves.
+        box(o.offset, midV - fw * 0.5, at, size(w - fw * 2, h - fw, 0.05), rotY, palette.garageDoor);
+        for (let v = 0.5; v < h - 0.2; v += 0.5) box(o.offset, v, at, size(w - fw * 2, 0.03, 0.07), rotY, palette.frame);
       } else {
         box(o.offset, midV - fw * 0.5, at, size(w - fw * 2, h - fw, 0.06), rotY, palette.door);
       }
     }
   }
 
-  const floor = buildFloor(house);
-  if (floor.ok) group.add(solid(toGeometry(floor.value), palette.floor));
+  // Floors: one per room, tinted by its use; the whole footprint when rooms are unknown.
+  if (analysis.ok) {
+    for (const room of analysis.value.rooms) {
+      const mesh = new Mesh();
+      const up = new Vec3(0, 1, 0);
+      const poly = room.polygon;
+      for (const [a, b, c] of triangulate(poly)) {
+        mesh.pushTriFacing(poly[a].atHeight(FLOOR_SLAB_HEIGHT), poly[b].atHeight(FLOOR_SLAB_HEIGHT), poly[c].atHeight(FLOOR_SLAB_HEIGHT), up);
+      }
+      group.add(solid(toGeometry(mesh), room.type ? palette.room[room.type] : palette.untypedRoom));
+    }
+  } else {
+    const floor = buildFloor(house);
+    if (floor.ok) group.add(solid(toGeometry(floor.value), palette.floor));
+  }
 
   const roof = buildRoof(house);
-  if (house.roof && roof.ok) {
+  if (house.roof && roof.ok && options.roof) {
     group.add(solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]));
     if (!roof.value.gables.isEmpty()) {
-      const material = house.walls[0]?.material ?? "Plaster";
-      group.add(solid(toGeometry(roof.value.gables), palette.gable[material]));
+      const exteriorWall = house.walls.find((w) => !layout || layout.exterior.has(w.id));
+      group.add(solid(toGeometry(roof.value.gables), palette.gable[exteriorWall?.material ?? "Plaster"]));
     }
   }
   return group;

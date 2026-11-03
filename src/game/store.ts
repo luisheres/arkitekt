@@ -1,47 +1,80 @@
 /**
- * The editor's state: the house being built, the active tool, the selection and the undo
- * history. Views subscribe to changes; every change to the house goes through `edit` or
- * a gesture so it can be undone.
+ * The game's state: the career, the current client, the house being designed, the
+ * active tool, the selection and the undo history. Views subscribe to changes; every
+ * change to the house goes through `edit` or a gesture so it can be undone.
  */
 
-import { History, House, type HouseJson, type Plot, type PriceList } from "../core";
+import {
+  type Career,
+  type Client,
+  History,
+  House,
+  type HouseJson,
+  type PriceList,
+  type Vec2,
+  clientById,
+  completeCommission,
+  newCareer,
+  nextClient,
+  setRoomType,
+} from "../core";
 
 export type Tool = "select" | "wall" | "room" | "window" | "door";
 
-export type Selection = { kind: "wall"; id: number } | { kind: "opening"; id: number } | null;
+export type Selection =
+  | { kind: "wall"; id: number }
+  | { kind: "opening"; id: number }
+  /** The room containing `at`. */
+  | { kind: "room"; at: Vec2 }
+  | null;
 
-/** What changed: the house itself, or only editor state such as the tool or selection. */
-export type Change = "house" | "ui";
+/** What changed: the house, editor state such as the tool or selection, or the client. */
+export type Change = "house" | "ui" | "client";
 
-const SAVE_KEY = "architect.house.v1";
+const SAVE_KEY = "architect.game.v2";
 
 interface Saved {
-  name: string;
-  house: HouseJson;
+  career: Career;
+  /** The commission in progress; null between clients. */
+  current: { clientId: string; house: HouseJson } | null;
 }
 
 export class Store {
-  house: House;
-  name: string;
+  house = new House();
+  client: Client;
+  career: Career;
+  /** False until the player has taken on the current client's brief. */
+  working = false;
   tool: Tool = "select";
   selection: Selection = null;
   showGuides = true;
+  showRoof = true;
 
-  private readonly history = new History();
+  private history = new History();
   private readonly listeners = new Set<(change: Change) => void>();
   private gestureBefore: HouseJson | null = null;
   private gestureRecorded = false;
   private saveTimer: number | undefined;
 
-  constructor(
-    readonly plot: Plot,
-    readonly prices: PriceList,
-    readonly budget: number,
-    house: House,
-    name: string,
-  ) {
-    this.house = house;
-    this.name = name;
+  constructor(readonly prices: PriceList) {
+    const saved = Store.restore();
+    this.career = saved?.career ?? newCareer();
+    const current = saved?.current && clientById(saved.current.clientId);
+    if (saved?.current && current) {
+      this.client = current;
+      this.house = House.fromJSON(saved.current.house);
+      this.working = true;
+    } else {
+      this.client = nextClient(this.career);
+    }
+  }
+
+  get plot() {
+    return this.client.plot;
+  }
+
+  get budget() {
+    return this.client.budget;
   }
 
   subscribe(fn: (change: Change) => void): () => void {
@@ -50,12 +83,37 @@ export class Store {
   }
 
   private emit(change: Change): void {
-    if (change === "house") {
+    if (change !== "ui") {
       this.dropStaleSelection();
       this.scheduleSave();
     }
     for (const fn of this.listeners) fn(change);
   }
+
+  // --- Commissions -------------------------------------------------------------------
+
+  /** Take on the current client's brief, starting from an empty plot. */
+  startCommission(house = new House()): void {
+    this.house = house;
+    this.history = new History();
+    this.selection = null;
+    this.tool = "select";
+    this.working = true;
+    this.emit("client");
+  }
+
+  /** The client accepted the design: get paid and line up the next client. */
+  completeCommission(fee: number, stars: number): void {
+    this.career = completeCommission(this.career, this.client.id, fee, stars);
+    this.client = nextClient(this.career);
+    this.working = false;
+    this.house = new House();
+    this.history = new History();
+    this.selection = null;
+    this.emit("client");
+  }
+
+  // --- Editing -----------------------------------------------------------------------
 
   /**
    * Change the house as one undoable step. Edits passing the same `mergeKey` in quick
@@ -90,10 +148,9 @@ export class Store {
   }
 
   /** Replace the whole house (undoable). */
-  load(house: House, name: string): void {
+  load(house: House): void {
     this.history.record(this.house.toJSON());
     this.house = house;
-    this.name = name;
     this.selection = null;
     this.emit("house");
   }
@@ -137,39 +194,53 @@ export class Store {
     this.emit("ui");
   }
 
-  /** Remove the selected wall or opening. */
+  toggleRoof(): void {
+    this.showRoof = !this.showRoof;
+    this.emit("ui");
+  }
+
+  /** Remove the selected wall or opening, or clear the selected room's type. */
   deleteSelection(): void {
     const sel = this.selection;
     if (!sel) return;
-    this.edit((h) => (sel.kind === "wall" ? h.removeWall(sel.id) : h.removeOpening(sel.id)));
+    this.edit((h) => {
+      if (sel.kind === "wall") h.removeWall(sel.id);
+      else if (sel.kind === "opening") h.removeOpening(sel.id);
+      else setRoomType(h, sel.at, null);
+    });
     this.selection = null;
     this.emit("ui");
   }
 
   private dropStaleSelection(): void {
     const sel = this.selection;
-    if (sel && !(sel.kind === "wall" ? this.house.wall(sel.id) : this.house.opening(sel.id))) this.selection = null;
+    if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
+    if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
   }
+
+  // --- Saving ------------------------------------------------------------------------
 
   private scheduleSave(): void {
     clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
-      try {
-        const saved: Saved = { name: this.name, house: this.house.toJSON() };
-        localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
-      } catch {
-        // Storage can be unavailable (private windows); saving is a convenience only.
-      }
-    }, 300);
+    this.saveTimer = window.setTimeout(() => this.save(), 300);
   }
 
-  /** The house saved by a previous session, if any. */
-  static restore(): { house: House; name: string } | null {
+  save(): void {
+    try {
+      const saved: Saved = {
+        career: this.career,
+        current: this.working ? { clientId: this.client.id, house: this.house.toJSON() } : null,
+      };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+    } catch {
+      // Storage can be unavailable (private windows); saving is a convenience only.
+    }
+  }
+
+  private static restore(): Saved | null {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return null;
-      const saved = JSON.parse(raw) as Saved;
-      return { house: House.fromJSON(saved.house), name: saved.name };
+      return raw ? (JSON.parse(raw) as Saved) : null;
     } catch {
       return null;
     }

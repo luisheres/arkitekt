@@ -1,30 +1,21 @@
 /**
- * Architect: buy a plot, build a house, sell it for a profit.
+ * Architect: clients bring you a brief and a budget; design a house that meets it and
+ * sell them the design.
  *
- * Milestone 3: the house editor. A plan view for drawing walls and placing windows and
- * doors, a live 3D view, and a sidebar for properties, costs and issues.
- *
- * URL parameters: `?sample=N` starts from sample house N (1-based) instead of the saved
- * house. `window.architect.captureViews()` returns the four appraisal views as PNG data URLs.
+ * URL parameters: `?sample=N` puts sample house N (1-based) on the current client's plot,
+ * for screenshots. `window.architect` exposes the store, the plan and `captureViews()`
+ * (the four appraisal views as PNG data URLs) for automation.
  */
 
-import { allSamples, defaultPrices, starterPlots } from "../core";
+import { allSamples, defaultPrices, presentDesign } from "../core";
 import type { CapturedView } from "./capture";
+import { isModalOpen, showClient, showVerdict } from "./dialogs";
 import { Panel } from "./panel";
 import { PlanView } from "./plan";
 import { Store, type Tool } from "./store";
 import { View3D } from "./view3d";
 
-const STARTING_BUDGET = 60_000;
-
-// --- State --------------------------------------------------------------------------
-
-const plot = starterPlots()[0];
-const samples = allSamples(plot);
-const sampleParam = Number(new URLSearchParams(location.search).get("sample"));
-const initial =
-  sampleParam >= 1 ? samples[Math.min(sampleParam, samples.length) - 1] : (Store.restore() ?? { house: samples[0].house, name: samples[0].name });
-const store = new Store(plot, defaultPrices(), STARTING_BUDGET, initial.house, initial.name);
+const store = new Store(defaultPrices());
 
 // --- Views --------------------------------------------------------------------------
 
@@ -32,7 +23,20 @@ const main = document.querySelector<HTMLElement>("#main")!;
 const capturesEl = document.querySelector<HTMLElement>("#captures")!;
 const view3d = new View3D(document.querySelector<HTMLCanvasElement>("#view")!, store);
 const plan = new PlanView(document.querySelector<HTMLElement>("#plan")!, store);
-new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, () => showCaptures(view3d.capture()));
+
+const meetClient = () => showClient(store.client, store.working, () => store.working || store.startCommission());
+const present = () => {
+  const verdict = presentDesign(store.house, store.client, store.prices);
+  showVerdict(store.client, verdict, () => {
+    store.completeCommission(verdict.fee, verdict.stars);
+    meetClient();
+  });
+};
+new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
+  capture: () => showCaptures(view3d.capture()),
+  present,
+  showBrief: meetClient,
+});
 
 function setLayout(layout: string): void {
   main.dataset.layout = layout;
@@ -47,6 +51,8 @@ main.querySelector(".layout-switch")!.addEventListener("click", (e) => {
 });
 setLayout("split");
 
+document.querySelector("#roof-toggle")!.addEventListener("click", () => store.toggleRoof());
+
 function showCaptures(views: CapturedView[]): void {
   capturesEl.replaceChildren();
   const close = document.createElement("button");
@@ -57,7 +63,7 @@ function showCaptures(views: CapturedView[]): void {
   header.innerHTML = "<strong>Appraisal views</strong>";
   header.append(close);
   capturesEl.append(header);
-  const prefix = store.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const prefix = store.client.id;
   for (const v of views) {
     const fig = document.createElement("figure");
     const img = Object.assign(document.createElement("img"), { alt: v.name, src: v.dataUrl });
@@ -75,6 +81,7 @@ function showCaptures(views: CapturedView[]): void {
 const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyN: "window", KeyD: "door" };
 
 window.addEventListener("keydown", (e) => {
+  if (isModalOpen()) return;
   const target = e.target as HTMLElement;
   // Sliders keep shortcuts working; text fields and dropdowns need their keys.
   const typing = target.matches("input:not([type=range]), select, textarea");
@@ -108,13 +115,22 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "Delete" || e.key === "Backspace") store.deleteSelection();
   else if (e.code === "KeyF") plan.fit();
   else if (e.code === "KeyG") store.toggleGuides();
+  else if (e.code === "KeyH") store.toggleRoof();
   else if (e.code === "KeyC") showCaptures(view3d.capture());
   else if (/^Digit[1-4]$/.test(e.code)) view3d.showPreset(Number(e.code.slice(5)) - 1);
   else return;
   e.preventDefault();
 });
 
-// --- Automation hook ----------------------------------------------------------------
+// --- Start --------------------------------------------------------------------------
+
+const sampleParam = Number(new URLSearchParams(location.search).get("sample"));
+if (sampleParam >= 1) {
+  const samples = allSamples(store.plot);
+  store.startCommission(samples[Math.min(sampleParam, samples.length) - 1].house);
+} else if (!store.working) {
+  meetClient();
+}
 
 declare global {
   interface Window {

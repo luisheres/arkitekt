@@ -1,12 +1,13 @@
 /**
- * Editing operations used by the house editor: snapping, moving corners and walls,
- * placing openings. They work on the plain model, so they are unit-tested here and
- * the UI only translates pointer input into calls.
+ * Editing operations used by the house editor: snapping, drawing and moving walls,
+ * placing openings, naming rooms. They work on the plain model, so they are unit-tested
+ * here and the UI only translates pointer input into calls.
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
-import { House, type OpeningId, type OpeningKind, type Wall, type WallId, type WallMaterial } from "./model";
-import { DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./validate";
+import { House, type LabelId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
+import { analyzeRooms, roomAt } from "./rooms";
+import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./validate";
 
 /** Grid spacing for snapping, in meters. */
 export const GRID_STEP = 0.5;
@@ -19,7 +20,8 @@ export const DEFAULT_WALL_MATERIAL: WallMaterial = "Plaster";
 /** Default sizes for new openings. */
 export const DEFAULT_OPENING: Record<OpeningKind, { width: number; height: number; sill: number }> = {
   Window: { width: 1.2, height: 1.3, sill: 0.9 },
-  Door: { width: 1.0, height: 2.1, sill: 0 },
+  Door: { width: 0.9, height: 2.1, sill: 0 },
+  GarageDoor: { width: 2.5, height: 2.1, sill: 0 },
 };
 
 export const roundTo = (x: number, step: number): number => Math.round(x / step) * step;
@@ -41,15 +43,16 @@ export function corners(house: House): Vec2[] {
 
 export interface Snap {
   point: Vec2;
-  /** True when the point snapped to one of the anchors rather than the grid. */
+  /** True when the point snapped to an anchor or onto a wall rather than to the grid. */
   anchored: boolean;
 }
 
 /**
- * Snap `p` to the nearest anchor within `radius`, or else to the grid. A `step` of 0
- * leaves the point where it is when no anchor is close.
+ * Snap `p` to the nearest anchor within `radius`; failing that, onto the nearest of
+ * `lines` (walls) within `radius`, keeping the grid position along it; failing that, to
+ * the grid. A `step` of 0 means no grid.
  */
-export function snapPoint(p: Vec2, anchors: readonly Vec2[], radius: number, step: number): Snap {
+export function snapPoint(p: Vec2, anchors: readonly Vec2[], radius: number, step: number, lines: readonly (readonly [Vec2, Vec2])[] = []): Snap {
   let best: Vec2 | null = null;
   let bestDist = radius;
   for (const a of anchors) {
@@ -60,15 +63,82 @@ export function snapPoint(p: Vec2, anchors: readonly Vec2[], radius: number, ste
     }
   }
   if (best) return { point: best, anchored: true };
-  return { point: step > 0 ? snapToGrid(p, step) : p, anchored: false };
+
+  const grid = step > 0 ? snapToGrid(p, step) : p;
+  let onLine: Vec2 | null = null;
+  bestDist = radius;
+  for (const [a, b] of lines) {
+    const d = b.sub(a).normalize();
+    const nearest = a.add(d.scale(projectOntoSegment(p, a, b)));
+    const dist = nearest.distance(p);
+    if (dist <= bestDist) {
+      bestDist = dist;
+      onLine = a.add(d.scale(projectOntoSegment(grid, a, b)));
+    }
+  }
+  if (onLine) return { point: onLine, anchored: true };
+  return { point: grid, anchored: false };
 }
 
-/** Move every wall endpoint at `from` to `to`, so walls meeting at that corner stay joined. */
-export function moveCorner(house: House, from: Vec2, to: Vec2): void {
+/** Wall ends of other walls that touch `wall` somewhere between its ends (T-junctions). */
+function attachedPoints(house: House, wall: Wall): Vec2[] {
+  const out: Vec2[] = [];
+  const len = wall.length();
+  for (const other of house.walls) {
+    if (other === wall) continue;
+    for (const p of [other.start, other.end]) {
+      const t = projectOntoSegment(p, wall.start, wall.end);
+      const foot = wall.start.add(wall.direction().scale(t));
+      if (foot.distance(p) < SNAP_EPS && t > SNAP_EPS && t < len - SNAP_EPS && !out.some((q) => q.distance(p) < SNAP_EPS)) out.push(p);
+    }
+  }
+  return out;
+}
+
+function moveEndsAt(house: House, from: Vec2, to: Vec2): void {
   for (const w of house.walls) {
     if (w.start.distance(from) < SNAP_EPS) w.start = to;
     if (w.end.distance(from) < SNAP_EPS) w.end = to;
   }
+}
+
+/**
+ * Move several corners at once. Walls meeting at a corner stay joined, and walls ending
+ * on a moved wall (T-junctions) stay attached: they keep their distance from the wall
+ * end that did not move, or shift along when the whole wall moves.
+ */
+export function moveCorners(house: House, moves: readonly { from: Vec2; to: Vec2 }[]): void {
+  const moved = (p: Vec2) => moves.find((m) => m.from.distance(p) < SNAP_EPS);
+  const touched = house.walls.filter((w) => moved(w.start) || moved(w.end));
+  const keep = touched.map((w) => {
+    const [ms, me] = [moved(w.start), moved(w.end)];
+    const len = w.length();
+    return attachedPoints(house, w).map((p) => {
+      const s = p.distance(w.start);
+      // Where the point goes, given the wall's new ends.
+      return (start: Vec2, end: Vec2): [Vec2, Vec2] => {
+        const d = end.sub(start).normalize();
+        const newLen = start.distance(end);
+        let along: number;
+        if (ms && me) along = ms.to.sub(ms.from).distance(me.to.sub(me.from)) < 1e-9 ? s : (s / len) * newLen;
+        else if (ms) along = newLen - (len - s); // the end stayed: keep the distance from it
+        else along = s;
+        return [p, start.add(d.scale(Math.min(Math.max(along, SNAP_EPS * 2), newLen - SNAP_EPS * 2)))];
+      };
+    });
+  });
+  for (const m of moves) moveEndsAt(house, m.from, m.to);
+  touched.forEach((w, i) => {
+    for (const place of keep[i]) {
+      const [from, to] = place(w.start, w.end);
+      moveEndsAt(house, from, to);
+    }
+  });
+}
+
+/** Move every wall end at `from` to `to`. */
+export function moveCorner(house: House, from: Vec2, to: Vec2): void {
+  moveCorners(house, [{ from, to }]);
 }
 
 /**
@@ -79,9 +149,10 @@ export function moveWall(house: House, id: WallId, original: { start: Vec2; end:
   const wall = house.wall(id);
   if (!wall) return;
   const shift = leftNormal(wall).scale(distance);
-  const [start, end] = [wall.start, wall.end];
-  moveCorner(house, start, original.start.add(shift));
-  moveCorner(house, end, original.end.add(shift));
+  moveCorners(house, [
+    { from: wall.start, to: original.start.add(shift) },
+    { from: wall.end, to: original.end.add(shift) },
+  ]);
 }
 
 /** Unit normal pointing to the left of the wall's direction (plan coordinates). */
@@ -90,7 +161,7 @@ export function leftNormal(wall: Wall): Vec2 {
   return new Vec2(-d.y, d.x);
 }
 
-/** Unit normal pointing into the house, or the left normal when the walls are not closed. */
+/** Unit normal pointing into the house, or the left normal when that is unclear. */
 export function interiorNormal(house: House, wall: Wall): Vec2 {
   const n = leftNormal(wall);
   const fp = house.footprint();
@@ -133,12 +204,44 @@ export function placeOpening(house: House, wallId: WallId, kind: OpeningKind, of
   const wall = house.wall(wallId);
   if (!wall) return null;
   const d = DEFAULT_OPENING[kind];
-  const minWidth = kind === "Door" ? DOOR_WIDTH[0] : MIN_OPENING_SIZE;
+  const minWidth = kind === "Door" ? DOOR_WIDTH[0] : kind === "GarageDoor" ? GARAGE_DOOR_WIDTH[0] : MIN_OPENING_SIZE;
   const width = Math.min(d.width, roundTo(wall.length() - 2 * OPENING_END_MARGIN, 0.1));
   const height = Math.min(d.height, roundTo(wall.height - MIN_LINTEL - d.sill, 0.1));
   if (width < minWidth || height < MIN_OPENING_SIZE) return null;
   const at = roundTo(clampOffset(wall, width, offset), OPENING_STEP);
-  return kind === "Door" ? house.addDoor(wallId, at, width, height) : house.addWindow(wallId, at, width, height, d.sill);
+  if (kind === "Door") return house.addDoor(wallId, at, width, height);
+  if (kind === "GarageDoor") return house.addGarageDoor(wallId, at, width, height);
+  return house.addWindow(wallId, at, width, height, d.sill);
+}
+
+/**
+ * Add a wall from `a` to `b`, leaving out the stretches already covered by existing walls
+ * on the same line, so walls can be traced along existing ones without doubling up.
+ */
+export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial): WallId[] {
+  const len = a.distance(b);
+  if (len < SNAP_EPS) return [];
+  const d = b.sub(a).scale(1 / len);
+  const n = new Vec2(-d.y, d.x);
+  const covered: [number, number][] = [];
+  for (const w of house.walls) {
+    if (Math.abs(w.direction().cross(d)) > 1e-6) continue;
+    if (Math.abs(w.start.sub(a).dot(n)) > SNAP_EPS) continue;
+    const [t0, t1] = [w.start.sub(a).dot(d), w.end.sub(a).dot(d)].sort((x, y) => x - y);
+    if (t1 > SNAP_EPS && t0 < len - SNAP_EPS) covered.push([Math.max(t0, 0), Math.min(t1, len)]);
+  }
+  covered.sort((x, y) => x[0] - y[0]);
+  const ids: WallId[] = [];
+  let cursor = 0;
+  const add = (from: number, to: number) => {
+    if (to - from > SNAP_EPS) ids.push(house.addWall(a.add(d.scale(from)), a.add(d.scale(to)), height, material));
+  };
+  for (const [t0, t1] of covered) {
+    add(cursor, t0);
+    cursor = Math.max(cursor, t1);
+  }
+  add(cursor, len);
+  return ids;
 }
 
 /** Add walls along `points`, joining the last point back to the first when `closed`. */
@@ -149,19 +252,42 @@ export function addWallChain(
   height: number,
   material: WallMaterial,
 ): WallId[] {
-  if (closed) return house.addWallLoop(points, height, material);
   const ids: WallId[] = [];
-  for (let i = 0; i + 1 < points.length; i++) ids.push(house.addWall(points[i], points[i + 1], height, material));
+  const n = closed ? points.length : points.length - 1;
+  for (let i = 0; i < n; i++) ids.push(...addWallClipped(house, points[i], points[(i + 1) % points.length], height, material));
   return ids;
 }
 
 /**
  * Add a rectangular room spanning corners `a` and `b`, front wall first (the wall facing
- * the street, at low y). Returns null when a side would be shorter than a wall may be.
+ * the street, at low y). Sides that run along existing walls are not doubled. Returns
+ * null when a side would be shorter than a wall may be.
  */
 export function addRectangle(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial): WallId[] | null {
   const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
   const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
   if (x1 - x0 < MIN_WALL_LENGTH || y1 - y0 < MIN_WALL_LENGTH) return null;
-  return house.addWallLoop([new Vec2(x0, y0), new Vec2(x1, y0), new Vec2(x1, y1), new Vec2(x0, y1)], height, material);
+  return addWallChain(house, [new Vec2(x0, y0), new Vec2(x1, y0), new Vec2(x1, y1), new Vec2(x0, y1)], true, height, material);
+}
+
+/**
+ * Say what the room containing `at` is used for (null clears it). Reuses the room's
+ * existing label, so the label stays where the player put it.
+ */
+export function setRoomType(house: House, at: Vec2, type: RoomType | null): LabelId | null {
+  const analysis = analyzeRooms(house);
+  if (!analysis.ok) return null;
+  const room = roomAt(analysis.value.rooms, at);
+  if (!room) return null;
+  const [first, ...rest] = room.labels;
+  rest.forEach((l) => house.removeLabel(l.id));
+  if (type === null) {
+    if (first) house.removeLabel(first.id);
+    return null;
+  }
+  if (first) {
+    first.type = type;
+    return first.id;
+  }
+  return house.addLabel(type, room.anchor);
 }

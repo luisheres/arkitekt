@@ -1,9 +1,10 @@
-// End-to-end check of the house editor in headless Chromium.
+// End-to-end check of the game in headless Chromium.
 //
 //   npm run e2e -- [--out DIR]
 //
-// Builds a house from an empty plot through the real UI (plan tools, sidebar controls,
-// undo/redo) and asserts on the resulting model. With --out, saves screenshots there.
+// Takes the first client's commission, designs a house that meets their brief through
+// the real UI (plan tools, sidebar, dialogs), sells it and moves on to the next client.
+// With --out, saves screenshots there.
 
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -30,119 +31,133 @@ try {
   await page.waitForTimeout(200);
 
   const shot = async (name) => outDir && (await page.screenshot({ path: join(outDir, `${String(++step).padStart(2, "0")}-${name}.png`) }));
-  const house = () =>
+  const model = () =>
     page.evaluate(() => {
-      const h = window.architect.store.house;
-      return { walls: h.walls.length, openings: h.openings.map((o) => o.kind), area: h.floorArea(), roof: h.roof?.style ?? null };
+      const { store } = window.architect;
+      const h = store.house;
+      return { client: store.client.id, walls: h.walls.length, area: h.floorArea(), labels: h.labels.map((l) => l.type).sort() };
     });
   const at = (x, y) => page.evaluate(([x, y]) => window.architect.plan.clientPoint(x, y), [x, y]);
   const click = async (x, y) => {
     const p = await at(x, y);
     await page.mouse.click(p.x, p.y);
   };
-  const dragPlan = async ([x0, y0], [x1, y1]) => {
+  const drag = async ([x0, y0], [x1, y1]) => {
     const [a, b] = [await at(x0, y0), await at(x1, y1)];
     await page.mouse.move(a.x, a.y);
     await page.mouse.down();
     await page.mouse.move(b.x, b.y, { steps: 8 });
     await page.mouse.up();
   };
+  // The plan redraws on the next animation frame.
+  const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const roomCount = async () => (await frame(), page.locator(".plan .room").count());
+  const unmetMusts = () => page.locator(".brief:not(.wishes) li.unmet").allTextContents();
   const status = () => page.locator(".status").innerText();
-  await shot("start");
 
-  // Start from an empty plot.
-  await page.selectOption("#sidebar select[title='Replace the house']", "empty");
-  assert.equal((await house()).walls, 0);
+  // The first client introduces themselves.
+  await page.locator("#modal .dialog").waitFor();
+  assert.match(await page.locator("#modal h2").textContent(), /Lindgren/);
+  await shot("client");
+  await page.click("#modal button.primary");
+  assert.equal(await page.locator("#modal").isHidden(), true);
 
-  // Room tool: drag a 10 x 7 m rectangle inside the setback.
+  // The outer walls: a 10 x 8.5 m rectangle.
   await page.keyboard.press("r");
-  await dragPlan([5, 6], [15, 13]);
-  let h = await house();
-  assert.equal(h.walls, 4, "room makes four walls");
-  assert.equal(h.area, 70);
-  assert.match(await status(), /needs at least one door/);
-  assert.match(await status(), /needs a roof/);
+  await drag([9, 8], [19, 16.5]);
+  assert.equal((await model()).area, 85);
 
-  // Door on the front wall (y = 6), two windows.
-  await page.keyboard.press("d");
-  await click(10, 6.05);
-  await page.keyboard.press("n");
-  await click(7, 6);
-  await click(13, 13);
-  h = await house();
-  assert.deepEqual(h.openings.sort(), ["Door", "Window", "Window"]);
-
-  // Roof from the sidebar.
-  await page.selectOption("#sidebar .house select >> nth=1", "Gable");
-  h = await house();
-  assert.equal(h.roof, "Gable");
-  assert.match(await status(), /Ready to sell/);
-  await shot("room-with-roof");
-
-  // Select tool: push the back wall out by 2 m (drag from y=13 to y=15).
-  await page.keyboard.press("v");
-  await dragPlan([9, 13], [9, 15]);
-  assert.equal((await house()).area, 90, "pushing the back wall grows the room");
-
-  // Undo restores the size; redo re-applies it.
-  await page.keyboard.press("Control+z");
-  assert.equal((await house()).area, 70);
-  await page.keyboard.press("Control+Shift+z");
-  assert.equal((await house()).area, 90);
-
-  // Drag a corner diagonally: the footprint is no longer a rectangle, so the gable is refused.
-  await dragPlan([15, 15], [17, 17]);
-  assert.match(await status(), /Gable roofs need a rectangular footprint/);
-  await page.keyboard.press("Control+z");
-  assert.doesNotMatch(await status(), /rectangular footprint/);
-
-  // Slide the door along its wall.
-  const doorBefore = await page.evaluate(() => window.architect.store.house.openings.find((o) => o.kind === "Door").offset);
-  await dragPlan([10, 6], [12, 6]);
-  const doorAfter = await page.evaluate(() => window.architect.store.house.openings.find((o) => o.kind === "Door").offset);
-  assert.ok(Math.abs(Math.abs(doorAfter - doorBefore) - 2) < 0.06, `door moved ${doorBefore} -> ${doorAfter}`);
-
-  // Select a window and delete it.
-  await click(7, 6);
-  assert.equal(await page.locator(".selection h2").textContent(), "Window");
-  await page.keyboard.press("Delete");
-  assert.deepEqual((await house()).openings.sort(), ["Door", "Window"]);
-
-  // Wall tool: an L-shaped annex on a fresh plot, closed by clicking the first corner.
-  await page.selectOption("#sidebar select[title='Replace the house']", "empty");
+  // Partitions, each drawn from one wall to another.
   await page.keyboard.press("w");
-  for (const [x, y] of [[4, 5], [16, 5], [16, 10], [10, 10], [10, 16], [4, 16], [4, 5]]) await click(x, y);
-  h = await house();
-  assert.equal(h.walls, 6);
-  assert.equal(h.area, 12 * 5 + 6 * 6);
-  await page.selectOption("#sidebar .house select >> nth=1", "Flat");
+  for (const [a, b] of [
+    [[9, 12.5], [19, 12.5]],
+    [[15, 8], [15, 12.5]],
+    [[13, 12.5], [13, 16.5]],
+    [[15.5, 12.5], [15.5, 16.5]],
+  ]) {
+    await click(...a);
+    await click(...b);
+  }
+  assert.equal((await model()).walls, 8, "four partitions");
+  assert.equal(await roomCount(), 5, "five rooms");
+
+  // Doors between rooms, and the front door.
   await page.keyboard.press("d");
-  await click(7, 5);
-  assert.match(await status(), /Ready to sell/);
-  await shot("l-shape");
+  for (const p of [[12.3, 8], [15, 10.25], [11, 12.5], [14, 12.5], [17.25, 12.5]]) await click(...p);
+  // Windows for the habitable rooms.
+  await page.keyboard.press("n");
+  for (const p of [[11, 8], [17, 8], [11, 16.5], [17.25, 16.5]]) await click(...p);
 
-  // The wall-height slider updates every wall.
-  await page.locator("#sidebar .house input[type=range] >> nth=0").fill("3.5");
-  assert.deepEqual(await page.evaluate(() => [...new Set(window.architect.store.house.walls.map((w) => w.height))]), [3.5]);
-
-  // Clicking an issue selects the offending wall.
+  // Say what each room is.
   await page.keyboard.press("v");
-  await dragPlan([4, 16], [1, 16]); // outside the 3 m setback
-  await page.locator(".issues li[data-kind=wall]").first().click();
-  assert.equal(await page.locator(".selection h2").textContent(), "Wall");
-  await shot("issue-selected");
+  for (const [x, y, type] of [[12, 10, "Living"], [17, 10, "Kitchen"], [11, 14.5, "Bedroom"], [14.2, 14.5, "Bathroom"], [17.25, 14.5, "Bedroom"]]) {
+    await click(x, y);
+    await page.selectOption(".selection select", type);
+  }
+  assert.deepEqual((await model()).labels, ["Bathroom", "Bedroom", "Bedroom", "Kitchen", "Living"]);
+  assert.match(await status(), /The house needs a roof/);
 
-  // The house survives a reload (autosave).
+  // A hip roof: one of the wishes.
+  await page.selectOption("#sidebar .house select >> nth=1", "Hip");
+  assert.deepEqual(await unmetMusts(), []);
+  assert.match(await status(), /No building problems/);
+  await shot("lindgren-design");
+
+  // Look inside with the roof off.
+  await page.keyboard.press("h");
+  await page.waitForTimeout(200);
+  await shot("roof-off");
+  await page.keyboard.press("h");
+
+  // Pushing the back wall out keeps the partitions attached; undo puts it back.
+  await drag([12.25, 16.5], [12.25, 17.5]);
+  assert.equal((await model()).area, 95);
+  assert.equal(await roomCount(), 5);
+  await page.keyboard.press("Control+z");
+  assert.equal((await model()).area, 85);
+
+  // A window in an interior wall is a building problem.
+  await page.keyboard.press("n");
+  await click(12, 12.5);
+  assert.match(await status(), /window is in an interior wall/);
+  await page.keyboard.press("Delete");
+  assert.match(await status(), /No building problems/);
+
+  // Present to the client: sold.
+  await page.keyboard.press("v");
+  await page.click("text=Present to client");
+  await page.locator("#modal .dialog").waitFor();
+  assert.match(await page.locator("#modal h2").textContent(), /Sold!/);
+  await shot("sold");
+  await page.click("#modal button.primary"); // Next client
+
+  // The next client has their own plot and brief.
+  await page.locator("#modal .dialog").waitFor();
+  assert.match(await page.locator("#modal h2").textContent(), /Noor/);
+  await page.click("#modal button.primary");
+  const next = await model();
+  assert.equal(next.client, "haddad");
+  assert.equal(next.walls, 0);
+  assert.match(await page.locator("#sidebar header").innerText(), /1 house sold/);
+
+  // A design that misses must-haves is turned down, with reasons.
+  await page.keyboard.press("r");
+  await drag([5, 5], [12, 11]);
+  await page.click("text=Present to client");
+  assert.match(await page.locator("#modal h2").textContent(), /Not quite yet/);
+  assert.match(await page.locator("#modal .problems").innerText(), /Missing: an office/);
+  await shot("rejected");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("#modal").isHidden(), true);
+
+  // Progress survives a reload.
   await page.waitForTimeout(500);
   await page.reload();
   await page.waitForFunction(() => window.architect);
-  assert.equal((await house()).walls, 6);
-
-  // Layout switch.
-  await page.click(".layout-switch button[data-layout=plan]");
-  assert.equal(await page.locator("#view3d").isVisible(), false);
-  await page.click(".layout-switch button[data-layout=split]");
-  await shot("reloaded");
+  const reloaded = await model();
+  assert.equal(reloaded.client, "haddad");
+  assert.equal(reloaded.walls, 4);
+  assert.equal(await page.locator("#modal").isHidden(), true, "no intro while a commission is in progress");
 
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");

@@ -1,6 +1,6 @@
 /**
  * The 2D plan editor: a top-down SVG drawing of the plot and house, with the tools for
- * drawing walls and rooms, placing windows and doors, and dragging things around.
+ * drawing walls and rooms, placing windows and doors, naming rooms, and dragging things.
  *
  * The plan is a true view from above, turned so the street is at the bottom: plan +x
  * points left and plan +y points up on screen. That matches the 3D front view, where
@@ -11,6 +11,8 @@ import {
   type House,
   type Issue,
   type Opening,
+  type Room,
+  type RoomAnalysis,
   type Wall,
   DEFAULT_OPENING,
   DEFAULT_WALL_HEIGHT,
@@ -18,9 +20,12 @@ import {
   GRID_STEP,
   MIN_WALL_LENGTH,
   OPENING_STEP,
+  ROOM_INFO,
+  SNAP_EPS,
   Vec2,
   addRectangle,
   addWallChain,
+  analyzeRooms,
   clampOffset,
   corners,
   interiorNormal,
@@ -29,13 +34,17 @@ import {
   moveWall,
   nearestWall,
   placeOpening,
+  roomAt,
+  roomName,
   roundTo,
   snapPoint,
   validate,
+  wallThickness,
 } from "../core";
 import type { Store, Tool } from "./store";
 
 const PLAN_WALL_COLORS = { Wood: "#7a5134", Brick: "#8c3d2e", Plaster: "#6f6b63" } as const;
+const INTERIOR_WALL_COLOR = "#a19b90";
 /** Pointer distances, in screen pixels. */
 const SNAP_PX = 10;
 const PICK_PX = 6;
@@ -45,19 +54,27 @@ type Drag =
   | { kind: "corner"; at: Vec2 }
   | { kind: "wall"; id: number; grab: Vec2; original: { start: Vec2; end: Vec2 }; distance: number }
   | { kind: "opening"; id: number; grab: number }
+  | { kind: "label"; id: number; grab: Vec2 }
   | { kind: "room"; start: Vec2 };
 
-type Hit = { kind: "corner"; at: Vec2 } | { kind: "wall"; id: number } | { kind: "opening"; id: number } | null;
+type Hit =
+  | { kind: "corner"; at: Vec2 }
+  | { kind: "wall"; id: number }
+  | { kind: "opening"; id: number }
+  | { kind: "label"; id: number; at: Vec2 }
+  | { kind: "room"; at: Vec2 }
+  | null;
 
 const HINTS: Record<Tool, string> = {
-  select: "Drag corners to reshape, drag walls to push them in or out, drag windows and doors along walls. Drag empty space to pan.",
-  wall: "Click to place corners. Click the first corner to close the room. Enter or double-click finishes, Esc cancels.",
-  room: "Drag to draw a rectangular room.",
-  window: "Click a wall to add a window.",
+  select: "Click a room to say what it is. Drag corners to reshape, walls to push them, windows and doors to slide them, room names to move them. Drag empty space to pan.",
+  wall: "Click to place corners; start or end on a wall to divide a room. Click the first corner to close a loop. Enter or double-click finishes, Esc cancels.",
+  room: "Drag to draw a rectangular room. Sides along existing walls are shared.",
+  window: "Click an exterior wall to add a window.",
   door: "Click a wall to add a door.",
 };
 
 const fmt = (x: number) => `${Number(x.toFixed(2))}`;
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export class PlanView {
   private readonly svg: SVGSVGElement;
@@ -75,6 +92,7 @@ export class PlanView {
   private drag: Drag | null = null;
   private hover: Hit = null;
   private issues: Issue[] = [];
+  private analysis: RoomAnalysis | null = null;
   private frameRequested = false;
 
   constructor(
@@ -87,9 +105,10 @@ export class PlanView {
     this.hint.className = "plan-hint";
     container.append(this.svg, this.hint);
 
-    this.refreshIssues();
+    this.refresh();
     store.subscribe((change) => {
-      if (change === "house") this.refreshIssues();
+      if (change !== "ui") this.refresh();
+      if (change === "client") this.fit();
       if (store.tool !== "wall") this.draft = [];
       this.requestRender();
     });
@@ -160,15 +179,39 @@ export class PlanView {
     this.requestRender();
   }
 
-  // --- Snapping and picking ----------------------------------------------------------
+  // --- Model helpers -----------------------------------------------------------------
 
   private get house(): House {
     return this.store.house;
   }
 
+  private refresh(): void {
+    const { house, plot, budget, prices } = this.store;
+    const result = analyzeRooms(house);
+    this.analysis = result.ok ? result.value : null;
+    this.issues = validate(house, plot, budget, prices);
+  }
+
+  private get rooms(): Room[] {
+    return this.analysis?.rooms ?? [];
+  }
+
+  private thickness(wall: Wall): number {
+    return wallThickness(this.analysis?.layout ?? null, wall);
+  }
+
+  /**
+   * Snap a point to corners, then onto walls, then to the grid. `exclude` is a corner
+   * being dragged: it and the walls meeting there are left out.
+   */
   private snap(p: Vec2, exclude?: Vec2) {
-    const anchors = [...corners(this.house), ...this.draft].filter((a) => !exclude || a.distance(exclude) > 1e-6);
-    return snapPoint(p, anchors, SNAP_PX / this.scale, this.freeSnap ? 0.05 : GRID_STEP);
+    const near = (q: Vec2) => !!exclude && q.distance(exclude) < SNAP_EPS;
+    const anchors = [...corners(this.house), ...this.draft].filter((a) => !near(a));
+    const lines = this.house.walls.filter((w) => !near(w.start) && !near(w.end)).map((w) => [w.start, w.end] as const);
+    const step = this.freeSnap ? 0.05 : GRID_STEP;
+    // When zoomed out, a fixed pixel radius would reach past neighbouring grid points.
+    const radius = Math.min(SNAP_PX / this.scale, step * 0.45);
+    return snapPoint(p, anchors, radius, step, lines);
   }
 
   private hitTest(p: Vec2): Hit {
@@ -184,12 +227,18 @@ export class PlanView {
       const rel = p.sub(wall.start);
       const u = rel.dot(wall.direction());
       const w = rel.dot(leftNormal(wall));
-      if (u >= o.left() - 2 * px && u <= o.right() + 2 * px && Math.abs(w) <= wall.thickness / 2 + PICK_PX * px) {
+      if (u >= o.left() - 2 * px && u <= o.right() + 2 * px && Math.abs(w) <= this.thickness(wall) / 2 + PICK_PX * px) {
         return { kind: "opening", id: o.id };
       }
     }
     const hit = nearestWall(this.house, p, 1);
-    if (hit && hit.distance <= hit.wall.thickness / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
+    if (hit && hit.distance <= this.thickness(hit.wall) / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
+    for (const label of this.house.labels) {
+      const [sx, sy] = this.toScreen(label.at);
+      const [qx, qy] = this.toScreen(p);
+      if (Math.abs(qx - sx) < 44 && Math.abs(qy - sy) < 16) return { kind: "label", id: label.id, at: label.at };
+    }
+    if (roomAt(this.rooms, p)) return { kind: "room", at: p };
     return null;
   }
 
@@ -259,9 +308,17 @@ export class PlanView {
           this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
           return;
         }
+        if (hit.kind === "room") {
+          store.select({ kind: "room", at: p });
+          this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
+          return;
+        }
         store.beginGesture();
         if (hit.kind === "corner") {
           this.drag = { kind: "corner", at: hit.at };
+        } else if (hit.kind === "label") {
+          store.select({ kind: "room", at: hit.at });
+          this.drag = { kind: "label", id: hit.id, grab: p.sub(hit.at) };
         } else if (hit.kind === "wall") {
           store.select(hit);
           const wall = this.house.wall(hit.id)!;
@@ -339,6 +396,12 @@ export class PlanView {
           drag.grab = grab;
         }
       }
+    } else if (drag.kind === "label") {
+      const at = p.sub(drag.grab);
+      store.gestureEdit((h) => {
+        const label = h.label(drag.id);
+        if (label) label.at = at;
+      });
     }
     this.requestRender();
   }
@@ -349,6 +412,10 @@ export class PlanView {
       const end = this.snap(this.eventPoint(e)).point;
       const { height, material } = this.newWallStyle();
       this.store.edit((h) => void addRectangle(h, drag.start, end, height, material));
+    }
+    if (drag?.kind === "label") {
+      const label = this.house.label(drag.id);
+      if (label) this.store.select({ kind: "room", at: label.at });
     }
     this.endDrag();
   }
@@ -372,7 +439,7 @@ export class PlanView {
       return;
     }
     draft.push(p);
-    // Reaching an existing corner of the house connects to it and ends the chain.
+    // Reaching an existing wall or corner connects to it and ends the chain.
     if (snap.anchored && !draft.slice(0, -1).some((q) => q.distance(p) < 1e-6)) this.commitDraft(false);
   }
 
@@ -384,11 +451,6 @@ export class PlanView {
   }
 
   // --- Drawing -----------------------------------------------------------------------
-
-  private refreshIssues(): void {
-    const { house, plot, budget, prices } = this.store;
-    this.issues = validate(house, plot, budget, prices);
-  }
 
   private requestRender(): void {
     if (this.frameRequested) return;
@@ -423,7 +485,8 @@ export class PlanView {
     const [vx0, vx1] = [Math.min(tl.x, br.x), Math.max(tl.x, br.x)];
     const [vy0, vy1] = [Math.min(tl.y, br.y), Math.max(tl.y, br.y)];
     out.push(rect(vx0, -8, vx1, -1, "street"));
-    out.push(`<line class="street-line" x1="0" x2="${this.width}" y1="${this.toScreen(new Vec2(0, -4.5))[1]}" y2="${this.toScreen(new Vec2(0, -4.5))[1]}"/>`);
+    const streetY = this.toScreen(new Vec2(0, -4.5))[1];
+    out.push(`<line class="street-line" x1="0" x2="${this.width}" y1="${streetY}" y2="${streetY}"/>`);
     out.push(this.label(new Vec2(plot.width / 2, -4.5), "STREET", "street-label"));
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
 
@@ -443,24 +506,39 @@ export class PlanView {
     out.push(rect(0, 0, plot.width, plot.depth, "plot-edge"));
     out.push(rect(plot.setback, plot.setback, plot.width - plot.setback, plot.depth - plot.setback, "setback"));
 
-    // Floor.
-    const fp = house.footprint();
-    if (fp.ok) out.push(`<polygon class="floor" points="${this.pts(fp.value)}"/>`);
-
-    // Walls, then openings cut into them.
+    // Which things have problems.
     const badWalls = new Set<number>();
     const badOpenings = new Set<number>();
+    const badRooms = new Set<Room>();
     for (const i of this.issues) {
       if ("wall" in i) badWalls.add(i.wall);
       if ("opening" in i) badOpenings.add(i.opening);
       if (i.kind === "OpeningsOverlap") [i.a, i.b].forEach((id) => badOpenings.add(id));
+      if ("room" in i) {
+        const r = roomAt(this.rooms, i.room.at);
+        if (r) badRooms.add(r);
+      }
     }
-    const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
-    const selId = (kind: string) => (selection?.kind === kind ? selection.id : null);
+    const selectedRoom = selection?.kind === "room" ? roomAt(this.rooms, selection.at) : undefined;
+    const hoverRoom = this.hover?.kind === "room" || this.hover?.kind === "label" ? roomAt(this.rooms, this.hover.at) : undefined;
 
+    // Room floors.
+    const fp = house.footprint();
+    if (fp.ok) out.push(`<polygon class="floor" points="${this.pts(fp.value)}"/>`);
+    for (const room of this.rooms) {
+      const fill = room.type ? ROOM_INFO[room.type].color : "#f7f3ea";
+      const cls = ["room", badRooms.has(room) && "bad", hoverRoom === room && "hover"].filter(Boolean).join(" ");
+      out.push(`<polygon class="${cls}" style="fill:${fill}" points="${this.pts(room.polygon)}"/>`);
+    }
+
+    // Walls, then openings cut into them.
+    const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
+    const selId = (kind: string) => (selection?.kind === kind ? (selection as { id: number }).id : null);
     for (const wall of house.walls) {
+      const exterior = !this.analysis || this.analysis.layout.exterior.has(wall.id);
       const cls = ["wall", badWalls.has(wall.id) && "bad", hoverId("wall") === wall.id && "hover", selId("wall") === wall.id && "selected"];
-      out.push(`<polygon class="${cls.filter(Boolean).join(" ")}" style="fill:${PLAN_WALL_COLORS[wall.material]}" points="${this.pts(this.wallOutline(wall))}"/>`);
+      const fill = exterior ? PLAN_WALL_COLORS[wall.material] : INTERIOR_WALL_COLOR;
+      out.push(`<polygon class="${cls.filter(Boolean).join(" ")}" style="fill:${fill}" points="${this.pts(this.wallOutline(wall))}"/>`);
     }
     for (const o of house.openings) {
       const wall = house.wall(o.wall);
@@ -468,11 +546,27 @@ export class PlanView {
       const state = [badOpenings.has(o.id) && "bad", hoverId("opening") === o.id && "hover", selId("opening") === o.id && "selected"];
       out.push(this.openingSymbol(house, wall, o.kind, o.left(), o.right(), state.filter(Boolean).join(" ")));
     }
+    if (selectedRoom) out.push(`<polygon class="room-selected" points="${this.pts(selectedRoom.polygon)}"/>`);
 
-    // Wall lengths, outside the house.
-    if (this.scale >= 10) {
+    // Room names and areas, shortened to fit small rooms.
+    for (const room of this.rooms) {
+      const [x, y] = this.toScreen(room.anchor);
+      const xs = room.polygon.map((p) => this.toScreen(p)[0]);
+      const room_px = Math.max(...xs) - Math.min(...xs) - 6;
+      const fits = (text: string, px: number) => text.length * px <= room_px;
+      const full = room.type ? roomName(room) : "Room";
+      const short = room.type ? ROOM_INFO[room.type].short : "Room";
+      const name = fits(full, 7.2) ? full : fits(short, 7.2) ? short : "";
+      const area = fits(`${room.area.toFixed(1)} m²`, 6.2) ? `${room.area.toFixed(1)} m²` : fits(room.area.toFixed(0), 6.2) ? room.area.toFixed(0) : "";
+      const cls = room.type ? "room-name" : "room-name untyped";
+      if (name) out.push(`<text class="${cls}" x="${x.toFixed(1)}" y="${(y - 6).toFixed(1)}">${esc(name)}</text>`);
+      if (area) out.push(`<text class="room-area" x="${x.toFixed(1)}" y="${(y + (name ? 8 : 0)).toFixed(1)}">${area}</text>`);
+    }
+
+    // Wall lengths, outside exterior walls.
+    if (this.scale >= 10 && this.analysis) {
       for (const wall of house.walls) {
-        if (wall.length() * this.scale < 36) continue;
+        if (!this.analysis.layout.exterior.has(wall.id) || wall.length() * this.scale < 36) continue;
         const out_ = interiorNormal(house, wall).neg();
         const mid = wall.start.add(wall.end).scale(0.5).add(out_.scale(wall.thickness / 2 + 12 / this.scale));
         out.push(this.label(mid, `${fmt(wall.length())} m`));
@@ -492,16 +586,17 @@ export class PlanView {
     out.push(this.toolOverlay(tool));
     this.svg.innerHTML = out.join("");
     this.svg.dataset.tool = tool;
-    this.svg.classList.toggle("dragging", this.drag?.kind === "pan");
+    this.svg.classList.toggle("dragging", this.drag?.kind === "pan" || this.drag?.kind === "label");
     this.hint.textContent = HINTS[tool];
   }
 
   /** The wall's footprint rectangle, extended by half its thickness at both ends. */
   private wallOutline(wall: Wall): Vec2[] {
+    const t = this.thickness(wall);
     const d = wall.direction();
-    const n = leftNormal(wall).scale(wall.thickness / 2);
-    const a = wall.start.sub(d.scale(wall.thickness / 2));
-    const b = wall.end.add(d.scale(wall.thickness / 2));
+    const n = leftNormal(wall).scale(t / 2);
+    const a = wall.start.sub(d.scale(t / 2));
+    const b = wall.end.add(d.scale(t / 2));
     return [a.add(n), b.add(n), b.sub(n), a.sub(n)];
   }
 
@@ -509,12 +604,14 @@ export class PlanView {
   private openingSymbol(house: House, wall: Wall, kind: Opening["kind"], left: number, right: number, state: string): string {
     const d = wall.direction();
     const n = leftNormal(wall);
-    const half = wall.thickness / 2 + 0.01;
+    const half = this.thickness(wall) / 2 + 0.01;
     const at = (u: number, w: number) => wall.start.add(d.scale(u)).add(n.scale(w));
     const cut = [at(left, half), at(right, half), at(right, -half), at(left, -half)];
     const parts = [`<polygon class="cut ${state}" points="${this.pts(cut)}"/>`];
     if (kind === "Window") {
       parts.push(`<polyline class="glass" points="${this.pts([at(left, 0), at(right, 0)])}"/>`);
+    } else if (kind === "GarageDoor") {
+      parts.push(`<polyline class="garage-door" points="${this.pts([at(left, 0), at(right, 0)])}"/>`);
     } else {
       // Door leaf hinged at the left jamb, swinging into the house.
       const inward = interiorNormal(house, wall);
@@ -562,15 +659,16 @@ export class PlanView {
         out.push(`<polygon class="draft preview" points="${this.pts([a, new Vec2(b.x, a.y), b, new Vec2(a.x, b.y)])}"/>`);
         const [w, dpt] = [Math.abs(b.x - a.x), Math.abs(b.y - a.y)];
         const cls = w < MIN_WALL_LENGTH || dpt < MIN_WALL_LENGTH ? "dim bad" : "dim";
-        out.push(this.label(a.add(b).scale(0.5), `${fmt(w)} × ${fmt(dpt)} m`, cls));
+        out.push(this.label(a.add(b).scale(0.5), `${fmt(w)} × ${fmt(dpt)} m = ${fmt(w * dpt)} m²`, cls));
       }
       out.push(marker(s));
     } else if (tool === "window" || tool === "door") {
       const target = this.openingTarget(cursor);
       if (target) {
-        const width = DEFAULT_OPENING[tool === "door" ? "Door" : "Window"].width;
+        const kind = tool === "door" ? "Door" : "Window";
+        const width = DEFAULT_OPENING[kind].width;
         const c = clampOffset(target.wall, width, target.offset);
-        out.push(this.openingSymbol(this.house, target.wall, tool === "door" ? "Door" : "Window", c - width / 2, c + width / 2, "ghost"));
+        out.push(this.openingSymbol(this.house, target.wall, kind, c - width / 2, c + width / 2, "ghost"));
       }
     }
     return out.join("");

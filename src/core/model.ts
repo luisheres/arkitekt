@@ -1,11 +1,13 @@
 /**
  * The house data model: walls, openings (windows and doors) and the roof.
  *
- * The MVP supports single-storey houses whose exterior walls form one closed loop.
+ * Single-storey houses: exterior walls enclose the house, interior walls divide it into
+ * rooms, and room labels say what each room is for.
  */
 
-import { SNAP_EPS, Vec2, isSimplePolygon, signedArea } from "./geometry";
-import { type Result, err, ok } from "./result";
+import { Vec2, signedArea } from "./geometry";
+import { analyzeLayout } from "./layout";
+import type { Result } from "./result";
 
 /** Default wall thickness in meters. */
 export const DEFAULT_WALL_THICKNESS = 0.25;
@@ -22,7 +24,20 @@ export type RoofStyle = (typeof ROOF_STYLES)[number];
 export const ROOF_MATERIALS = ["Shingles", "Metal", "Tiles"] as const;
 export type RoofMaterial = (typeof ROOF_MATERIALS)[number];
 
-export type OpeningKind = "Window" | "Door";
+export const OPENING_KINDS = ["Window", "Door", "GarageDoor"] as const;
+export type OpeningKind = (typeof OPENING_KINDS)[number];
+
+export const ROOM_TYPES = ["Living", "Kitchen", "Bedroom", "Bathroom", "WC", "Hall", "Office", "Utility", "Garage", "Storage"] as const;
+export type RoomType = (typeof ROOM_TYPES)[number];
+
+export type LabelId = number;
+
+/** Says what the room containing `at` is used for. */
+export interface RoomLabel {
+  id: LabelId;
+  type: RoomType;
+  at: Vec2;
+}
 
 export class Wall {
   constructor(
@@ -90,7 +105,8 @@ export interface Roof {
 export type FootprintError =
   | { kind: "NoWalls" }
   | { kind: "Open"; x: number; y: number }
-  | { kind: "Branching"; x: number; y: number }
+  | { kind: "Crossing"; x: number; y: number }
+  | { kind: "Overlap"; x: number; y: number }
   | { kind: "MultipleLoops" }
   | { kind: "SelfIntersecting" }
   | { kind: "Degenerate" };
@@ -101,10 +117,12 @@ export function describeFootprintError(e: FootprintError): string {
       return "there are no walls";
     case "Open":
       return `the walls are not closed: a wall end at (${e.x.toFixed(1)}, ${e.y.toFixed(1)}) is not connected`;
-    case "Branching":
-      return `more than two walls meet at (${e.x.toFixed(1)}, ${e.y.toFixed(1)}); interior walls are not supported yet`;
+    case "Crossing":
+      return `two walls cross at (${e.x.toFixed(1)}, ${e.y.toFixed(1)}); walls may only meet end to end or end on another wall`;
+    case "Overlap":
+      return `two walls run on top of each other near (${e.x.toFixed(1)}, ${e.y.toFixed(1)})`;
     case "MultipleLoops":
-      return "the walls form more than one separate loop";
+      return "the walls form more than one separate building";
     case "SelfIntersecting":
       return "the outer walls cross each other";
     case "Degenerate":
@@ -117,6 +135,7 @@ export interface HouseJson {
   walls: { id: number; start: { x: number; y: number }; end: { x: number; y: number }; height: number; thickness: number; material: WallMaterial }[];
   openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
   roof: Roof | null;
+  labels?: { id: number; type: RoomType; at: { x: number; y: number } }[];
   nextId: number;
 }
 
@@ -124,6 +143,7 @@ export class House {
   walls: Wall[] = [];
   openings: Opening[] = [];
   roof: Roof | null = null;
+  labels: RoomLabel[] = [];
   private nextId = 0;
 
   private freshId(): number {
@@ -156,6 +176,10 @@ export class House {
     return this.addOpening(wall, "Door", offset, width, height, 0);
   }
 
+  addGarageDoor(wall: WallId, offset: number, width: number, height: number): OpeningId {
+    return this.addOpening(wall, "GarageDoor", offset, width, height, 0);
+  }
+
   private addOpening(
     wall: WallId,
     kind: OpeningKind,
@@ -167,6 +191,20 @@ export class House {
     const id = this.freshId();
     this.openings.push(new Opening(id, wall, kind, offset, width, height, sill));
     return id;
+  }
+
+  addLabel(type: RoomType, at: Vec2): LabelId {
+    const id = this.freshId();
+    this.labels.push({ id, type, at });
+    return id;
+  }
+
+  removeLabel(id: LabelId): void {
+    this.labels = this.labels.filter((l) => l.id !== id);
+  }
+
+  label(id: LabelId): RoomLabel | undefined {
+    return this.labels.find((l) => l.id === id);
   }
 
   removeOpening(id: OpeningId): void {
@@ -191,59 +229,10 @@ export class House {
     return this.walls.reduce((m, w) => Math.max(m, w.height), 0);
   }
 
-  /** The closed outline traced by the wall centerlines, counter-clockwise. */
+  /** The outline of the house along the outer wall centerlines, counter-clockwise. */
   footprint(): Result<Vec2[], FootprintError> {
-    if (this.walls.length === 0) return err({ kind: "NoWalls" });
-
-    // Merge wall endpoints that are within SNAP_EPS of each other into shared vertices.
-    const vertices: Vec2[] = [];
-    const vertexOf = (p: Vec2): number => {
-      const i = vertices.findIndex((v) => v.distance(p) < SNAP_EPS);
-      if (i >= 0) return i;
-      vertices.push(p);
-      return vertices.length - 1;
-    };
-    const edges = this.walls
-      .map((w): [number, number] => [vertexOf(w.start), vertexOf(w.end)])
-      .filter(([a, b]) => a !== b);
-
-    const adjacency = new Map<number, number[]>();
-    const link = (a: number, b: number) => {
-      const list = adjacency.get(a);
-      if (list) list.push(b);
-      else adjacency.set(a, [b]);
-    };
-    for (const [a, b] of edges) {
-      link(a, b);
-      link(b, a);
-    }
-    for (const [i, v] of vertices.entries()) {
-      const degree = adjacency.get(i)?.length ?? 0;
-      if (degree < 2) return err({ kind: "Open", x: v.x, y: v.y });
-      if (degree > 2) return err({ kind: "Branching", x: v.x, y: v.y });
-    }
-
-    // Every vertex has degree two, so walking from vertex 0 traces one loop.
-    const outline = [0];
-    let prev = -1;
-    let cur = 0;
-    for (;;) {
-      const neighbours = adjacency.get(cur)!;
-      const next = neighbours.find((n) => n !== prev) ?? prev;
-      if (next === 0) break;
-      outline.push(next);
-      prev = cur;
-      cur = next;
-      if (outline.length > vertices.length) break;
-    }
-    if (outline.length !== vertices.length) return err({ kind: "MultipleLoops" });
-
-    const poly = outline.map((i) => vertices[i]);
-    if (!isSimplePolygon(poly)) return err({ kind: "SelfIntersecting" });
-    const area = signedArea(poly);
-    if (Math.abs(area) < 1e-3) return err({ kind: "Degenerate" });
-    if (area < 0) poly.reverse();
-    return ok(poly);
+    const layout = analyzeLayout(this);
+    return layout.ok ? { ok: true, value: layout.value.outline } : layout;
   }
 
   /** Floor area enclosed by the wall centerlines (0 if the walls are not closed). */
@@ -264,6 +253,7 @@ export class House {
       })),
       openings: this.openings.map((o) => ({ ...o })),
       roof: this.roof ? { ...this.roof } : null,
+      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON() })),
       nextId: this.nextId,
     };
   }
@@ -273,6 +263,7 @@ export class House {
     h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material));
     h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
     h.roof = j.roof ? { ...j.roof } : null;
+    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at) }));
     h.nextId = j.nextId;
     return h;
   }
@@ -298,10 +289,11 @@ export interface WallPiece {
  * Split a wall into solid rectangles around its openings.
  *
  * Each wall is extended by half its thickness at both ends so neighbouring walls
- * overlap at corners instead of leaving a notch.
+ * overlap at corners instead of leaving a notch. Interior walls pass their own
+ * (thinner) `thickness`.
  */
-export function wallPieces(wall: Wall, openings: readonly Opening[]): WallPiece[] {
-  const ext = wall.thickness * 0.5;
+export function wallPieces(wall: Wall, openings: readonly Opening[], thickness = wall.thickness): WallPiece[] {
+  const ext = thickness * 0.5;
   const len = wall.length();
   const h = wall.height;
   const sorted = [...openings].sort((a, b) => a.offset - b.offset);

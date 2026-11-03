@@ -4,13 +4,17 @@
  * can be unit-tested and reused by the AI appraisal code.
  */
 
+export * from "./brief";
+export * from "./clients";
 export * from "./cost";
 export * from "./edit";
 export * from "./geometry";
+export * from "./layout";
 export * from "./history";
 export * from "./model";
 export * from "./plot";
 export * from "./result";
 export * from "./roof";
+export * from "./rooms";
 export * from "./samples";
 export * from "./validate";

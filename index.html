@@ -17,10 +17,12 @@
       <div id="plan" class="pane"></div>
       <div id="view3d" class="pane">
         <canvas id="view"></canvas>
+        <button type="button" id="roof-toggle" class="pane-button" title="Show or hide the roof to look inside (H)">Roof <kbd>H</kbd></button>
         <div class="pane-hint">Drag to orbit · right-drag to pan · wheel to zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views · <kbd>G</kbd> plot guides</div>
       </div>
     </main>
     <section id="captures" class="overlay" hidden></section>
+    <div id="modal" hidden></div>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

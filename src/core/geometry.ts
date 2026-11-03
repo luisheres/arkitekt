@@ -295,6 +295,34 @@ export function pointInPolygon(p: Vec2, poly: readonly Vec2[]): boolean {
   return inside;
 }
 
+/**
+ * A point inside the polygon, for placing a label: the centroid when it lies inside,
+ * otherwise the center of the largest triangle of its triangulation.
+ */
+export function interiorPoint(poly: readonly Vec2[]): Vec2 {
+  const area = signedArea(poly);
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [a, b] = [poly[i], poly[(i + 1) % poly.length]];
+    const f = a.cross(b);
+    cx += (a.x + b.x) * f;
+    cy += (a.y + b.y) * f;
+  }
+  const centroid = Math.abs(area) > 1e-9 ? new Vec2(cx / (6 * area), cy / (6 * area)) : poly[0];
+  if (pointInPolygon(centroid, poly)) return centroid;
+  let best = poly[0];
+  let bestArea = -1;
+  for (const [a, b, c] of triangulate(poly)) {
+    const t = Math.abs(signedArea([poly[a], poly[b], poly[c]]));
+    if (t > bestArea) {
+      bestArea = t;
+      best = poly[a].add(poly[b]).add(poly[c]).scale(1 / 3);
+    }
+  }
+  return best;
+}
+
 /** Closest point to `p` on segment `a-b`, as the distance along the segment from `a`. */
 export function projectOntoSegment(p: Vec2, a: Vec2, b: Vec2): number {
   const ab = b.sub(a);

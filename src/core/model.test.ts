@@ -34,12 +34,10 @@ describe("house model", () => {
     expect(!fp.ok && fp.error.kind).toBe("Open");
   });
 
-  it("rejects an interior wall", () => {
+  it("an interior wall ending on the outer walls keeps the outline", () => {
     const h = rect(10, 7);
-    // The interior wall's ends touch the middle of outer walls, not their corners, so
-    // its endpoints are unconnected vertices.
     h.addWall(v(5, 0), v(5, 7), 2.7, "Wood");
-    expect(h.footprint().ok).toBe(false);
+    expect(h.floorArea()).toBeCloseTo(70);
   });
 
   it("reports two separate rooms as multiple loops", () => {

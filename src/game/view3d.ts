@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureViews } from "./capture";
-import { buildHouse, buildWorld, disposeHouse } from "./scene";
+import { SKY_COLOR, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
 import type { Store } from "./store";
 
 /** Vertical field of view, in degrees, on a wide enough screen (and in captures). */
@@ -13,7 +13,7 @@ export class View3D {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 1000);
-  private readonly guides: THREE.Object3D;
+  private world: World;
   private readonly orbit: Orbit;
   private houseGroup: THREE.Group | null = null;
   private houseDirty = true;
@@ -30,11 +30,22 @@ export class View3D {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
 
-    this.guides = buildWorld(this.scene, store.plot);
+    this.scene.background = SKY_COLOR;
+    this.world = buildWorld(store.plot);
+    this.scene.add(this.world.root);
     this.orbit = this.homeOrbit();
 
+    let showRoof = store.showRoof;
     store.subscribe((change) => {
-      if (change === "house") this.houseDirty = true;
+      if (change !== "ui" || store.showRoof !== showRoof) this.houseDirty = true;
+      showRoof = store.showRoof;
+      if (change === "client") {
+        // A new client means a new plot.
+        disposeWorld(this.world);
+        this.world = buildWorld(store.plot);
+        this.scene.add(this.world.root);
+        Object.assign(this.orbit, this.homeOrbit());
+      }
       this.requestRender();
     });
     attachOrbitControls(canvas, this.orbit, () => this.requestRender());
@@ -57,7 +68,7 @@ export class View3D {
   /** Render the four appraisal views (always from the default camera, without guides). */
   capture(): CapturedView[] {
     this.syncHouse();
-    const views = captureViews(this.renderer, this.scene, this.homeOrbit(), [this.guides]);
+    const views = captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]);
     this.requestRender();
     return views;
   }
@@ -80,7 +91,7 @@ export class View3D {
     if (!this.houseDirty) return;
     this.houseDirty = false;
     if (this.houseGroup) disposeHouse(this.houseGroup);
-    this.houseGroup = buildHouse(this.store.house);
+    this.houseGroup = buildHouse(this.store.house, { roof: this.store.showRoof });
     this.scene.add(this.houseGroup);
   }
 
@@ -91,7 +102,7 @@ export class View3D {
       this.frameRequested = false;
       if (this.canvas.clientWidth === 0) return; // hidden in plan-only layout
       this.syncHouse();
-      this.guides.visible = this.store.showGuides;
+      this.world.guides.visible = this.store.showGuides;
       placeCamera(this.camera, this.orbit);
       this.renderer.render(this.scene, this.camera);
     });
