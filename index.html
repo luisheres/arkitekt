@@ -7,14 +7,20 @@
     <link rel="stylesheet" href="/src/game/style.css" />
   </head>
   <body>
-    <canvas id="view"></canvas>
-    <section id="status" class="panel" aria-live="polite"></section>
-    <section id="controls" class="panel">
-      <div><kbd>Left-drag</kbd> rotate · <kbd>Right-drag</kbd> pan · <kbd>Wheel</kbd> zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views</div>
-      <div><kbd>Tab</kbd> next house · <kbd>R</kbd> roof style · <kbd>T</kbd> roof material · <kbd>M</kbd> wall material</div>
-      <div><kbd>[</kbd> <kbd>]</kbd> roof pitch · <kbd>O</kbd> <kbd>P</kbd> overhang · <kbd>-</kbd> <kbd>=</kbd> wall height · <kbd>G</kbd> plot guides · <kbd>C</kbd> capture views</div>
-    </section>
-    <section id="captures" class="panel" hidden></section>
+    <aside id="sidebar"></aside>
+    <main id="main" data-layout="split">
+      <div class="layout-switch" role="group" aria-label="Layout">
+        <button type="button" data-layout="plan">Plan</button>
+        <button type="button" data-layout="split">Split</button>
+        <button type="button" data-layout="3d">3D</button>
+      </div>
+      <div id="plan" class="pane"></div>
+      <div id="view3d" class="pane">
+        <canvas id="view"></canvas>
+        <div class="pane-hint">Drag to orbit · right-drag to pan · wheel to zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views · <kbd>G</kbd> plot guides</div>
+      </div>
+    </main>
+    <section id="captures" class="overlay" hidden></section>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

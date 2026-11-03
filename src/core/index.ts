@@ -5,7 +5,9 @@
  */
 
 export * from "./cost";
+export * from "./edit";
 export * from "./geometry";
+export * from "./history";
 export * from "./model";
 export * from "./plot";
 export * from "./result";

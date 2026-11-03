@@ -285,6 +285,24 @@ export function triangulate(poly: readonly Vec2[]): Tri[] {
   return tris;
 }
 
+/** True when `p` is strictly inside the polygon (either winding), by ray casting. */
+export function pointInPolygon(p: Vec2, poly: readonly Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [a, b] = [poly[i], poly[j]];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Closest point to `p` on segment `a-b`, as the distance along the segment from `a`. */
+export function projectOntoSegment(p: Vec2, a: Vec2, b: Vec2): number {
+  const ab = b.sub(a);
+  const len = ab.length();
+  if (len < 1e-9) return 0;
+  return Math.min(Math.max(p.sub(a).dot(ab) / len, 0), len);
+}
+
 function pointInTriangle(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   const d1 = b.sub(a).cross(p.sub(a));
   const d2 = c.sub(b).cross(p.sub(b));
