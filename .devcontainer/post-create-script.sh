@@ -16,17 +16,9 @@ else
     echo "Claude Code already installed at $(command -v claude) — skipping."
 fi
 
-# Install the Dioxus CLI (`dx`), used to build/serve/bundle Dioxus apps.
-#
-# NOTE: do NOT use `cargo binstall` here. The prebuilt dx binaries are linked
-# against a newer glibc (>= 2.39) than Debian bookworm ships (2.36), so they
-# fail at runtime with "GLIBC_2.39 not found". Build from source instead so dx
-# links against the container's own glibc. Slower (a few minutes) but correct.
-if ! command -v dx >/dev/null 2>&1; then
-    echo "Installing Dioxus CLI (dx) from source..."
-    cargo install dioxus-cli --locked
-else
-    echo "Dioxus CLI already installed at $(command -v dx) — skipping."
-fi
+# Install the project's npm dependencies and the headless Chromium used by
+# `npm run capture` (it lives in ~/.cache/ms-playwright, so no sudo is needed).
+npm ci
+npx playwright install chromium
 
 echo "Development environment setup complete!"

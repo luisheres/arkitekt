@@ -1,4 +1,3 @@
-/target
-/screenshots
 node_modules
 dist
+screenshots

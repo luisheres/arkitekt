@@ -46,9 +46,6 @@ RUN apt-get update \
         imagemagick \
         x11-utils \
         xdotool \
-    # Bevy/winit windows over X11 (WSLg's Wayland socket is not mounted in the container,
-    # so the game falls back to X11 on DISPLAY=:0).
-        libxkbcommon-x11-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Allow the non-root user to access /dev/ttyACM* devices bind-mounted from the
