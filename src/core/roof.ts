@@ -98,14 +98,15 @@ export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
 
 /**
  * The outline of the floor slab on top of a storey that has another storey above it:
- * the storey's outline grown to cover its walls. Where the storey above is smaller, the
- * slab is a flat roof (a terrace).
+ * the inside faces of the storey's outer walls. The walls themselves carry on past the
+ * slab, so the floor structure never shows on the facade. Where the storey above is
+ * smaller, the slab is a flat roof (a terrace).
  */
 export function slabOutline(house: House, level: number): Vec2[] | null {
   const fp = house.footprint(level);
   if (!fp.ok) return null;
   const halfThickness = house.wallsOn(level).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) * 0.5;
-  return offsetPolygon(fp.value, halfThickness);
+  return offsetPolygon(fp.value, -halfThickness);
 }
 
 /** A slab on top of the walls covering `outline` (the footprint grown past the walls). */

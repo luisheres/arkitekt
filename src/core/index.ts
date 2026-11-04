@@ -8,6 +8,7 @@ export * from "./brief";
 export * from "./clients";
 export * from "./cost";
 export * from "./edit";
+export * from "./furnish";
 export * from "./generate";
 export * from "./geometry";
 export * from "./layout";

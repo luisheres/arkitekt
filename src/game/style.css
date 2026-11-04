@@ -959,3 +959,58 @@ button.primary:hover:not(:disabled) {
   background: var(--error);
   border-color: var(--error);
 }
+
+/* --- 3D view toggles ---------------------------------------------------------------- */
+
+.view-toggles {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+}
+
+.view-toggles .label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.view-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.view-toggles input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.view-toggles kbd {
+  margin-left: 2px;
+}
+
+/* --- Furniture in the plan ------------------------------------------------------------ */
+
+.plan .furniture polygon,
+.plan .furniture polyline {
+  fill: rgba(255, 255, 255, 0.55);
+  stroke: rgba(70, 64, 56, 0.75);
+  stroke-width: 0.9;
+  pointer-events: none;
+}
+
+.plan .furniture polyline {
+  fill: none;
+}

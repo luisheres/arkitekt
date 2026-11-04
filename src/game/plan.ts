@@ -12,6 +12,7 @@ import {
   type Issue,
   type Opening,
   type Room,
+  type Furniture,
   type RoomAnalysis,
   type Stair,
   type Wall,
@@ -32,6 +33,7 @@ import {
   analyzeRooms,
   clampOffset,
   corners,
+  furnish,
   interiorNormal,
   leftNormal,
   moveCorner,
@@ -103,6 +105,7 @@ export class PlanView {
   private hover: Hit = null;
   private issues: Issue[] = [];
   private analysis: RoomAnalysis | null = null;
+  private furniture: Furniture[] = [];
   private frameRequested = false;
 
   constructor(
@@ -221,6 +224,7 @@ export class PlanView {
     const result = analyzeRooms(house, this.level);
     this.analysis = result.ok ? result.value : null;
     this.issues = validate(house, plot, budget, prices);
+    this.furniture = furnish(house);
   }
 
   private get rooms(): Room[] {
@@ -594,6 +598,12 @@ export class PlanView {
       out.push(`<polygon class="${cls}" style="fill:${fill}" points="${this.pts(room.polygon)}"/>`);
     }
 
+    // Furniture, faintly, under the walls.
+    if (this.store.showFurniture) {
+      const pieces = this.furniture.filter((f) => f.level === this.level).map((f) => this.furnitureSymbol(f));
+      out.push(`<g class="furniture">${pieces.join("")}</g>`);
+    }
+
     // Walls, then openings cut into them.
     const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
     const selId = (kind: string) => (selection?.kind === kind ? (selection as { id: number }).id : null);
@@ -665,6 +675,52 @@ export class PlanView {
     this.svg.classList.toggle("dragging", this.drag?.kind === "pan" || this.drag?.kind === "label");
     this.hint.textContent = tool === "stairs" && this.level + 1 >= house.levels ? m.ui.needFloorAbove : m.ui.hints[tool];
     this.renderLevels();
+  }
+
+  /** A piece of furniture: its outline and a detail or two so it reads at a glance. */
+  private furnitureSymbol(f: Furniture): string {
+    const n = f.facing;
+    const side = new Vec2(-n.y, n.x);
+    // Fractions of the footprint: x across the front (0..1), z from back (0) to front (1).
+    const at = (x: number, z: number) => f.at.add(side.scale((x - 0.5) * f.width)).add(n.scale((z - 0.5) * f.depth));
+    const rect = (x0: number, x1: number, z0: number, z1: number) => `<polygon points="${this.pts([at(x0, z0), at(x1, z0), at(x1, z1), at(x0, z1)])}"/>`;
+    const line = (x0: number, z0: number, x1: number, z1: number) => `<polyline points="${this.pts([at(x0, z0), at(x1, z1)])}"/>`;
+    const parts = [rect(0, 1, 0, 1)];
+    switch (f.kind) {
+      case "Bed":
+        parts.push(rect(0.06, 0.47, 0.05, 0.22), rect(0.53, 0.94, 0.05, 0.22), line(0, 0.33, 1, 0.33));
+        break;
+      case "SingleBed":
+        parts.push(rect(0.1, 0.9, 0.05, 0.22), line(0, 0.33, 1, 0.33));
+        break;
+      case "Sofa":
+      case "Armchair":
+        parts.push(rect(0, 1, 0, 0.25), rect(0, 0.12, 0.25, 1), rect(0.88, 1, 0.25, 1));
+        break;
+      case "Bathtub":
+        parts.push(rect(0.08, 0.92, 0.1, 0.9));
+        break;
+      case "Toilet": {
+        const ring = Array.from({ length: 12 }, (_, i) => {
+          const a = (i / 12) * Math.PI * 2;
+          return at(0.5 + 0.42 * Math.cos(a), 0.62 + 0.3 * Math.sin(a));
+        });
+        parts.push(`<polygon points="${this.pts(ring)}"/>`, rect(0, 1, 0, 0.25));
+        break;
+      }
+      case "Counter":
+        parts.push(rect(0.08, 0.3, 0.2, 0.8), rect(0.7, 0.92, 0.15, 0.85));
+        break;
+      case "Car":
+        parts.push(rect(0.1, 0.9, 0.3, 0.7));
+        break;
+      case "Wardrobe":
+      case "Bookshelf":
+      case "Shelf":
+        parts.push(line(0, 0.5, 1, 0.5));
+        break;
+    }
+    return parts.join("");
   }
 
   /** The floor switcher: one button per storey, plus adding and removing storeys. */

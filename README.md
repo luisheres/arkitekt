@@ -13,7 +13,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furnish.ts` automatic furniture; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -73,11 +73,15 @@ look inside.
 | Window / Door | `N` / `D` | Click a wall. |
 | Stairs | `S` | Click inside a room to place a straight flight up to the floor above. Rotate it in the sidebar; drag it to move. |
 
+**3D view.** The **Show** box in the 3D pane turns the roof (`H`), each floor and the
+furniture on and off, to look inside. Rooms are furnished automatically for their use
+(bed and wardrobe, sofa and TV, kitchen counter and dining table, bath and toilet, desk,
+a car in the garage...), against real walls and clear of doors, stairs and windows; the
+plan shows the furniture too.
+
 **Floors.** The **Floors** box in the plan switches storeys. **+ Add floor** starts a new
 storey on top with the outline of the one below (up to three); **− Remove floor** removes
 the top one. The floor below shows faintly underneath, and its corners are snap points.
-With the roof hidden (`H`), the 3D view cuts away everything above the floor you are
-editing.
 
 Points snap to a 0.5 m grid, to corners and onto walls; hold `Alt` for 5 cm steps.
 Problem walls, openings and rooms are outlined in red; click an issue in the sidebar to

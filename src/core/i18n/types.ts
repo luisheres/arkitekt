@@ -187,6 +187,8 @@ export interface Messages {
     layoutSplit: string;
     layout3d: string;
     roofToggle: string;
+    show: string;
+    furniture: string;
     roofToggleTitle: string;
     /** HTML: may contain <kbd>. */
     viewHint: string;

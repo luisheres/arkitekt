@@ -35,11 +35,12 @@ export class View3D {
     this.scene.add(this.world.root);
     this.orbit = this.homeOrbit();
 
-    // What the house was last built for: the cutaway depends on the storey being edited.
-    let shown = { roof: store.showRoof, level: store.level };
+    // What the house was last built for: rebuild when the house or what is shown changes.
+    const shownKey = () => `${store.showRoof}|${store.showFurniture}|${[...store.hiddenLevels].sort().join(",")}`;
+    let shown = shownKey();
     store.subscribe((change) => {
-      if (change !== "ui" || store.showRoof !== shown.roof || (!store.showRoof && store.level !== shown.level)) this.houseDirty = true;
-      shown = { roof: store.showRoof, level: store.level };
+      if (change !== "ui" || shownKey() !== shown) this.houseDirty = true;
+      shown = shownKey();
       if (change === "client") {
         // A new client means a new plot.
         disposeWorld(this.world);
@@ -70,7 +71,7 @@ export class View3D {
   capture(): CapturedView[] {
     this.syncHouse();
     // The appraiser always sees the whole house with its roof, whatever the player is viewing.
-    const full = buildHouse(this.store.house, { roof: true });
+    const full = buildHouse(this.store.house, { roof: true, furniture: true });
     const shown = this.houseGroup;
     if (shown) shown.visible = false;
     this.scene.add(full);
@@ -101,9 +102,8 @@ export class View3D {
     if (!this.houseDirty) return;
     this.houseDirty = false;
     if (this.houseGroup) disposeHouse(this.houseGroup);
-    const { house, showRoof, level } = this.store;
-    // With the roof off, cut away the storeys above the one being edited.
-    this.houseGroup = buildHouse(house, { roof: showRoof, upTo: showRoof ? house.topLevel() : level });
+    const { house, showRoof, hiddenLevels, showFurniture } = this.store;
+    this.houseGroup = buildHouse(house, { roof: showRoof, hidden: hiddenLevels, furniture: showFurniture });
     this.scene.add(this.houseGroup);
   }
 

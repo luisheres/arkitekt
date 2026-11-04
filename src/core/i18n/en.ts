@@ -324,6 +324,8 @@ export const en: Messages = {
     layoutSplit: "Split",
     layout3d: "3D",
     roofToggle: "Roof",
+    show: "Show",
+    furniture: "Furniture",
     roofToggleTitle: "Show or hide the roof to look inside (H)",
     viewHint: "Drag to orbit · right-drag to pan · wheel to zoom · <kbd>1</kbd>–<kbd>4</kbd> preset views · <kbd>G</kbd> plot guides",
     appraisalViews: "Appraisal views",

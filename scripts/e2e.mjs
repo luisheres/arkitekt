@@ -263,12 +263,15 @@ try {
   assert.match((await page.locator(".brief.wishes li.met").allInnerTexts()).join("\n"), /3 bedrooms of at least 9 m² upstairs/);
   await shot("two-storeys");
 
-  // Cutaway: roof off shows the house up to the floor being edited.
-  await page.keyboard.press("h");
-  await page.click(".level-switch button[data-level='1']");
+  // The 3D view can leave out the roof and any floor, and shows furniture.
+  assert.ok((await page.evaluate(() => window.architect.core.furnish(window.architect.store.house).length)) >= 8, "rooms are furnished");
+  await page.click("#view-toggles input[data-toggle='roof']");
+  await page.click("#view-toggles input[data-toggle='level:1']");
+  assert.deepEqual(await page.evaluate(() => [window.architect.store.showRoof, [...window.architect.store.hiddenLevels]]), [false, [1]]);
   await page.waitForTimeout(200);
-  await shot("upstairs-cutaway");
-  await page.keyboard.press("h");
+  await shot("ground-floor-furnished");
+  await page.click("#view-toggles input[data-toggle='level:1']");
+  await page.click("#view-toggles input[data-toggle='roof']");
 
   // Removing the floor removes the stairs with it.
   await page.click(".level-switch button[data-action=remove]");

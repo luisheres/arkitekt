@@ -331,6 +331,8 @@ export const sv: Messages = {
     layoutSplit: "Delad",
     layout3d: "3D",
     roofToggle: "Tak",
+    show: "Visa",
+    furniture: "Möbler",
     roofToggleTitle: "Visa eller dölj taket för att se in (H)",
     viewHint: "Dra för att rotera · högerdra för att panorera · hjulet zoomar · <kbd>1</kbd>–<kbd>4</kbd> fasta vyer · <kbd>G</kbd> tomtgränser",
     appraisalViews: "Värderingsvyer",

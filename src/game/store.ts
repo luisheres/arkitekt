@@ -58,6 +58,9 @@ export class Store {
   selection: Selection = null;
   showGuides = true;
   showRoof = true;
+  /** Storeys left out of the 3D view. */
+  hiddenLevels = new Set<number>();
+  showFurniture = true;
 
   private history = new History();
   private readonly listeners = new Set<(change: Change) => void>();
@@ -243,6 +246,18 @@ export class Store {
 
   toggleRoof(): void {
     this.showRoof = !this.showRoof;
+    this.emit("ui");
+  }
+
+  /** Show or hide one storey in the 3D view. */
+  toggleLevelShown(level: number): void {
+    if (this.hiddenLevels.has(level)) this.hiddenLevels.delete(level);
+    else this.hiddenLevels.add(level);
+    this.emit("ui");
+  }
+
+  toggleFurniture(): void {
+    this.showFurniture = !this.showFurniture;
     this.emit("ui");
   }
 

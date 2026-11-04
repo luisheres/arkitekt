@@ -7,6 +7,7 @@
  * (the four appraisal views as PNG data URLs) for automation.
  */
 
+import * as core from "../core";
 import { allSamples, defaultPrices, presentDesign } from "../core";
 import { m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
@@ -59,7 +60,25 @@ main.querySelector(".layout-switch")!.addEventListener("click", (e) => {
 });
 setLayout("split");
 
-document.querySelector("#roof-toggle")!.addEventListener("click", () => store.toggleRoof());
+// What the 3D view shows: the roof, each storey, the furniture.
+const toggles = document.querySelector<HTMLElement>("#view-toggles")!;
+function renderToggles(): void {
+  const { house, showRoof, hiddenLevels, showFurniture } = store;
+  const row = (key: string, label: string, on: boolean, hint = "") =>
+    `<label${hint ? ` title="${hint}"` : ""}><input type="checkbox" data-toggle="${key}"${on ? " checked" : ""}> ${label}</label>`;
+  const levels = Array.from({ length: house.levels }, (_, k) => house.levels - 1 - k).map((k) => row(`level:${k}`, m.levelName(k), !hiddenLevels.has(k)));
+  const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${house.levels > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}`;
+  if (toggles.innerHTML !== html) toggles.innerHTML = html;
+}
+toggles.addEventListener("change", (e) => {
+  const key = (e.target as HTMLInputElement).dataset.toggle ?? "";
+  if (key === "roof") store.toggleRoof();
+  else if (key === "furniture") store.toggleFurniture();
+  else if (key.startsWith("level:")) store.toggleLevelShown(Number(key.slice(6)));
+  (e.target as HTMLElement).blur();
+});
+store.subscribe(renderToggles);
+renderToggles();
 
 function showCaptures(views: CapturedView[]): void {
   capturesEl.replaceChildren();
@@ -144,7 +163,7 @@ if (sampleParam >= 1) {
 
 declare global {
   interface Window {
-    architect: { captureViews: () => CapturedView[]; store: Store; plan: PlanView };
+    architect: { captureViews: () => CapturedView[]; store: Store; plan: PlanView; core: typeof core };
   }
 }
-window.architect = { captureViews: () => view3d.capture(), store, plan };
+window.architect = { captureViews: () => view3d.capture(), store, plan, core };

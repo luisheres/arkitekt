@@ -3,6 +3,7 @@
  */
 
 import * as THREE from "three";
+import { buildFurniture } from "./furniture3d";
 import { floorTexture, groundTexture, interiorTexture, roofTexture, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
@@ -16,6 +17,7 @@ import {
   STAIR_LENGTH,
   STAIR_WIDTH,
   type Vec2,
+  furnish,
   interiorNormal,
   leftNormal,
   pointInPolygon,
@@ -69,6 +71,7 @@ const palette = {
 };
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
+unitBox.userData.shared = true;
 const FRAME_WIDTH = 0.07;
 export const SKY_COLOR = srgb(0.62, 0.78, 0.93);
 
@@ -174,14 +177,16 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
 export interface HouseViewOptions {
   /** Show the roof. */
   roof: boolean;
-  /** Show storeys up to this level only (a cutaway); the roof needs every storey shown. */
-  upTo?: number;
+  /** Storeys to leave out, to look into the ones below or around. */
+  hidden?: ReadonlySet<number>;
+  /** Show furniture in rooms that have a use. */
+  furniture?: boolean;
 }
 
 export function buildHouse(house: House, options: HouseViewOptions = { roof: true }): THREE.Group {
   const group = new THREE.Group();
   const top = house.topLevel();
-  const upTo = Math.min(options.upTo ?? top, top);
+  const visible = (level: number) => level < house.levels && !options.hidden?.has(level);
   const analyses = Array.from({ length: house.levels }, (_, k) => analyzeRooms(house, k));
   const layoutOf = (level: number) => {
     const a = analyses[level];
@@ -199,7 +204,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   };
 
   for (const wall of house.walls) {
-    if (wall.boundary || wall.level > upTo) continue; // room boundaries are not built
+    if (wall.boundary || !visible(wall.level)) continue; // room boundaries are not built
     const layout = layoutOf(wall.level);
     const y0 = base(wall.level);
     const openings = house.openingsIn(wall.id);
@@ -225,6 +230,13 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
     for (const p of wallPieces(wall, openings, t)) {
       box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, faces);
+    }
+    // With a storey above, the outer walls carry on in front of the floor structure,
+    // so the facade is continuous.
+    if (exterior && wall.level < top && visible(wall.level + 1)) {
+      const [v0, v1] = [wall.height, house.storeyHeight(wall.level) + FLOOR_STRUCTURE];
+      const len = wall.length();
+      box(len / 2, (v0 + v1) / 2, at, size(len + t, v1 - v0, t), rotY, faces);
     }
 
     for (const o of openings) {
@@ -264,7 +276,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   // Floors: one per room, tinted by its use, with stairwells cut out upstairs; the
   // whole footprint when the ground floor's rooms are unknown.
   analyses.forEach((analysis, level) => {
-    if (level > upTo) return;
+    if (!visible(level)) return;
     if (!analysis.ok) {
       const floor = level === 0 ? buildFloor(house) : null;
       if (floor?.ok) group.add(solid(toGeometry(floor.value), palette.slab));
@@ -279,7 +291,8 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   });
 
   // Floor structure between storeys; where the storey above is smaller it is a terrace.
-  for (let level = 0; level < top && level < upTo; level++) {
+  for (let level = 0; level < top; level++) {
+    if (!visible(level + 1)) continue; // the slab is the floor of the storey above
     const outline = slabOutline(house, level);
     if (!outline) continue;
     const wells = house.stairs.filter((s) => s.level === level).map(stairOutline);
@@ -292,7 +305,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
 
   // Stairs: a solid flight of steps from one storey's floor to the next.
   for (const s of house.stairs) {
-    if (s.level > upTo || s.level + 1 >= house.levels) continue;
+    if (!visible(s.level) || s.level + 1 >= house.levels) continue;
     const d = stairDirection(s);
     const rotY = Math.atan2(-d.y, d.x);
     const [from, to] = [base(s.level), base(s.level + 1)];
@@ -311,7 +324,16 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   }
 
   const roof = buildRoof(house);
-  if (house.roof && roof.ok && options.roof && upTo === top) {
+  if (options.furniture) {
+    for (const f of furnish(house)) {
+      if (!visible(f.level)) continue;
+      const piece = buildFurniture(f);
+      piece.position.y = f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
+      group.add(piece);
+    }
+  }
+
+  if (house.roof && roof.ok && options.roof) {
     group.add(solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]));
     if (!roof.value.gables.isEmpty()) {
       const topLayout = layoutOf(top);
@@ -322,10 +344,10 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   return group;
 }
 
-/** Free the per-house geometry (the shared unit box and materials are kept). */
+/** Free the per-house geometry (shared geometry and materials are kept). */
 export function disposeHouse(group: THREE.Group): void {
   group.traverse((o) => {
-    if (o instanceof THREE.Mesh && o.geometry !== unitBox) o.geometry.dispose();
+    if (o instanceof THREE.Mesh && !o.geometry.userData.shared) o.geometry.dispose();
   });
   group.removeFromParent();
 }
