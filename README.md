@@ -13,8 +13,8 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furnish.ts` automatic furniture; `edit.ts` editing operations; `history.ts` undo. |
-| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
 
@@ -40,14 +40,17 @@ puts sample house N on the current plot, for screenshots. `npm run e2e` and
    sidebar shows it again; the sidebar checklist updates live as you design.
 2. **Draw the house.** Outer walls first (Room tool), then interior walls from wall to
    wall to divide it into rooms.
-3. **Say what each room is.** Click a room and pick its use: living room, kitchen,
-   bedroom, bathroom, WC, hall, office, utility room, garage or storage.
+3. **Say what each room is.** Click a room and pick its use in the menu that opens:
+   living room, kitchen, bedroom, bathroom, WC, hall, office, utility room, garage or
+   storage. The room is furnished for its use; drag pieces to move them, remove or add
+   pieces in the room's menu, or click a piece to rotate, resize or delete it.
 4. **Add doors and windows, and a roof.** Every room must be reachable through doors from
    the front door; bedrooms, living rooms, kitchens and offices need a window; a garage
    needs a garage door (select a door and change its type, or use the wall's buttons).
-5. **Choose materials.** The facade (wood boards, Falu red panel, brick, plaster or
-   stone) and roof covering are set in the sidebar's House section; each room's floor
-   (wood, laminate, tiles, stone, carpet or concrete) in its room panel. Everything has a
+5. **Choose materials.** Click an outer wall (or **Facade** in the sidebar) for the
+   facade: wood boards, Falu red panel, brick, plaster or stone, for one wall or all.
+   Click the roof in 3D (or **Roof**) for its style, pitch, overhang and covering. Each
+   room's floor (wood, laminate, tiles, stone, carpet or concrete) is in its menu. Everything has a
    price, and wet rooms and garages need hard, waterproof floors.
 6. **Present to client.** They accept when every must-have is met, the house has no
    building problems and it is within budget. Your fee is 8% of their budget, plus up to
@@ -59,6 +62,10 @@ clients are generated: families, couples, retirees and people working from home,
 with their own household, brief, plot and budget, in both languages.
 
 ## Editing
+
+**Click to edit.** Clicking a room, wall, window, door, staircase or piece of furniture,
+in the plan or in 3D, opens a menu right there with everything about it. Right-click
+does the same with any tool. `Esc` closes the menu.
 
 The plan (left) is a view from above with the street at the bottom; the 3D view (right)
 updates live. **Plan / Split / 3D** switches the layout; **Roof** (`H`) hides the roof to

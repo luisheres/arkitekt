@@ -4,6 +4,7 @@
  */
 
 import type { Requirement } from "../brief";
+import type { FurnitureKind } from "../furniture";
 import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
 import type { Issue } from "../validate";
 
@@ -42,6 +43,7 @@ export interface Messages {
   roofMaterial: Record<RoofMaterial, string>;
   opening: Record<OpeningKind, string>;
   floorFinish: Record<FloorFinish, string>;
+  furnitureName: Record<FurnitureKind, string>;
   /** A finish as a kind of floor: "a wooden floor" / "wooden floors". */
   floorPhrase: Record<FloorFinish, { one: string; many: string }>;
 
@@ -85,6 +87,15 @@ export interface Messages {
     turnDown: string;
     floor: string;
     floorNeedsUse: string;
+    depth: string;
+    addFurniture: string;
+    refurnish: string;
+    clearFurniture: string;
+    noFurniture: string;
+    remove: string;
+    thisWall: string;
+    allOuterWalls: string;
+    clickToEdit: string;
     tools: Record<ToolName, string>;
     undo: string;
     undoTitle: string;

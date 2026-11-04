@@ -34,7 +34,7 @@ function targetAttrs(i: Issue, store: Store): string {
   const level = issueLevel(i, store);
   const levelAttr = level !== null ? ` data-level="${level}"` : "";
   if (!t) return level ? `${levelAttr} tabindex="0"` : "";
-  const data = t.kind === "room" ? `data-x="${t.at.x}" data-y="${t.at.y}"` : `data-id="${t.id}"`;
+  const data = t.kind === "room" ? `data-x="${t.at.x}" data-y="${t.at.y}"` : "id" in t ? `data-id="${t.id}"` : "";
   return ` data-kind="${t.kind}" ${data}${levelAttr} tabindex="0"`;
 }
 

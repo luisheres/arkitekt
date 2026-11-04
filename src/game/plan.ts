@@ -33,7 +33,7 @@ import {
   analyzeRooms,
   clampOffset,
   corners,
-  furnish,
+  furnitureAt,
   interiorNormal,
   leftNormal,
   moveCorner,
@@ -70,6 +70,7 @@ type Drag =
   | { kind: "opening"; id: number; grab: number }
   | { kind: "label"; id: number; grab: Vec2 }
   | { kind: "stair"; id: number; grab: Vec2 }
+  | { kind: "furniture"; id: number; grab: Vec2 }
   | { kind: "room"; start: Vec2 };
 
 type Hit =
@@ -78,6 +79,7 @@ type Hit =
   | { kind: "opening"; id: number }
   | { kind: "label"; id: number; at: Vec2 }
   | { kind: "stair"; id: number }
+  | { kind: "furniture"; id: number }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -105,12 +107,15 @@ export class PlanView {
   private hover: Hit = null;
   private issues: Issue[] = [];
   private analysis: RoomAnalysis | null = null;
-  private furniture: Furniture[] = [];
+  /** Where the pointer went down, to tell a click (which opens the menu) from a drag. */
+  private down: { x: number; y: number; button: number } | null = null;
   private frameRequested = false;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly store: Store,
+    /** Open the pop-up menu for the selection at (x, y), in page coordinates. */
+    private readonly onMenu: (x: number, y: number) => void = () => {},
   ) {
     this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     this.svg.classList.add("plan");
@@ -224,7 +229,6 @@ export class PlanView {
     const result = analyzeRooms(house, this.level);
     this.analysis = result.ok ? result.value : null;
     this.issues = validate(house, plot, budget, prices);
-    this.furniture = furnish(house);
   }
 
   private get rooms(): Room[] {
@@ -270,6 +274,11 @@ export class PlanView {
     }
     const hit = nearestWall(this.house, p, 1, this.level);
     if (hit && hit.distance <= this.thickness(hit.wall) / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
+    // Furniture before room names: a new piece lands in the middle of the room, on its name.
+    if (this.store.showFurniture) {
+      const piece = furnitureAt(this.house, p, this.level);
+      if (piece) return { kind: "furniture", id: piece.id! };
+    }
     for (const label of this.house.labels) {
       if (label.level !== this.level) continue;
       const [sx, sy] = this.toScreen(label.at);
@@ -331,6 +340,7 @@ export class PlanView {
 
   private pointerDown(e: PointerEvent): void {
     this.svg.setPointerCapture(e.pointerId);
+    this.down = { x: e.clientX, y: e.clientY, button: e.button };
     this.freeSnap = e.altKey;
     const p = this.eventPoint(e);
     this.cursor = p;
@@ -363,6 +373,9 @@ export class PlanView {
         } else if (hit.kind === "stair") {
           store.select(hit);
           this.drag = { kind: "stair", id: hit.id, grab: p.sub(this.house.stair(hit.id)!.at) };
+        } else if (hit.kind === "furniture") {
+          store.select(hit);
+          this.drag = { kind: "furniture", id: hit.id, grab: p.sub(this.house.furniturePiece(hit.id)!.at) };
         } else if (hit.kind === "wall") {
           store.select(hit);
           const wall = this.house.wall(hit.id)!;
@@ -449,6 +462,12 @@ export class PlanView {
           drag.grab = grab;
         }
       }
+    } else if (drag.kind === "furniture") {
+      const at = snapToGrid(p.sub(drag.grab), 0.05);
+      store.gestureEdit((h) => {
+        const f = h.furniturePiece(drag.id);
+        if (f) f.at = at;
+      });
     } else if (drag.kind === "stair") {
       const at = snapToGrid(p.sub(drag.grab), this.freeSnap ? 0.05 : GRID_STEP / 2);
       store.gestureEdit((h) => {
@@ -467,6 +486,24 @@ export class PlanView {
 
   private pointerUp(e: PointerEvent): void {
     const drag = this.drag;
+    // A click (not a drag) opens the menu: left-click with the select tool, right-click with any tool.
+    const down = this.down;
+    this.down = null;
+    const clicked = down && down.button === e.button && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5;
+    if (clicked && e.button === 2) {
+      this.endDrag();
+      const hit = this.hitTest(this.eventPoint(e));
+      if (hit && hit.kind !== "corner") {
+        this.store.select(hit.kind === "label" ? { kind: "room", at: hit.at } : hit);
+        this.onMenu(e.clientX, e.clientY);
+      } else this.store.select(null);
+      return;
+    }
+    if (clicked && e.button === 0 && this.store.tool === "select" && this.store.selection) {
+      this.endDrag();
+      this.onMenu(e.clientX, e.clientY);
+      return;
+    }
     if (drag?.kind === "room" && e.button === 0) {
       const end = this.snap(this.eventPoint(e)).point;
       const { height, material } = this.newWallStyle();
@@ -598,15 +635,18 @@ export class PlanView {
       out.push(`<polygon class="${cls}" style="fill:${fill}" points="${this.pts(room.polygon)}"/>`);
     }
 
+    const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
+    const selId = (kind: string) => (selection?.kind === kind ? (selection as { id: number }).id : null);
     // Furniture, faintly, under the walls.
     if (this.store.showFurniture) {
-      const pieces = this.furniture.filter((f) => f.level === this.level).map((f) => this.furnitureSymbol(f));
+      const pieces = house.furniture.filter((f) => f.level === this.level).map((f) => {
+        const state = [hoverId("furniture") === f.id && "hover", selId("furniture") === f.id && "selected"].filter(Boolean).join(" ");
+        return `<g class="piece ${state}">${this.furnitureSymbol(f)}</g>`;
+      });
       out.push(`<g class="furniture">${pieces.join("")}</g>`);
     }
 
     // Walls, then openings cut into them.
-    const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
-    const selId = (kind: string) => (selection?.kind === kind ? (selection as { id: number }).id : null);
     for (const wall of this.walls) {
       const exterior = !this.analysis || this.analysis.layout.exterior.has(wall.id);
       const cls = ["wall", badWalls.has(wall.id) && "bad", hoverId("wall") === wall.id && "hover", selId("wall") === wall.id && "selected"];

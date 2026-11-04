@@ -1,0 +1,398 @@
+/**
+ * The contents of the pop-up menu for whatever is selected: a room's use, floor and
+ * furniture; a wall's facade, height and openings; a window or door's size; a piece of
+ * furniture; stairs; the roof.
+ */
+
+import {
+  DEFAULT_OPENING,
+  FLOOR_FINISHES,
+  FURNITURE_KINDS,
+  type FurnitureKind,
+  type House,
+  MAX_OVERHANG,
+  MAX_WALL_HEIGHT,
+  MIN_OPENING_SIZE,
+  MIN_WALL_HEIGHT,
+  OPENING_KINDS,
+  OUTSIDE,
+  type Opening,
+  type OpeningKind,
+  PITCH_RANGE,
+  ROOF_MATERIALS,
+  ROOF_STYLES,
+  ROOM_INFO,
+  ROOM_TYPES,
+  type Roof,
+  type RoomType,
+  SUGGESTED_FURNITURE,
+  WALL_MATERIALS,
+  type WallMaterial,
+  addFurnitureAt,
+  analyzeLayout,
+  analyzeRooms,
+  area,
+  clampOffset,
+  clearRoomFurnitureAt,
+  furnitureIn,
+  meters,
+  num,
+  placeOpening,
+  refurnishRoomAt,
+  rotateFurniture,
+  roomAt,
+  roomName,
+  setRoomFloor,
+  setRoomType,
+} from "../core";
+import { m } from "./i18n";
+import type { Selection, Store } from "./store";
+import { floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
+import { type Field, button, choices, el, numberField, readout, slider } from "./ui";
+
+const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
+
+export interface Inspector {
+  el: HTMLElement;
+  fields: Field[];
+}
+
+/** Identifies what the menu is showing, so it is rebuilt only when that changes. */
+export function inspectorKey(store: Store): string {
+  const sel = store.selection;
+  if (!sel) return "";
+  const { house, level } = store;
+  if (sel.kind === "room") {
+    const a = analyzeRooms(house, level);
+    const room = a.ok ? roomAt(a.value.rooms, sel.at) : undefined;
+    if (!room) return "room:none";
+    const furniture = furnitureIn(house, room).map((f) => f.id).join(",");
+    return `room:${level}:${room.type}:${room.labels.length}:${furniture}:${room.polygon.map((p) => `${p.x},${p.y}`).join(";")}`;
+  }
+  if (sel.kind === "wall") {
+    const w = house.wall(sel.id);
+    const layout = w ? analyzeLayout(house, w.level) : null;
+    return `wall:${sel.id}:${w?.boundary}:${layout?.ok && layout.value.exterior.has(sel.id)}`;
+  }
+  if (sel.kind === "opening") return `opening:${sel.id}:${house.opening(sel.id)?.kind}`;
+  if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
+  if (sel.kind === "facade") return "facade";
+  return `${sel.kind}:${sel.id}`;
+}
+
+const section = (title: string, ...children: (Node | string)[]) => el("div", { className: "menu-section" }, el("div", { className: "menu-title" }, title), ...children);
+
+export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspector | null {
+  switch (sel.kind) {
+    case "room":
+      return roomInspector(store, sel.at);
+    case "wall":
+      return wallInspector(store, sel.id);
+    case "opening":
+      return openingInspector(store, sel.id);
+    case "stair":
+      return stairInspector(store, sel.id);
+    case "furniture":
+      return furnitureInspector(store, sel.id);
+    case "roof":
+      return roofInspector(store);
+    case "facade":
+      return facadeInspector(store);
+  }
+}
+
+function deleteButton(store: Store): HTMLButtonElement {
+  return button(m.ui.delete, () => store.deleteSelection(), { className: "danger", title: m.ui.deleteTitle });
+}
+
+const wallSwatches = () => WALL_MATERIALS.map((w) => ({ value: w, label: m.wallMaterial[w], image: swatchUrl(wallTexture(w)) }));
+
+// --- Rooms ------------------------------------------------------------------------
+
+function roomInspector(store: Store, at: import("../core").Vec2): Inspector | null {
+  const level = store.level;
+  const current = () => {
+    const a = analyzeRooms(store.house, level);
+    return a.ok ? roomAt(a.value.rooms, at) : undefined;
+  };
+  const room = current();
+  if (!room) return null;
+
+  const types = [{ value: "none" as const, label: m.ui.notSet, color: "#f7f3ea" }, ...ROOM_TYPES.map((t) => ({ value: t, label: m.rooms[t].name, color: ROOM_INFO[t].color }))];
+  const use = choices<RoomType | "none">(
+    m.ui.usedAs,
+    types,
+    () => current()?.type ?? "none",
+    (v) =>
+      store.edit((h) => {
+        const type = v === "none" ? null : v;
+        if (current()?.type === type) return;
+        setRoomType(h, at, type, level);
+        // A room put to a new use gets that use's furniture; one without a use is emptied.
+        if (type) refurnishRoomAt(h, at, level);
+        else clearRoomFurnitureAt(h, at, level);
+      }),
+    "rooms",
+  );
+  const floor = choices(
+    m.ui.floor,
+    FLOOR_FINISHES.map((f) => ({ value: f, label: m.floorFinish[f], image: swatchUrl(floorTexture(f)) })),
+    () => (current()?.labels.length ? current()!.floor : null),
+    (v) => store.edit((h) => void setRoomFloor(h, at, v, level)),
+    "swatches",
+  );
+  const facts = readout(m.ui.area, () => {
+    const r = current();
+    return r ? `${area(m, r.area)} · ${m.ui.openingsSummary(r.doors.length, r.doors.some((d) => d.to === OUTSIDE), r.windows.length)}` : "";
+  });
+
+  // Furniture: what is in the room, with a way to remove each piece or add more.
+  const list = el("ul", { className: "furniture-list" });
+  for (const f of furnitureIn(store.house, room)) {
+    const remove = button("×", () => store.edit((h) => h.removeFurniture(f.id!)), { className: "icon", title: m.ui.remove, ariaLabel: `${m.ui.remove} ${m.furnitureName[f.kind]}` });
+    const name = button(m.furnitureName[f.kind], () => store.select({ kind: "furniture", id: f.id! }), { className: "link" });
+    list.append(el("li", {}, name, remove));
+  }
+  if (!list.children.length) list.append(el("li", { className: "sub" }, m.ui.noFurniture));
+  const suggested = room.type ? SUGGESTED_FURNITURE[room.type] : [];
+  const others = FURNITURE_KINDS.filter((k) => !suggested.includes(k));
+  const add = el(
+    "select",
+    { className: "add-furniture" },
+    el("option", { value: "" }, m.ui.addFurniture),
+    ...[...suggested, ...others].map((k, i) => el("option", { value: k, className: i < suggested.length ? "suggested" : "" }, m.furnitureName[k])),
+  );
+  add.addEventListener("change", () => {
+    const kind = add.value as FurnitureKind;
+    if (!kind) return;
+    let id = 0;
+    store.edit((h) => (id = addFurnitureAt(h, kind, current()?.anchor ?? at, level)));
+    store.select({ kind: "furniture", id });
+  });
+  const actions = el("div", { className: "row" }, add);
+  if (room.type) actions.append(button(m.ui.refurnish, () => store.edit((h) => refurnishRoomAt(h, at, level))));
+  if (furnitureIn(store.house, room).length) actions.append(button(m.ui.clearFurniture, () => store.edit((h) => clearRoomFurnitureAt(h, at, level))));
+
+  const info = room.type && ROOM_INFO[room.type];
+  const note = el("p", { className: "sub" }, room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : m.ui.chooseRoomUse);
+  return {
+    el: el(
+      "div",
+      {},
+      el("h2", {}, roomName(room, m)),
+      use.el,
+      note,
+      floor.el,
+      facts.el,
+      section(m.ui.furniture, list, actions),
+      el("div", { className: "row" }, deleteButton(store)),
+    ),
+    fields: [use, floor, facts],
+  };
+}
+
+// --- Walls -------------------------------------------------------------------------
+
+/** Where facade changes from a wall's menu go: this wall, or every outer wall. */
+let facadeScope: "wall" | "all" = "all";
+
+function wallInspector(store: Store, id: number): Inspector | null {
+  const wall = () => store.house.wall(id);
+  const w = wall();
+  if (!w) return null;
+  const layout = analyzeLayout(store.house, w.level);
+  const exterior = layout.ok && layout.value.exterior.has(id);
+  const fields: Field[] = [readout(m.ui.length, () => meters(m, wall()?.length() ?? 0))];
+  const parts: (Node | string)[] = [];
+
+  if (w.boundary) {
+    const makeWall = button(m.ui.makeWall, () => store.edit((h) => void (h.wall(id)!.boundary = false)));
+    return { el: el("div", {}, el("h2", {}, m.ui.boundary), fields[0].el, el("p", { className: "sub" }, m.ui.boundaryNote), el("div", { className: "row" }, makeWall, deleteButton(store))), fields };
+  }
+
+  if (exterior) {
+    const scope = choices<"wall" | "all">(
+      m.ui.facade,
+      [
+        { value: "all", label: m.ui.allOuterWalls },
+        { value: "wall", label: m.ui.thisWall },
+      ],
+      () => facadeScope,
+      (v) => {
+        facadeScope = v;
+        scope.update();
+      },
+      "segmented",
+    );
+    const facade = choices(
+      "",
+      wallSwatches(),
+      () => wall()?.material ?? null,
+      (v) => store.edit((h) => setFacade(h, v, facadeScope === "all" ? null : id)),
+      "swatches",
+    );
+    fields.push(scope, facade);
+    parts.push(scope.el, facade.el);
+  }
+
+  const height = slider(
+    m.ui.wallHeight,
+    { min: MIN_WALL_HEIGHT, max: MAX_WALL_HEIGHT, step: 0.1, unit: " m", digits: 1 },
+    () => wall()?.height ?? null,
+    // Walls of a storey share a height, so the roof and floors above line up.
+    (v) => store.edit((h) => h.wallsOn(w.level).forEach((x) => (x.height = v)), `wall-height:${w.level}`),
+  );
+  fields.push(height);
+
+  const add = (kind: OpeningKind) =>
+    button(m.ui.add(kind), () => {
+      let opening: number | null = null;
+      const cur = wall();
+      if (cur) store.edit((h) => (opening = placeOpening(h, cur.id, kind, cur.length() / 2)));
+      if (opening !== null) store.select({ kind: "opening", id: opening });
+    });
+  const makeOpen = button(m.ui.makeBoundary, () =>
+    store.edit((h) => {
+      const cur = h.wall(id);
+      if (!cur) return;
+      cur.boundary = true;
+      h.openingsIn(cur.id).forEach((o) => h.removeOpening(o.id));
+    }),
+  );
+  const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor")] : [add("Door"), makeOpen];
+  return {
+    el: el("div", {}, el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), fields[0].el, ...parts, height.el, el("div", { className: "row" }, ...buttons, deleteButton(store))),
+    fields,
+  };
+}
+
+/** Set the facade of one wall, or of every outer wall of the house when `only` is null. */
+function setFacade(h: House, material: WallMaterial, only: number | null): void {
+  if (only !== null) {
+    const w = h.wall(only);
+    if (w) w.material = material;
+    return;
+  }
+  for (let level = 0; level < h.levels; level++) {
+    const layout = analyzeLayout(h, level);
+    for (const w of h.wallsOn(level)) if (!layout.ok || layout.value.exterior.has(w.id)) w.material = material;
+  }
+}
+
+function facadeInspector(store: Store): Inspector {
+  const firstOuter = () => {
+    const layout = analyzeLayout(store.house, 0);
+    return store.house.wallsOn(0).find((w) => !w.boundary && (!layout.ok || layout.value.exterior.has(w.id)));
+  };
+  const facade = choices(m.ui.allOuterWalls, wallSwatches(), () => firstOuter()?.material ?? null, (v) => store.edit((h) => setFacade(h, v, null)), "swatches");
+  return { el: el("div", {}, el("h2", {}, m.ui.facade), facade.el), fields: [facade] };
+}
+
+// --- Windows and doors -------------------------------------------------------------
+
+function openingInspector(store: Store, id: number): Inspector | null {
+  const op = (h: House = store.house): Opening | undefined => h.opening(id);
+  const o = op();
+  if (!o) return null;
+  const editOp = (fn: (o: Opening, h: House) => void, k: string) =>
+    store.edit((h) => {
+      const cur = op(h);
+      if (cur) fn(cur, h);
+    }, `${k}:${id}`);
+  const fields: Field[] = [
+    choices(
+      m.ui.type,
+      OPENING_KINDS.map((k) => ({ value: k, label: m.opening[k] })),
+      () => op()?.kind ?? null,
+      (v) =>
+        editOp((cur, h) => {
+          const d = DEFAULT_OPENING[v];
+          Object.assign(cur, { kind: v, sill: d.sill, height: d.height, width: d.width });
+          const w = h.wall(cur.wall);
+          if (w) cur.offset = clampOffset(w, cur.width, cur.offset);
+        }, "kind"),
+      "segmented",
+    ),
+    numberField(m.ui.width, { min: MIN_OPENING_SIZE, max: 6, step: 0.1 }, () => op()?.width ?? 0, (v) =>
+      editOp((cur, h) => {
+        cur.width = v;
+        const w = h.wall(cur.wall);
+        if (w) cur.offset = clampOffset(w, v, cur.offset);
+      }, "width"),
+    ),
+    numberField(m.ui.height, { min: MIN_OPENING_SIZE, max: 4, step: 0.1 }, () => op()?.height ?? 0, (v) => editOp((cur) => (cur.height = v), "height")),
+    ...(o.kind === "Window" ? [numberField(m.ui.sill, { min: 0, max: 3, step: 0.1 }, () => op()?.sill ?? 0, (v) => editOp((cur) => (cur.sill = v), "sill"))] : []),
+    numberField(m.ui.position, { min: 0, max: 100, step: 0.05 }, () => op()?.offset ?? 0, (v) => editOp((cur) => (cur.offset = v), "offset")),
+  ];
+  return { el: el("div", {}, el("h2", {}, m.opening[o.kind]), ...fields.map((f) => f.el), el("div", { className: "row" }, deleteButton(store))), fields };
+}
+
+// --- Stairs and furniture ----------------------------------------------------------
+
+function stairInspector(store: Store, id: number): Inspector | null {
+  const stair = store.house.stair(id);
+  if (!stair) return null;
+  const rotate = button(`⟳ ${m.ui.rotate}`, () =>
+    store.edit((h) => {
+      const s = h.stair(id);
+      if (s) s.facing = (s.facing + 1) % 4;
+    }),
+  );
+  const route = m.ui.stairsRoute(m.levelName(stair.level), m.levelName(stair.level + 1));
+  return { el: el("div", {}, el("h2", {}, m.ui.stairs), el("p", { className: "sub" }, route), el("div", { className: "row" }, rotate, deleteButton(store))), fields: [] };
+}
+
+function furnitureInspector(store: Store, id: number): Inspector | null {
+  const piece = () => store.house.furniturePiece(id);
+  const f = piece();
+  if (!f) return null;
+  const rotate = button(`⟳ ${m.ui.rotate}`, () =>
+    store.edit((h) => {
+      const cur = h.furniturePiece(id);
+      if (cur) rotateFurniture(cur);
+    }),
+  );
+  const size = (label: string, key: "width" | "depth") =>
+    numberField(label, { min: 0.2, max: 6, step: 0.05 }, () => piece()?.[key] ?? 0, (v) =>
+      store.edit((h) => {
+        const cur = h.furniturePiece(id);
+        if (cur) cur[key] = v;
+      }, `furniture-${key}:${id}`),
+    );
+  const fields = [size(m.ui.width, "width"), size(m.ui.depth, "depth")];
+  return { el: el("div", {}, el("h2", {}, m.furnitureName[f.kind]), ...fields.map((x) => x.el), el("div", { className: "row" }, rotate, deleteButton(store))), fields };
+}
+
+// --- Roof --------------------------------------------------------------------------
+
+function roofInspector(store: Store): Inspector {
+  const roof = () => store.house.roof;
+  const editRoof = (fn: (r: Roof) => void, key: string) => store.edit((h) => h.roof && fn(h.roof), key);
+  const pitched = () => roof() !== null && roof()!.style !== "Flat";
+  const fields: Field[] = [
+    choices(
+      m.ui.roof,
+      [{ value: "none" as const, label: m.ui.noRoof }, ...ROOF_STYLES.map((s) => ({ value: s, label: m.roofStyle[s] }))],
+      () => roof()?.style ?? "none",
+      (v) =>
+        store.edit((h) => {
+          if (v === "none") h.roof = null;
+          else {
+            h.roof = { ...(h.roof ?? DEFAULT_ROOF), style: v };
+            if (v !== "Flat" && h.roof.pitchDeg < PITCH_RANGE[0]) h.roof.pitchDeg = DEFAULT_ROOF.pitchDeg;
+          }
+        }),
+      "segmented",
+    ),
+    slider(m.ui.pitch, { min: PITCH_RANGE[0], max: PITCH_RANGE[1], step: 1, unit: "°", digits: 0 }, () => (pitched() ? roof()!.pitchDeg : null), (v) => editRoof((r) => (r.pitchDeg = v), "pitch")),
+    slider(m.ui.overhang, { min: 0, max: MAX_OVERHANG, step: 0.1, unit: " m", digits: 1 }, () => (pitched() ? roof()!.overhang : null), (v) => editRoof((r) => (r.overhang = v), "overhang")),
+    choices(
+      m.ui.covering,
+      ROOF_MATERIALS.map((r) => ({ value: r, label: m.roofMaterial[r], image: swatchUrl(roofTexture(r)) })),
+      () => roof()?.material ?? null,
+      (v) => editRoof((r) => (r.material = v), "roof-material"),
+      "swatches",
+    ),
+  ];
+  return { el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.map((f) => f.el)), fields };
+}

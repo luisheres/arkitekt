@@ -3,13 +3,15 @@
 import * as THREE from "three";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureViews } from "./capture";
-import { SKY_COLOR, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
+import { type Pick, SKY_COLOR, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
 import type { Store } from "./store";
 
 /** Vertical field of view, in degrees, on a wide enough screen (and in captures). */
 const BASE_FOV = 45;
 
 export class View3D {
+  /** Called when something is clicked (not dragged): what it was (or null), and where. */
+  onPick: (pick: Pick | null, x: number, y: number) => void = () => {};
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 1000);
@@ -51,6 +53,15 @@ export class View3D {
       this.requestRender();
     });
     attachOrbitControls(canvas, this.orbit, () => this.requestRender());
+    // A click without dragging picks what is under the pointer (left or right button).
+    let down: { x: number; y: number; button: number } | null = null;
+    canvas.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY, button: e.button }));
+    canvas.addEventListener("pointerup", (e) => {
+      if (down && down.button === e.button && (e.button === 0 || e.button === 2) && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) {
+        this.onPick(this.pick(e.clientX, e.clientY), e.clientX, e.clientY);
+      }
+      down = null;
+    });
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
 
@@ -60,6 +71,22 @@ export class View3D {
     const o: Orbit = { target: new THREE.Vector3(plot.width * 0.5, 2, plot.depth * 0.5), yaw: 0, pitch: 0, distance: 24 };
     applyPreset(o, 1);
     return o;
+  }
+
+  /** What is under the page point (x, y), if anything pickable. */
+  pick(x: number, y: number): Pick | null {
+    if (!this.houseGroup) return null;
+    const r = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    placeCamera(this.camera, this.orbit);
+    this.camera.updateMatrixWorld();
+    ray.setFromCamera(ndc, this.camera);
+    for (const hit of ray.intersectObject(this.houseGroup, true)) {
+      const pick = hit.object.userData.pick as Pick | undefined;
+      if (pick) return pick;
+    }
+    return null;
   }
 
   showPreset(index: number): void {

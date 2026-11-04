@@ -17,7 +17,6 @@ import {
   STAIR_LENGTH,
   STAIR_WIDTH,
   type Vec2,
-  furnish,
   interiorNormal,
   leftNormal,
   pointInPolygon,
@@ -174,6 +173,15 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
 }
 
 /** Build all objects for a house. Dispose the result with {@link disposeHouse}. */
+/** What a mesh shows, so a click in the 3D view can select it. Stored as `userData.pick`. */
+export type Pick =
+  | { kind: "wall"; id: number }
+  | { kind: "opening"; id: number }
+  | { kind: "stair"; id: number }
+  | { kind: "furniture"; id: number }
+  | { kind: "room"; level: number; at: Vec2 }
+  | { kind: "roof" };
+
 export interface HouseViewOptions {
   /** Show the roof. */
   roof: boolean;
@@ -194,8 +202,11 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   };
   const base = (level: number) => house.levelBase(level);
 
+  /** What the boxes being added belong to. */
+  let pick: Pick | null = null;
   const box = (u: number, v: number, at: (u: number, v: number) => THREE.Vector3, size: THREE.Vector3, rotY: number, mat: THREE.Material | THREE.Material[]) => {
     const mesh = new THREE.Mesh(unitBox, mat);
+    mesh.userData.pick = pick;
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.position.copy(at(u, v));
     mesh.scale.copy(size);
@@ -228,6 +239,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const leftIsInside = interiorNormal(house, wall).dot(leftNormal(wall)) > 0;
       faces = [facade, facade, facade, facade, leftIsInside ? inside : facade, leftIsInside ? facade : inside];
     }
+    pick = { kind: "wall", id: wall.id };
     for (const p of wallPieces(wall, openings, t)) {
       box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, faces);
     }
@@ -240,6 +252,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
 
     for (const o of openings) {
+      pick = { kind: "opening", id: o.id };
       const [w, h, fw] = [o.width, o.height, FRAME_WIDTH];
       const midV = o.sill + h * 0.5;
       const frameDepth = t + 0.04;
@@ -258,6 +271,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
           }
         }
         const glass = solid(unitBox, palette.glass);
+        glass.userData.pick = pick;
         glass.castShadow = false;
         glass.position.copy(at(o.offset, midV));
         glass.scale.set(w - fw, h - fw, 0.02);
@@ -286,7 +300,9 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     for (const room of analysis.value.rooms) {
       const holes = wells.filter((w) => pointInPolygon(w[0].add(w[2]).scale(0.5), room.polygon));
       const y = level === 0 ? FLOOR_SLAB_HEIGHT : base(level) + 0.01;
-      group.add(flat(room.polygon, holes, y, palette.floor[room.floor]));
+      const floor = flat(room.polygon, holes, y, palette.floor[room.floor]);
+      floor.userData.pick = { kind: "room", level, at: room.anchor } satisfies Pick;
+      group.add(floor);
     }
   });
 
@@ -316,6 +332,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const h = ((to - from) * (i + 1)) / steps;
       const c = start.add(d.scale(going * (i + 0.5)));
       const step = solid(unitBox, palette.stairs);
+      step.userData.pick = { kind: "stair", id: s.id } satisfies Pick;
       step.position.set(c.x, from + h / 2, c.y);
       step.scale.set(going, h, STAIR_WIDTH);
       step.rotation.y = rotY;
@@ -325,20 +342,25 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
 
   const roof = buildRoof(house);
   if (options.furniture) {
-    for (const f of furnish(house)) {
+    for (const f of house.furniture) {
       if (!visible(f.level)) continue;
       const piece = buildFurniture(f);
+      piece.traverse((o) => (o.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick));
       piece.position.y = f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
       group.add(piece);
     }
   }
 
   if (house.roof && roof.ok && options.roof) {
-    group.add(solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]));
+    const surface = solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]);
+    surface.userData.pick = { kind: "roof" } satisfies Pick;
+    group.add(surface);
     if (!roof.value.gables.isEmpty()) {
       const topLayout = layoutOf(top);
       const exteriorWall = house.wallsOn(top).find((w) => !w.boundary && (!topLayout || topLayout.exterior.has(w.id)));
-      group.add(solid(toGeometry(roof.value.gables), palette.gable[exteriorWall?.material ?? "Plaster"]));
+      const gables = solid(toGeometry(roof.value.gables), palette.gable[exteriorWall?.material ?? "Plaster"]);
+      gables.userData.pick = { kind: "roof" } satisfies Pick;
+      group.add(gables);
     }
   }
   return group;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addRectangle, addStoreyAbove, placeStair, setRoomType } from "./edit";
-import { type Furniture, furnish, furnitureOutline, furnitureOverlap } from "./furnish";
+import { addFurnitureAt, clearRoomFurnitureAt, furnish, furnishAll, furnitureAt, furnitureOutline, furnitureOverlap, refurnishRoomAt, rotateFurniture } from "./furnish";
+import type { Furniture } from "./furniture";
 import { Vec2, pointInPolygon } from "./geometry";
 import { House, stairOutline } from "./model";
 import { analyzeHouse } from "./rooms";
@@ -108,5 +109,39 @@ describe("furniture", () => {
     const h = new House();
     addRectangle(h, v(5, 5), v(10, 9), 2.7, "Plaster");
     expect(furnish(h)).toEqual([]);
+  });
+});
+
+describe("furniture in the house", () => {
+  it("a room can be refurnished, cleared and furnished by hand", () => {
+    const h = home();
+    refurnishRoomAt(h, v(7, 7));
+    const inBedroom = () => h.furniture.filter((f) => f.at.x > 5 && f.at.x < 10 && f.at.y > 5 && f.at.y < 9);
+    expect(inBedroom().map((f) => f.kind).sort()).toEqual(["Bed", "Nightstand", "Nightstand", "Wardrobe"]);
+    // Refurnishing replaces rather than adds.
+    refurnishRoomAt(h, v(7, 7));
+    expect(inBedroom()).toHaveLength(4);
+    clearRoomFurnitureAt(h, v(7, 7));
+    expect(inBedroom()).toEqual([]);
+    const id = addFurnitureAt(h, "Desk", v(7, 6));
+    expect(furnitureAt(h, v(7.3, 6.1))?.id).toBe(id);
+    expect(furnitureAt(h, v(7, 6), 1)).toBeUndefined();
+  });
+
+  it("pieces turn a quarter at a time", () => {
+    const h = home();
+    const id = addFurnitureAt(h, "Sofa", v(16, 15), 0, v(0, -1));
+    const sofa = h.furniturePiece(id)!;
+    rotateFurniture(sofa);
+    expect(sofa.facing.x).toBeCloseTo(1);
+    expect(sofa.facing.y).toBeCloseTo(0);
+  });
+
+  it("furnishing everything matches the automatic layout, and survives a save", () => {
+    const h = home();
+    furnishAll(h);
+    expect(h.furniture.map((f) => f.kind).sort()).toEqual(furnish(h).map((f) => f.kind).sort());
+    const back = House.fromJSON(JSON.parse(JSON.stringify(h)));
+    expect(back.furniture).toEqual(h.furniture);
   });
 });

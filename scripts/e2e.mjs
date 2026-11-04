@@ -54,6 +54,19 @@ try {
   const roomCount = async () => (await frame(), page.locator(".plan .room").count());
   const unmetMusts = () => page.locator(".brief:not(.wishes) li.unmet").allTextContents();
   const status = () => page.locator(".status").innerText();
+  const ROOM_NAMES = { Living: "Living room", Kitchen: "Kitchen", Bedroom: "Bedroom", Bathroom: "Bathroom", Hall: "Hall", Office: "Office" };
+  /** Click a room in the plan and pick its use in the menu that opens. */
+  const setRoom = async (x, y, type) => {
+    await click(x, y);
+    await page.click(`.popover .choices.rooms button[title="${ROOM_NAMES[type]}"]`);
+    await page.keyboard.press("Escape");
+  };
+  /** Open a sidebar menu (Roof, Facade) and pick an option in it. */
+  const fromMenu = async (menu, option) => {
+    await page.click(`#sidebar .house button:has-text("${menu}")`);
+    await page.click(`.popover button[title="${option}"]`);
+    await page.keyboard.press("Escape");
+  };
 
   // The first client introduces themselves.
   await page.locator("#modal .dialog").waitFor();
@@ -96,30 +109,72 @@ try {
 
   // Say what each room is.
   await page.keyboard.press("v");
-  for (const [x, y, type] of [[12, 10, "Living"], [17, 10, "Kitchen"], [11, 14.5, "Bedroom"], [14.2, 14.5, "Bathroom"], [17.25, 14.5, "Bedroom"]]) {
-    await click(x, y);
-    await page.selectOption(".selection select", type);
-  }
+  for (const [x, y, type] of [[12, 10, "Living"], [17, 10, "Kitchen"], [11, 14.5, "Bedroom"], [14.2, 14.5, "Bathroom"], [17.25, 14.5, "Bedroom"]]) await setRoom(x, y, type);
   assert.deepEqual((await model()).labels, ["Bathroom", "Bedroom", "Bedroom", "Kitchen", "Living"]);
   assert.match(await status(), /The house needs a roof/);
 
   // A hip roof: one of the wishes.
-  await page.selectOption("#sidebar .house select >> nth=1", "Hip");
+  await fromMenu("Roof", "Hip");
   assert.deepEqual(await unmetMusts(), []);
   assert.match(await page.locator(".brief.wishes li.met").allInnerTexts().then((t) => t.join("\n")), /open plan between the kitchen and the living room/);
   assert.match(await status(), /No building problems/);
   await shot("lindgren-design");
 
-  // Floors: a wooden bathroom floor is a building problem; tiles are fine.
+  // Rooms furnish themselves for their use.
+  const furniture = () => page.evaluate(() => window.architect.store.house.furniture.map((f) => ({ id: f.id, kind: f.kind, x: f.at.x, y: f.at.y })));
+  const kinds = (await furniture()).map((f) => f.kind);
+  for (const k of ["Bed", "Bathtub", "Toilet", "Sofa", "Counter"]) assert.ok(kinds.includes(k), `a ${k}`);
+
+  // Floors, in the room's menu (clicking the room's name): a wooden bathroom floor is a
+  // building problem; tiles are fine.
   await click(14.2, 14.5);
-  assert.equal(await page.locator(".selection select >> nth=1").inputValue(), "Tiles");
-  await page.selectOption(".selection select >> nth=1", "Wood");
+  assert.equal(await page.locator(".popover h2").textContent(), "Bathroom");
+  assert.equal(await page.locator(".popover .choices.swatches button.active").getAttribute("title"), "Tiles");
+  await page.click('.popover .choices.swatches button[title="Wood"]');
   assert.match(await status(), /wood is not a suitable floor here; choose tiles, stone or concrete/);
-  await page.selectOption(".selection select >> nth=1", "Tiles");
+  await page.click('.popover .choices.swatches button[title="Tiles"]');
   assert.match(await status(), /No building problems/);
-  // A stone facade for the street side.
-  await page.selectOption("#sidebar .house select >> nth=0", "Stone");
-  await page.selectOption("#sidebar .house select >> nth=0", "Plaster");
+
+  // Furniture in the room's menu: remove a piece, add another.
+  const bathroom = () => furniture().then((fs) => fs.filter((f) => f.x > 13 && f.x < 15.5 && f.y > 12.5 && f.y < 16.5).map((f) => f.kind).sort());
+  const before = await bathroom();
+  await page.click('.popover .furniture-list li:has-text("Washbasin") button[title="Remove"]');
+  assert.deepEqual(await bathroom(), before.filter((k) => k !== "Sink"));
+  await page.selectOption(".popover .add-furniture", "Washer");
+  assert.ok((await bathroom()).includes("Washer"));
+  assert.equal(await page.locator(".popover h2").textContent(), "Washing machine", "the new piece is selected");
+  await page.click('.popover button:has-text("Rotate")');
+  await page.keyboard.press("Escape");
+
+  // Drag a piece of furniture in the plan.
+  const washer = (await furniture()).find((f) => f.kind === "Washer");
+  await drag([washer.x, washer.y], [washer.x - 0.5, washer.y]);
+  const moved = (await furniture()).find((f) => f.id === washer.id);
+  assert.ok(Math.abs(moved.x - (washer.x - 0.5)) < 0.06, `washer moved to ${moved.x}`);
+  await page.keyboard.press("Delete");
+  assert.ok(!(await furniture()).some((f) => f.id === washer.id), "Delete removes the selected piece");
+
+  // A stone facade, then back to plaster, from the Facade menu.
+  await fromMenu("Facade", "Stone");
+  assert.deepEqual(await page.evaluate(() => [...new Set(window.architect.store.house.walls.filter((w) => w.material === "Stone").map((w) => w.id))].length), 4);
+  await fromMenu("Facade", "Plaster");
+
+  // Clicking in 3D opens the menu for what was clicked: here the roof.
+  await page.click(".layout-switch button[data-layout='3d']");
+  await frame();
+  const roofAt = await page.evaluate(() => {
+    const r = document.querySelector("#view").getBoundingClientRect();
+    for (let fy = 0.2; fy < 0.8; fy += 0.02) {
+      const [x, y] = [r.left + r.width / 2, r.top + r.height * fy];
+      if (window.architect.view3d.pick(x, y)?.kind === "roof") return { x, y };
+    }
+    return null;
+  });
+  assert.ok(roofAt, "the roof is somewhere in the middle of the view");
+  await page.mouse.click(roofAt.x, roofAt.y);
+  assert.equal(await page.locator(".popover h2").textContent(), "Roof");
+  await page.keyboard.press("Escape");
+  await page.click(".layout-switch button[data-layout='split']");
 
   // Look inside with the roof off.
   await page.keyboard.press("h");
@@ -186,7 +241,7 @@ try {
   assert.equal(await page.locator(".client-section button.primary").textContent(), "Presentera för kunden");
   assert.match(await page.locator("#sidebar header").innerText(), /Intjänat 7\s200 · 1 hus sålt/);
   assert.match(await page.locator(".brief").first().innerText(), /Ett arbetsrum på minst 8 m²/);
-  assert.match(await page.locator(".plan-hint").textContent(), /Klicka på ett rum/);
+  assert.match(await page.locator(".plan-hint").textContent(), /Klicka på något för att ändra det/);
   assert.equal(await page.locator("#view3d .pane-hint kbd").count(), 3);
   await page.click("text=Presentera för kunden");
   assert.equal(await page.locator("#modal h2").textContent(), "Inte riktigt än");
@@ -224,10 +279,7 @@ try {
   await page.keyboard.press("n");
   for (const p of [[7.5, 5], [12, 13]]) await click(...p);
   await page.keyboard.press("v");
-  for (const [x, y, type] of [[10, 7, "Living"], [6, 10.5, "Hall"], [12, 11, "Kitchen"]]) {
-    await click(x, y);
-    await page.selectOption(".selection select", type);
-  }
+  for (const [x, y, type] of [[10, 7, "Living"], [6, 10.5, "Hall"], [12, 11, "Kitchen"]]) await setRoom(x, y, type);
 
   // Add a floor: it starts with the outline of the one below.
   await page.click(".level-switch button[data-action=add]");
@@ -245,10 +297,7 @@ try {
   await page.keyboard.press("n");
   for (const p of [[7.5, 5], [12.5, 5], [13.5, 13]]) await click(...p);
   await page.keyboard.press("v");
-  for (const [x, y, type] of [[7.5, 7, "Bedroom"], [12.5, 7, "Bedroom"], [6, 10.5, "Hall"], [10.5, 11, "Bathroom"], [13.5, 11, "Bedroom"]]) {
-    await click(x, y);
-    await page.selectOption(".selection select", type);
-  }
+  for (const [x, y, type] of [[7.5, 7, "Bedroom"], [12.5, 7, "Bedroom"], [6, 10.5, "Hall"], [10.5, 11, "Bathroom"], [13.5, 11, "Bedroom"]]) await setRoom(x, y, type);
   assert.match(await status(), /No stairs lead up to floor 2/);
   assert.match(await status(), /cannot be reached/);
 
@@ -256,7 +305,7 @@ try {
   await page.click(".level-switch button[data-level='0']");
   await page.keyboard.press("s");
   await click(7, 11);
-  await page.selectOption("#sidebar .house select >> nth=1", "Gable");
+  await fromMenu("Roof", "Gable");
   const problems = await page.locator(".issues li").allTextContents();
   assert.deepEqual(problems.filter((p) => !/over the budget/.test(p)), [], "only the budget is a problem");
   assert.deepEqual(await unmetMusts(), [], "every must-have met across both floors");

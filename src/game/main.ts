@@ -13,6 +13,7 @@ import { m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
 import { confirmTurnDown, isModalOpen, showClient, showVerdict } from "./dialogs";
 import { Panel } from "./panel";
+import { Popover } from "./popover";
 import { PlanView } from "./plan";
 import { Store, type Tool } from "./store";
 import { View3D } from "./view3d";
@@ -25,7 +26,30 @@ const store = new Store(defaultPrices());
 const main = document.querySelector<HTMLElement>("#main")!;
 const capturesEl = document.querySelector<HTMLElement>("#captures")!;
 const view3d = new View3D(document.querySelector<HTMLCanvasElement>("#view")!, store);
-const plan = new PlanView(document.querySelector<HTMLElement>("#plan")!, store);
+const popover = new Popover(store);
+const openMenu = (x: number, y: number) => popover.open(x, y);
+const plan = new PlanView(document.querySelector<HTMLElement>("#plan")!, store, openMenu);
+
+// Clicking something in 3D selects it (switching to its floor) and opens its menu.
+view3d.onPick = (pick, x, y) => {
+  if (!pick) return store.select(null);
+  const { house } = store;
+  const level =
+    pick.kind === "room"
+      ? pick.level
+      : pick.kind === "wall"
+        ? house.wall(pick.id)?.level
+        : pick.kind === "opening"
+          ? house.levelOf(house.opening(pick.id)?.wall ?? -1)
+          : pick.kind === "stair"
+            ? house.stair(pick.id)?.level
+            : pick.kind === "furniture"
+              ? house.furniturePiece(pick.id)?.level
+              : undefined;
+  if (level !== undefined && level !== store.level) store.setLevel(level);
+  store.select(pick.kind === "room" ? { kind: "room", at: pick.at } : pick);
+  openMenu(x, y);
+};
 
 const meetClient = () => showClient(store.client, store.working, () => store.working || store.startCommission());
 const present = () => {
@@ -37,6 +61,7 @@ const present = () => {
 };
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   capture: () => showCaptures(view3d.capture()),
+  openMenu,
   beforeReload: () => store.save(),
   newClient: () =>
     confirmTurnDown(store.client, () => {
@@ -130,6 +155,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if (typing) target.blur();
+    else if (popover.isOpen) {
+      popover.close();
+      store.select(null);
+    }
     else if (!capturesEl.hidden) capturesEl.hidden = true;
     else if (plan.cancel()) return;
     else if (store.tool !== "select") store.setTool("select");
@@ -163,7 +192,7 @@ if (sampleParam >= 1) {
 
 declare global {
   interface Window {
-    architect: { captureViews: () => CapturedView[]; store: Store; plan: PlanView; core: typeof core };
+    architect: { captureViews: () => CapturedView[]; store: Store; plan: PlanView; view3d: View3D; core: typeof core };
   }
 }
-window.architect = { captureViews: () => view3d.capture(), store, plan, core };
+window.architect = { captureViews: () => view3d.capture(), store, plan, view3d, core };

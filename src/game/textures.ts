@@ -342,3 +342,21 @@ export function worldMaterial(texture: THREE.Texture, params: THREE.MeshStandard
   mat.customProgramCacheKey = () => `world-mapped:${meters}`;
   return mat;
 }
+
+const swatches = new Map<THREE.Texture, string>();
+
+/** A small image of a texture, for material buttons in the menus. */
+export function swatchUrl(texture: THREE.Texture): string {
+  let url = swatches.get(texture);
+  if (!url) {
+    const src = texture.image as HTMLCanvasElement;
+    const c = document.createElement("canvas");
+    c.width = c.height = 48;
+    // Show about a meter's worth, so brick and tiles read at their size.
+    const part = Math.min(src.width, src.width / ((texture.userData.meters as number) ?? 1));
+    c.getContext("2d")!.drawImage(src, 0, 0, part, part, 0, 0, 48, 48);
+    url = c.toDataURL();
+    swatches.set(texture, url);
+  }
+  return url;
+}

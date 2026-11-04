@@ -9,47 +9,9 @@
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment, removeCollinear, segmentsIntersect } from "./geometry";
+import { FURNITURE_SIZE, type Furniture, type FurnitureKind } from "./furniture";
 import { type House, type Opening, type RoomType, stairDirection, stairOutline } from "./model";
 import { type Room, analyzeRooms } from "./rooms";
-
-export type FurnitureKind =
-  | "Bed"
-  | "SingleBed"
-  | "Nightstand"
-  | "Wardrobe"
-  | "Sofa"
-  | "CoffeeTable"
-  | "TvUnit"
-  | "Armchair"
-  | "Counter"
-  | "Fridge"
-  | "DiningTable"
-  | "Chair"
-  | "Bathtub"
-  | "Shower"
-  | "Toilet"
-  | "Sink"
-  | "Desk"
-  | "OfficeChair"
-  | "Bookshelf"
-  | "Bench"
-  | "Washer"
-  | "Car"
-  | "Workbench"
-  | "Shelf";
-
-export interface Furniture {
-  kind: FurnitureKind;
-  level: number;
-  /** Center of the footprint. */
-  at: Vec2;
-  /** Unit vector the front faces (away from the wall it stands against). */
-  facing: Vec2;
-  /** Size across the front, front to back, and height. */
-  width: number;
-  depth: number;
-  height: number;
-}
 
 /** A box in the room frame. */
 interface Box {
@@ -410,4 +372,50 @@ export function furnitureOverlap(a: Furniture, b: Furniture): boolean {
   const [pa, pb] = [shrink(a), shrink(b)];
   if (pa.some((p) => pointInPolygon(p, pb)) || pb.some((p) => pointInPolygon(p, pa))) return true;
   return pa.some((p, i) => pb.some((q, j) => segmentsIntersect(p, pa[(i + 1) % 4], q, pb[(j + 1) % 4])));
+}
+
+/** The pieces of furniture standing in a room (their centers are inside it). */
+export function furnitureIn(house: House, room: Room): Furniture[] {
+  return house.furniture.filter((f) => f.level === room.level && pointInPolygon(f.at, room.polygon));
+}
+
+/** The room containing `at` on `level`, if the storey's rooms can be found. */
+function roomOn(house: House, at: Vec2, level: number): Room | undefined {
+  const analysis = analyzeRooms(house, level);
+  return analysis.ok ? analysis.value.rooms.find((r) => pointInPolygon(at, r.polygon)) : undefined;
+}
+
+/** Replace the furniture in the room containing `at` with the automatic layout for its use. */
+export function refurnishRoomAt(house: House, at: Vec2, level = 0): void {
+  const room = roomOn(house, at, level);
+  if (!room) return;
+  for (const f of furnitureIn(house, room)) house.removeFurniture(f.id!);
+  for (const f of furnishRoom(house, room)) house.addFurniture(f);
+}
+
+/** Take all furniture out of the room containing `at`. */
+export function clearRoomFurnitureAt(house: House, at: Vec2, level = 0): void {
+  const room = roomOn(house, at, level);
+  if (room) for (const f of furnitureIn(house, room)) house.removeFurniture(f.id!);
+}
+
+/** Furnish every room with a use, replacing all furniture (for saves from before furniture was stored). */
+export function furnishAll(house: House): void {
+  house.furniture = [];
+  for (const f of furnish(house)) house.addFurniture(f);
+}
+
+/** Add a piece of a standard size at `at`, facing `facing` (default: towards the street). */
+export function addFurnitureAt(house: House, kind: FurnitureKind, at: Vec2, level = 0, facing = new Vec2(0, -1)): number {
+  return house.addFurniture({ kind, level, at, facing, ...FURNITURE_SIZE[kind] });
+}
+
+/** The top-most piece of furniture under `p` on `level`. */
+export function furnitureAt(house: House, p: Vec2, level = 0): Furniture | undefined {
+  return [...house.furniture].reverse().find((f) => f.level === level && pointInPolygon(p, furnitureOutline(f)));
+}
+
+/** Turn a piece a quarter turn (counter-clockwise in plan) about its center. */
+export function rotateFurniture(f: Furniture): void {
+  f.facing = new Vec2(-f.facing.y + 0, f.facing.x + 0);
 }

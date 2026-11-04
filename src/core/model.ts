@@ -9,6 +9,7 @@ import { Vec2, signedArea } from "./geometry";
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { analyzeLayout } from "./layout";
+import type { Furniture, FurnitureKind } from "./furniture";
 import type { Result } from "./result";
 import { DEFAULT_WALL_HEIGHT, FLOOR_STRUCTURE, STAIR_LENGTH, STAIR_WIDTH } from "./rules";
 
@@ -185,6 +186,8 @@ export interface HouseJson {
   labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish }[];
   levels?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
+  /** Missing in saves from before furniture could be edited. */
+  furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
 }
 
@@ -194,6 +197,8 @@ export class House {
   roof: Roof | null = null;
   labels: RoomLabel[] = [];
   stairs: Stair[] = [];
+  /** Furniture placed in the house (every piece has an id). */
+  furniture: Furniture[] = [];
   /** Number of storeys, including empty ones being started. */
   levels = 1;
   private nextId = 0;
@@ -243,6 +248,21 @@ export class House {
     this.stairs = this.stairs.filter((s) => s.id !== id);
   }
 
+  addFurniture(f: Furniture): number {
+    const id = this.freshId();
+    // "+ 0" turns -0 into 0, so a piece compares equal after a save (JSON drops the sign).
+    this.furniture.push({ ...f, id, facing: new Vec2(f.facing.x + 0, f.facing.y + 0) });
+    return id;
+  }
+
+  furniturePiece(id: number): Furniture | undefined {
+    return this.furniture.find((f) => f.id === id);
+  }
+
+  removeFurniture(id: number): void {
+    this.furniture = this.furniture.filter((f) => f.id !== id);
+  }
+
   /** Add an empty storey on top. Returns its level. */
   addLevel(): number {
     this.levels += 1;
@@ -256,6 +276,7 @@ export class House {
     for (const w of this.wallsOn(top)) this.removeWall(w.id);
     this.labels = this.labels.filter((l) => l.level !== top);
     this.stairs = this.stairs.filter((s) => s.level < top - 1);
+    this.furniture = this.furniture.filter((f) => f.level !== top);
     this.levels -= 1;
   }
 
@@ -377,6 +398,7 @@ export class House {
       labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}) })),
       levels: this.levels,
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
+      furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
       nextId: this.nextId,
     };
   }
@@ -389,6 +411,7 @@ export class House {
     h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}) }));
     h.levels = j.levels ?? 1;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
+    h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));
     h.nextId = j.nextId;
     return h;
   }
