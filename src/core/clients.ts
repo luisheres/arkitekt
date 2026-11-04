@@ -31,6 +31,7 @@ export const CLIENTS: Client[] = [
       { must: true, req: { kind: "rooms", room: "Living", count: 1, minArea: 20 } },
       { must: true, req: { kind: "doorWidth", min: 0.9 } },
       { must: true, req: { kind: "floorArea", max: 95 } },
+      { must: true, req: { kind: "storeys", max: 1 } },
       { must: false, req: { kind: "rooms", room: "Bedroom", count: 2, minArea: 8 } },
       { must: false, req: { kind: "connected", a: "Kitchen", b: "Living" } },
       { must: false, req: { kind: "roofStyle", styles: ["Hip"] } },
@@ -74,13 +75,13 @@ export const CLIENTS: Client[] = [
         name: "The Andersson family",
         who: "Two parents, two kids and a dog",
         story:
-          "Our flat is bursting at the seams. Each of the kids needs their own room, we need a decent bedroom for ourselves, and the kitchen is where we all end up, so it should open onto the living room. A garage for the car and the bikes would be a dream.",
+          "Our flat is bursting at the seams. Each of the kids needs their own room, we need a decent bedroom for ourselves, and the kitchen is where we all end up, so it should open onto the living room. A garage for the car and the bikes would be a dream, and so would having the bedrooms upstairs.",
       },
       sv: {
         name: "Familjen Andersson",
         who: "Två föräldrar, två barn och en hund",
         story:
-          "Vår lägenhet håller på att spricka i sömmarna. Båda barnen behöver ett eget rum, vi behöver ett ordentligt sovrum för oss själva, och köket är där vi alla hamnar, så det ska ha en dörr rakt in till vardagsrummet. Ett garage för bilen och cyklarna vore en dröm.",
+          "Vår lägenhet håller på att spricka i sömmarna. Båda barnen behöver ett eget rum, vi behöver ett ordentligt sovrum för oss själva, och köket är där vi alla hamnar, så det ska ha en dörr rakt in till vardagsrummet. Ett garage för bilen och cyklarna vore en dröm, och likaså att ha sovrummen på övervåningen.",
       },
     },
     plot: suburban,
@@ -96,6 +97,7 @@ export const CLIENTS: Client[] = [
       { must: false, req: { kind: "rooms", room: "WC", count: 1 } },
       { must: false, req: { kind: "rooms", room: "Utility", count: 1 } },
       { must: false, req: { kind: "wallMaterial", material: "Wood" } },
+      { must: false, req: { kind: "rooms", room: "Bedroom", count: 3, minArea: 9, floor: "upper" } },
     ],
   },
   {
@@ -135,13 +137,13 @@ export const CLIENTS: Client[] = [
         name: "The Okafor family",
         who: "Parents, four children and a grandmother",
         story:
-          "We are a big household and we want everyone under one roof, including Grandma, who needs her own room and a bathroom close by. Mornings are chaos, so two bathrooms at least. We have a big plot on the hill, so don't hold back.",
+          "We are a big household and we want everyone under one roof, including Grandma, who needs her own room and a bathroom close by. Mornings are chaos, so two bathrooms at least. Grandma can't manage stairs, so her room has to be on the ground floor. We have a big plot on the hill, so don't hold back.",
       },
       sv: {
         name: "Familjen Okafor",
         who: "Föräldrar, fyra barn och en mormor",
         story:
-          "Vi är ett stort hushåll och vill ha alla under samma tak, också mormor, som behöver ett eget rum och ett badrum i närheten. Morgnarna är kaos, så minst två badrum. Vi har en stor tomt i sluttningen, så håll inte igen.",
+          "Vi är ett stort hushåll och vill ha alla under samma tak, också mormor, som behöver ett eget rum och ett badrum i närheten. Morgnarna är kaos, så minst två badrum. Mormor klarar inte trappor, så hennes rum måste ligga på bottenvåningen. Vi har en stor tomt i sluttningen, så håll inte igen.",
       },
     },
     plot: hillside,
@@ -153,6 +155,8 @@ export const CLIENTS: Client[] = [
       { must: true, req: { kind: "rooms", room: "Kitchen", count: 1, minArea: 12 } },
       { must: true, req: { kind: "rooms", room: "Living", count: 1, minArea: 30 } },
       { must: true, req: { kind: "doorWidth", min: 0.9 } },
+      { must: true, req: { kind: "rooms", room: "Bedroom", count: 1, minArea: 9, floor: "ground" } },
+      { must: false, req: { kind: "everyFloor", room: "Bathroom" } },
       { must: false, req: { kind: "rooms", room: "Garage", count: 1, minArea: 20 } },
       { must: false, req: { kind: "rooms", room: "Utility", count: 1 } },
       { must: false, req: { kind: "rooms", room: "Office", count: 1 } },

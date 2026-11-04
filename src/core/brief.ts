@@ -9,12 +9,16 @@ import type { Plot } from "./plot";
 import { area, percent } from "./i18n/format";
 import { en } from "./i18n/en";
 import type { Lang, Messages } from "./i18n/types";
-import { type Room, analyzeRooms } from "./rooms";
+import { type Room, analyzeHouse } from "./rooms";
 import { validate } from "./validate";
 
 export type Requirement =
-  /** At least `count` rooms of a type, each at least `minArea` m². */
-  | { kind: "rooms"; room: RoomType; count: number; minArea?: number }
+  /** At least `count` rooms of a type, each at least `minArea` m², optionally on the ground floor or upstairs. */
+  | { kind: "rooms"; room: RoomType; count: number; minArea?: number; floor?: "ground" | "upper" }
+  /** How many storeys the house has. */
+  | { kind: "storeys"; min?: number; max?: number }
+  /** A room of this type on every storey. */
+  | { kind: "everyFloor"; room: RoomType }
   | { kind: "floorArea"; min?: number; max?: number }
   | { kind: "wallMaterial"; material: WallMaterial }
   | { kind: "roofStyle"; styles: RoofStyle[] }
@@ -65,16 +69,20 @@ export interface ItemResult {
 
 /** Check each item of a brief against a design. */
 export function evaluateBrief(house: House, client: Client, prices: PriceList, m: Messages = en): ItemResult[] {
-  const analysis = analyzeRooms(house);
-  const rooms: Room[] = analysis.ok ? analysis.value.rooms : [];
+  const analysis = analyzeHouse(house);
+  const rooms: Room[] = analysis.rooms;
   const ofType = (t: RoomType) => rooms.filter((r) => r.type === t);
+  /** The room a door or open link points to, on the same storey. */
+  const sameLevel = (r: Room, index: number) => rooms.find((x) => x.level === r.level && x.index === index);
+  const storeys = Array.from({ length: house.levels }, (_, k) => k).filter((k) => house.wallsOn(k).length > 0).length;
   const cost = totalCost(estimate(house, prices));
   const doors = house.openings.filter((o) => o.kind === "Door");
 
   const check = (r: Requirement): [boolean, string] => {
     switch (r.kind) {
       case "rooms": {
-        const n = ofType(r.room).filter((x) => x.area >= (r.minArea ?? 0) - 1e-6).length;
+        const onFloor = (x: Room) => (r.floor === "ground" ? x.level === 0 : r.floor === "upper" ? x.level > 0 : true);
+        const n = ofType(r.room).filter((x) => onFloor(x) && x.area >= (r.minArea ?? 0) - 1e-6).length;
         return [n >= r.count, m.brief.countOf(Math.min(n, r.count), r.count)];
       }
       case "floorArea": {
@@ -82,7 +90,11 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [a > 0 && a >= (r.min ?? 0) - 1e-6 && a <= (r.max ?? Infinity) + 1e-6, area(m, a)];
       }
       case "wallMaterial": {
-        const exterior = analysis.ok ? house.walls.filter((w) => analysis.value.layout.exterior.has(w.id)) : house.walls;
+        const exterior = house.walls.filter((w) => {
+          if (w.boundary) return false;
+          const level = analysis.levels[w.level];
+          return !level?.ok || level.value.layout.exterior.has(w.id);
+        });
         const other = exterior.filter((w) => w.material !== r.material).length;
         return [exterior.length > 0 && other === 0, other === 0 ? m.brief.yes : m.brief.wallsNotMaterial(other, r.material)];
       }
@@ -96,12 +108,18 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [narrow === 0, narrow === 0 ? m.brief.yes : m.brief.doorsTooNarrow(narrow)];
       }
       case "connected": {
-        const ok = ofType(r.a).some((x) => x.doors.some((d) => d.to >= 0 && rooms[d.to].type === r.b) || x.openTo.some((i) => rooms[i].type === r.b));
+        const ok = ofType(r.a).some((x) => x.doors.some((d) => d.to >= 0 && sameLevel(x, d.to)?.type === r.b) || x.openTo.some((i) => sameLevel(x, i)?.type === r.b));
         return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "windowArea": {
         const best = Math.max(0, ...ofType(r.room).map((x) => x.windows.reduce((s, o) => s + o.area(), 0)));
         return [best >= r.min - 1e-6, area(m, best)];
+      }
+      case "storeys":
+        return [storeys > 0 && storeys >= (r.min ?? 0) && storeys <= (r.max ?? Infinity), String(storeys)];
+      case "everyFloor": {
+        const have = new Set(ofType(r.room).map((x) => x.level)).size;
+        return [storeys > 0 && have >= storeys, m.brief.countOf(Math.min(have, storeys), storeys)];
       }
       case "underBudget":
         return [house.floorArea() > 0 && cost <= r.share * client.budget, percent(m, cost / client.budget)];

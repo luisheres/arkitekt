@@ -20,7 +20,7 @@ describe("validation", () => {
   it("an empty house reports missing parts", () => {
     const issues = validate(new House(), plot(), 1e9, prices);
     expect(issues).toContainEqual({ kind: "NoDoor" });
-    expect(issues).toContainEqual({ kind: "Footprint", error: { kind: "NoWalls" } });
+    expect(issues).toContainEqual({ kind: "Footprint", error: { kind: "NoWalls" }, level: 0 });
   });
 
   it("reports going over budget", () => {

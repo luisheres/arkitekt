@@ -17,3 +17,13 @@ export const GARAGE_DOOR_MIN_HEIGHT = 2.0;
 export const PITCH_RANGE = [10, 60] as const;
 export const MAX_OVERHANG = 1.2;
 export const MIN_FLOOR_AREA = 20;
+
+/** Default height of new walls. */
+export const DEFAULT_WALL_HEIGHT = 2.7;
+/** Thickness of the floor structure between two storeys. */
+export const FLOOR_STRUCTURE = 0.3;
+/** Most storeys a house may have. */
+export const MAX_LEVELS = 3;
+/** A straight flight of stairs: width and length of its footprint. */
+export const STAIR_WIDTH = 1.0;
+export const STAIR_LENGTH = 3.6;

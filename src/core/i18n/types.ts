@@ -13,7 +13,7 @@ export type Lang = (typeof LANGS)[number];
 /** A piece of text in every language. */
 export type Localized = Record<Lang, string>;
 
-export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door";
+export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door" | "stairs";
 
 /** The forms of a room type's name that sentences need. */
 export interface RoomWords {
@@ -42,6 +42,8 @@ export interface Messages {
   roofMaterial: Record<RoofMaterial, string>;
   opening: Record<OpeningKind, string>;
 
+  /** "Ground floor", "Floor 2", ... */
+  levelName(level: number): string;
   footprint(e: FootprintError): string;
   issue(i: Issue): string;
   requirement(r: Requirement): string;
@@ -102,6 +104,17 @@ export interface Messages {
     boundaryNote: string;
     makeBoundary: string;
     makeWall: string;
+    floors: string;
+    addFloor: string;
+    addFloorTitle: string;
+    removeFloor: string;
+    removeFloorTitle: string;
+    stairs: string;
+    rotate: string;
+    stairsRoute(from: string, to: string): string;
+    needFloorAbove: string;
+    up: string;
+    down: string;
     type: string;
     width: string;
     height: string;
@@ -128,6 +141,8 @@ export interface Messages {
       doors: string;
       roof: string;
       foundation: string;
+      floors: string;
+      stairs: string;
       total: string;
       budgetLeft: string;
       overBudget: string;

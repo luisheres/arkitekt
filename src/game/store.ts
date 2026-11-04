@@ -16,10 +16,12 @@ import {
   completeCommission,
   newCareer,
   nextClient,
+  MAX_LEVELS,
+  addStoreyAbove,
   setRoomType,
 } from "../core";
 
-export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door";
+export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door" | "stairs";
 
 /** Tools that draw chains of walls (or room boundaries) corner by corner. */
 export const drawsWalls = (t: Tool): t is "wall" | "boundary" => t === "wall" || t === "boundary";
@@ -27,7 +29,8 @@ export const drawsWalls = (t: Tool): t is "wall" | "boundary" => t === "wall" ||
 export type Selection =
   | { kind: "wall"; id: number }
   | { kind: "opening"; id: number }
-  /** The room containing `at`. */
+  | { kind: "stair"; id: number }
+  /** The room containing `at`, on the current level. */
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -49,6 +52,8 @@ export class Store {
   /** False until the player has taken on the current client's brief. */
   working = false;
   tool: Tool = "select";
+  /** The storey being edited in the plan. */
+  level = 0;
   selection: Selection = null;
   showGuides = true;
   showRoof = true;
@@ -100,6 +105,7 @@ export class Store {
     this.house = house;
     this.history = new History();
     this.selection = null;
+    this.level = 0;
     this.tool = "select";
     this.working = true;
     this.emit("client");
@@ -113,6 +119,7 @@ export class Store {
     this.house = new House();
     this.history = new History();
     this.selection = null;
+    this.level = 0;
     this.emit("client");
   }
 
@@ -187,6 +194,28 @@ export class Store {
     this.emit("ui");
   }
 
+  /** Edit another storey. */
+  setLevel(level: number): void {
+    this.level = Math.max(0, Math.min(level, this.house.levels - 1));
+    this.selection = null;
+    this.emit("ui");
+  }
+
+  /** Add a storey on top (starting from the outline below) and switch to it. */
+  addFloor(): void {
+    if (this.house.levels >= MAX_LEVELS) return;
+    let level = 0;
+    this.edit((h) => (level = addStoreyAbove(h)));
+    this.setLevel(level);
+  }
+
+  /** Remove the top storey with everything on it. */
+  removeTopFloor(): void {
+    if (this.house.levels <= 1) return;
+    this.edit((h) => h.removeTopLevel());
+    this.setLevel(Math.min(this.level, this.house.levels - 1));
+  }
+
   setTool(tool: Tool): void {
     this.tool = tool;
     this.emit("ui");
@@ -209,14 +238,18 @@ export class Store {
     this.edit((h) => {
       if (sel.kind === "wall") h.removeWall(sel.id);
       else if (sel.kind === "opening") h.removeOpening(sel.id);
-      else setRoomType(h, sel.at, null);
+      else if (sel.kind === "stair") h.removeStair(sel.id);
+      else setRoomType(h, sel.at, null, this.level);
     });
     this.selection = null;
     this.emit("ui");
   }
 
   private dropStaleSelection(): void {
+    // Undo can take away the storey being edited.
+    if (this.level >= this.house.levels) this.level = this.house.levels - 1;
     const sel = this.selection;
+    if (sel?.kind === "stair" && !this.house.stair(sel.id)) this.selection = null;
     if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
     if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
   }

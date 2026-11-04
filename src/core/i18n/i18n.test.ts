@@ -25,9 +25,13 @@ const REQUIREMENTS: Requirement[] = [
   { kind: "connected", a: "Kitchen", b: "Living" },
   { kind: "windowArea", room: "Living", min: 4 },
   { kind: "underBudget", share: 0.85 },
+  { kind: "rooms", room: "Bedroom", count: 3, minArea: 9, floor: "upper" },
+  { kind: "storeys", max: 1 },
+  { kind: "storeys", min: 2 },
+  { kind: "everyFloor", room: "Bathroom" },
 ];
 
-const room = { at: new Vec2(0, 0), area: 6.25, type: "Bedroom" as const };
+const room = { at: new Vec2(0, 0), level: 0, area: 6.25, type: "Bedroom" as const };
 const ISSUES: Issue[] = [
   { kind: "WallTooShort", wall: 1 },
   { kind: "WallHeightOutOfRange", wall: 1 },
@@ -45,7 +49,13 @@ const ISSUES: Issue[] = [
   { kind: "BadDoorSize", opening: 1 },
   { kind: "BadGarageDoorSize", opening: 1 },
   { kind: "GarageDoorNotToGarage", opening: 1 },
-  { kind: "Footprint", error: { kind: "Crossing", x: 0, y: 0 } },
+  { kind: "Footprint", error: { kind: "Crossing", x: 0, y: 0 }, level: 0 },
+  { kind: "Footprint", error: { kind: "Open", x: 0, y: 0 }, level: 1 },
+  { kind: "EmptyLevel", level: 1 },
+  { kind: "FloorNotSupported", level: 1 },
+  { kind: "NoStairs", level: 1 },
+  { kind: "StairBlocked", stair: 1 },
+  { kind: "StairsToNowhere", stair: 1 },
   { kind: "TooSmall" },
   { kind: "NoDoor" },
   { kind: "NoRoof" },

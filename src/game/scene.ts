@@ -11,15 +11,20 @@ import {
   type TriMesh,
   type WallMaterial,
   FLOOR_SLAB_HEIGHT,
+  FLOOR_STRUCTURE,
+  STAIR_LENGTH,
+  STAIR_WIDTH,
+  type Vec2,
+  pointInPolygon,
+  slabOutline,
+  stairDirection,
+  stairOutline,
   ROOM_INFO,
   ROOM_TYPES,
-  Vec3,
   analyzeRooms,
   buildFloor,
   buildRoof,
-  triangulate,
   wallPieces,
-  TriMesh as Mesh,
   wallThickness,
 } from "../core";
 
@@ -73,6 +78,8 @@ const palette = {
   /** Room floors, tinted by what the room is for. */
   room: roomMaterials(),
   untypedRoom: matte(0.86, 0.84, 0.8, 0.95),
+  slab: matte(0.72, 0.71, 0.68, 0.95),
+  stairs: matte(0.66, 0.5, 0.34, 0.8),
 };
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
@@ -144,6 +151,23 @@ export function disposeWorld(world: World): void {
   world.root.removeFromParent();
 }
 
+/** A plan polygon (with holes) as a Three.js shape in the plane that `flat` lays down. */
+function shapeOf(poly: readonly Vec2[], holes: readonly (readonly Vec2[])[]): THREE.Shape {
+  // Shape y = -plan y, so rotating the shape onto the ground maps it back to plan y = world z.
+  const shape = new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, -p.y)));
+  for (const h of holes) shape.holes.push(new THREE.Path(h.map((p) => new THREE.Vector2(p.x, -p.y))));
+  return shape;
+}
+
+/** A horizontal surface at height `y`, facing up. */
+function flat(poly: readonly Vec2[], holes: readonly (readonly Vec2[])[], y: number, material: THREE.Material): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shapeOf(poly, holes)), material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 function toGeometry(t: TriMesh): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(t.positions, 3));
@@ -159,10 +183,23 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
 }
 
 /** Build all objects for a house. Dispose the result with {@link disposeHouse}. */
-export function buildHouse(house: House, options: { roof: boolean } = { roof: true }): THREE.Group {
+export interface HouseViewOptions {
+  /** Show the roof. */
+  roof: boolean;
+  /** Show storeys up to this level only (a cutaway); the roof needs every storey shown. */
+  upTo?: number;
+}
+
+export function buildHouse(house: House, options: HouseViewOptions = { roof: true }): THREE.Group {
   const group = new THREE.Group();
-  const analysis = analyzeRooms(house);
-  const layout = analysis.ok ? analysis.value.layout : null;
+  const top = house.topLevel();
+  const upTo = Math.min(options.upTo ?? top, top);
+  const analyses = Array.from({ length: house.levels }, (_, k) => analyzeRooms(house, k));
+  const layoutOf = (level: number) => {
+    const a = analyses[level];
+    return a?.ok ? a.value.layout : null;
+  };
+  const base = (level: number) => house.levelBase(level);
 
   const box = (u: number, v: number, at: (u: number, v: number) => THREE.Vector3, size: THREE.Vector3, rotY: number, mat: THREE.Material) => {
     const mesh = solid(unitBox, mat);
@@ -173,14 +210,16 @@ export function buildHouse(house: House, options: { roof: boolean } = { roof: tr
   };
 
   for (const wall of house.walls) {
-    if (wall.boundary) continue; // room boundaries are not built
+    if (wall.boundary || wall.level > upTo) continue; // room boundaries are not built
+    const layout = layoutOf(wall.level);
+    const y0 = base(wall.level);
     const openings = house.openingsIn(wall.id);
     const d = wall.direction();
     const rotY = Math.atan2(-d.y, d.x);
-    // Wall-local (u along the wall, v up) to world space.
+    // Wall-local (u along the wall, v up from its storey's floor) to world space.
     const at = (u: number, v: number) => {
       const p = wall.start.add(d.scale(u));
-      return new THREE.Vector3(p.x, v, p.y);
+      return new THREE.Vector3(p.x, y0 + v, p.y);
     };
     const t = wallThickness(layout, wall);
     const exterior = !layout || layout.exterior.has(wall.id);
@@ -224,27 +263,61 @@ export function buildHouse(house: House, options: { roof: boolean } = { roof: tr
     }
   }
 
-  // Floors: one per room, tinted by its use; the whole footprint when rooms are unknown.
-  if (analysis.ok) {
-    for (const room of analysis.value.rooms) {
-      const mesh = new Mesh();
-      const up = new Vec3(0, 1, 0);
-      const poly = room.polygon;
-      for (const [a, b, c] of triangulate(poly)) {
-        mesh.pushTriFacing(poly[a].atHeight(FLOOR_SLAB_HEIGHT), poly[b].atHeight(FLOOR_SLAB_HEIGHT), poly[c].atHeight(FLOOR_SLAB_HEIGHT), up);
-      }
-      group.add(solid(toGeometry(mesh), room.type ? palette.room[room.type] : palette.untypedRoom));
+  // Floors: one per room, tinted by its use, with stairwells cut out upstairs; the
+  // whole footprint when the ground floor's rooms are unknown.
+  analyses.forEach((analysis, level) => {
+    if (level > upTo) return;
+    if (!analysis.ok) {
+      const floor = level === 0 ? buildFloor(house) : null;
+      if (floor?.ok) group.add(solid(toGeometry(floor.value), palette.floor));
+      return;
     }
-  } else {
-    const floor = buildFloor(house);
-    if (floor.ok) group.add(solid(toGeometry(floor.value), palette.floor));
+    const wells = house.stairs.filter((s) => s.level + 1 === level).map(stairOutline);
+    for (const room of analysis.value.rooms) {
+      const holes = wells.filter((w) => pointInPolygon(w[0].add(w[2]).scale(0.5), room.polygon));
+      const y = level === 0 ? FLOOR_SLAB_HEIGHT : base(level) + 0.01;
+      group.add(flat(room.polygon, holes, y, room.type ? palette.room[room.type] : palette.untypedRoom));
+    }
+  });
+
+  // Floor structure between storeys; where the storey above is smaller it is a terrace.
+  for (let level = 0; level < top && level < upTo; level++) {
+    const outline = slabOutline(house, level);
+    if (!outline) continue;
+    const wells = house.stairs.filter((s) => s.level === level).map(stairOutline);
+    const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shapeOf(outline, wells), { depth: FLOOR_STRUCTURE, bevelEnabled: false }), palette.slab);
+    slab.rotation.x = -Math.PI / 2;
+    slab.position.y = base(level) + house.storeyHeight(level);
+    slab.castShadow = slab.receiveShadow = true;
+    group.add(slab);
+  }
+
+  // Stairs: a solid flight of steps from one storey's floor to the next.
+  for (const s of house.stairs) {
+    if (s.level > upTo || s.level + 1 >= house.levels) continue;
+    const d = stairDirection(s);
+    const rotY = Math.atan2(-d.y, d.x);
+    const [from, to] = [base(s.level), base(s.level + 1)];
+    const steps = Math.max(2, Math.round((to - from) / 0.18));
+    const going = STAIR_LENGTH / steps;
+    const start = s.at.sub(d.scale(STAIR_LENGTH / 2));
+    for (let i = 0; i < steps; i++) {
+      const h = ((to - from) * (i + 1)) / steps;
+      const c = start.add(d.scale(going * (i + 0.5)));
+      const step = solid(unitBox, palette.stairs);
+      step.position.set(c.x, from + h / 2, c.y);
+      step.scale.set(going, h, STAIR_WIDTH);
+      step.rotation.y = rotY;
+      group.add(step);
+    }
   }
 
   const roof = buildRoof(house);
-  if (house.roof && roof.ok && options.roof) {
+  if (house.roof && roof.ok && options.roof && upTo === top) {
     group.add(solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]));
     if (!roof.value.gables.isEmpty()) {
-      const exteriorWall = house.walls.find((w) => !layout || layout.exterior.has(w.id));
+      const topLayout = layoutOf(top);
+      const exteriorWall = house.wallsOn(top).find((w) => !w.boundary && (!topLayout || topLayout.exterior.has(w.id)));
       group.add(solid(toGeometry(roof.value.gables), palette.gable[exteriorWall?.material ?? "Plaster"]));
     }
   }

@@ -187,6 +187,70 @@ try {
   await page.waitForFunction(() => window.architect);
   assert.equal(await page.locator(".client-section button.primary").textContent(), "Present to client");
 
+  // Two storeys: Noor's home office upstairs.
+  await page.click("text=Clear plot");
+  await page.keyboard.press("r");
+  await drag([5, 5], [15, 13]);
+  await page.keyboard.press("w");
+  for (const [a, b] of [[[5, 9], [15, 9]], [[9, 9], [9, 13]]]) {
+    await click(...a);
+    await click(...b);
+  }
+  await page.keyboard.press("d");
+  for (const p of [[10, 5], [7, 9], [12, 9]]) await click(...p);
+  await page.keyboard.press("n");
+  for (const p of [[7.5, 5], [12, 13]]) await click(...p);
+  await page.keyboard.press("v");
+  for (const [x, y, type] of [[10, 7, "Living"], [6, 10.5, "Hall"], [12, 11, "Kitchen"]]) {
+    await click(x, y);
+    await page.selectOption(".selection select", type);
+  }
+
+  // Add a floor: it starts with the outline of the one below.
+  await page.click(".level-switch button[data-action=add]");
+  const upstairs = () => page.evaluate(() => window.architect.store.house.wallsOn(1).length);
+  assert.equal(await page.evaluate(() => window.architect.store.level), 1);
+  assert.equal(await upstairs(), 4);
+  await page.keyboard.press("w");
+  for (const [a, b] of [[[5, 9], [15, 9]], [[9, 9], [9, 13]], [[10, 5], [10, 9]]]) {
+    await click(...a);
+    await click(...b);
+  }
+  assert.equal(await upstairs(), 7);
+  await page.keyboard.press("d");
+  for (const p of [[7, 9], [10, 7], [9, 11]]) await click(...p);
+  await page.keyboard.press("n");
+  for (const p of [[7.5, 5], [12.5, 5]]) await click(...p);
+  await page.keyboard.press("v");
+  for (const [x, y, type] of [[7.5, 7, "Office"], [12.5, 7, "Bedroom"], [6, 10.5, "Hall"], [12, 11, "Bathroom"]]) {
+    await click(x, y);
+    await page.selectOption(".selection select", type);
+  }
+  assert.match(await status(), /No stairs lead up to floor 2/);
+  assert.match(await status(), /cannot be reached/);
+
+  // Stairs from the ground-floor hall.
+  await page.click(".level-switch button[data-level='0']");
+  await page.keyboard.press("s");
+  await click(7, 11);
+  await page.selectOption("#sidebar .house select >> nth=1", "Gable");
+  const problems = await page.locator(".issues li").allTextContents();
+  assert.deepEqual(problems.filter((p) => !/over the budget/.test(p)), [], "only the budget is a problem");
+  assert.deepEqual(await unmetMusts(), [], "every must-have met across both floors");
+  await shot("two-storeys");
+
+  // Cutaway: roof off shows the house up to the floor being edited.
+  await page.keyboard.press("h");
+  await page.click(".level-switch button[data-level='1']");
+  await page.waitForTimeout(200);
+  await shot("upstairs-cutaway");
+  await page.keyboard.press("h");
+
+  // Removing the floor removes the stairs with it.
+  await page.click(".level-switch button[data-action=remove]");
+  assert.equal(await page.evaluate(() => window.architect.store.house.levels), 1);
+  assert.equal(await page.evaluate(() => window.architect.store.house.stairs.length), 0);
+
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");
 } catch (e) {

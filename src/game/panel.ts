@@ -52,6 +52,7 @@ const TOOLS: { tool: Tool; key: string }[] = [
   { tool: "boundary", key: "B" },
   { tool: "window", key: "N" },
   { tool: "door", key: "D" },
+  { tool: "stairs", key: "S" },
 ];
 
 const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
@@ -194,15 +195,16 @@ export class Panel {
     const editRoof = (fn: (r: Roof) => void, key: string) => store.edit((h) => h.roof && fn(h.roof), key);
     const pitched = () => roof() !== null && roof()!.style !== "Flat";
     const exteriorWalls = (h: House) => {
-      const layout = analyzeLayout(h);
+      const layout = analyzeLayout(h, store.level);
       return layout.ok ? h.walls.filter((w) => layout.value.exterior.has(w.id)) : h.walls;
     };
     this.fields.push(
       slider(
         m.ui.wallHeight,
         { min: MIN_WALL_HEIGHT, max: MAX_WALL_HEIGHT, step: 0.1, unit: " m", digits: 1 },
-        () => house().walls[0]?.height ?? null,
-        (v) => store.edit((h) => h.walls.forEach((w) => (w.height = v)), "wall-height"),
+        // Each storey has its own wall height.
+        () => house().wallsOn(store.level).find((w) => !w.boundary)?.height ?? null,
+        (v) => store.edit((h) => h.wallsOn(store.level).forEach((w) => (w.height = v)), `wall-height:${store.level}`),
       ),
       selectField(
         m.ui.facade,
@@ -240,13 +242,15 @@ export class Panel {
   }
 
   private selectIssue(e: Event): void {
-    const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-kind]");
+    const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-kind], li[data-level]");
     if (!li) return;
     const d = li.dataset;
+    if (d.level !== undefined) this.store.setLevel(Number(d.level));
     if (d.kind === "room") this.store.select({ kind: "room", at: new Vec2(Number(d.x), Number(d.y)) });
-    else this.store.select({ kind: d.kind as "wall" | "opening", id: Number(d.id) });
+    else if (d.kind) this.store.select({ kind: d.kind as "wall" | "opening" | "stair", id: Number(d.id) });
     this.store.setTool("select");
   }
+
 
   private update(houseChanged: boolean): void {
     const { store } = this;
@@ -273,7 +277,7 @@ export class Panel {
   private syncSelection(): void {
     const { store } = this;
     const sel = store.selection;
-    const analysis = analyzeRooms(store.house);
+    const analysis = analyzeRooms(store.house, store.level);
     const rooms = analysis.ok ? analysis.value.rooms : [];
     const opening = sel?.kind === "opening" ? store.house.opening(sel.id) : undefined;
     const room = sel?.kind === "room" ? roomAt(rooms, sel.at) : undefined;
@@ -300,12 +304,12 @@ export class Panel {
     if (sel.kind === "room" && room) {
       const at = sel.at;
       const current = () => {
-        const a = analyzeRooms(store.house);
+        const a = analyzeRooms(store.house, store.level);
         return a.ok ? roomAt(a.value.rooms, at) : undefined;
       };
       const types: { value: RoomType | ""; label: string }[] = [{ value: "", label: m.ui.notSet }, ...ROOM_TYPES.map((t) => ({ value: t, label: m.rooms[t].name }))];
       this.selectionFields.push(
-        selectField<RoomType | "">(m.ui.usedAs, types, () => current()?.type ?? "", (v) => store.edit((h) => void setRoomType(h, at, v === "" ? null : v))),
+        selectField<RoomType | "">(m.ui.usedAs, types, () => current()?.type ?? "", (v) => store.edit((h) => void setRoomType(h, at, v === "" ? null : v, store.level))),
         readout(m.ui.area, () => area(m, current()?.area ?? 0)),
         readout(m.ui.openings, () => {
           const r = current();
@@ -357,6 +361,19 @@ export class Panel {
       return;
     }
 
+    if (sel.kind === "stair") {
+      const stair = store.house.stair(sel.id);
+      const rotate = el("button", { type: "button" }, m.ui.rotate);
+      rotate.addEventListener("click", () =>
+        store.edit((h) => {
+          const s = h.stair(sel.id);
+          if (s) s.facing = (s.facing + 1) % 4;
+        }),
+      );
+      const route = stair ? m.ui.stairsRoute(m.levelName(stair.level), m.levelName(stair.level + 1)) : "";
+      box.append(el("h2", {}, m.ui.stairs), el("p", { className: "sub" }, route), el("div", { className: "row" }, rotate, del));
+      return;
+    }
     if (sel.kind !== "opening") return;
     const op = (h: House = store.house): Opening | undefined => h.opening(sel.id);
     const editOp = (fn: (o: Opening, h: House) => void, k: string) =>

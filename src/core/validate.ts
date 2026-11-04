@@ -1,13 +1,13 @@
 /** Rules a house must satisfy before it can be sold. */
 
 import { type PriceList, estimate, totalCost } from "./cost";
-import type { Vec2 } from "./geometry";
+import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from "./geometry";
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
-import type { FootprintError, House, LabelId, OpeningId, RoofStyle, RoomType, WallId } from "./model";
+import { type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
 import { type Plot, isBuildable } from "./plot";
 import { buildRoof } from "./roof";
-import { ROOM_INFO, type Room, type RoomAnalysis, analyzeRooms } from "./rooms";
+import { type HouseAnalysis, ROOM_INFO, type Room, type RoomAnalysis, analyzeHouse } from "./rooms";
 import {
   DOOR_MIN_HEIGHT,
   DOOR_WIDTH,
@@ -29,6 +29,7 @@ import {
 /** Enough to identify a room in a message and to find it again in the plan. */
 export interface RoomRef {
   at: Vec2;
+  level: number;
   area: number;
   type: RoomType | null;
 }
@@ -50,7 +51,12 @@ export type Issue =
   | { kind: "BadDoorSize"; opening: OpeningId }
   | { kind: "BadGarageDoorSize"; opening: OpeningId }
   | { kind: "GarageDoorNotToGarage"; opening: OpeningId }
-  | { kind: "Footprint"; error: FootprintError }
+  | { kind: "Footprint"; error: FootprintError; level: number }
+  | { kind: "EmptyLevel"; level: number }
+  | { kind: "FloorNotSupported"; level: number }
+  | { kind: "NoStairs"; level: number }
+  | { kind: "StairBlocked"; stair: StairId }
+  | { kind: "StairsToNowhere"; stair: StairId }
   | { kind: "TooSmall" }
   | { kind: "NoDoor" }
   | { kind: "NoRoof" }
@@ -72,7 +78,7 @@ export function describeIssue(i: Issue, m: Messages = en): string {
 const within = (x: number, [lo, hi]: readonly [number, number]) => x >= lo && x <= hi;
 
 export function roomRef(room: Room): RoomRef {
-  return { at: room.anchor, area: room.area, type: room.type };
+  return { at: room.anchor, level: room.level, area: room.area, type: room.type };
 }
 
 /** Check everything that must hold for the house to be sellable. An empty result means OK. */
@@ -88,14 +94,25 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
 
   checkOpenings(house, issues);
 
-  if (!house.openings.some((o) => o.kind === "Door")) issues.push({ kind: "NoDoor" });
+  if (!house.openings.some((o) => o.kind === "Door" && house.levelOf(o.wall) === 0)) issues.push({ kind: "NoDoor" });
 
-  const analysis = analyzeRooms(house);
-  if (!analysis.ok) {
-    issues.push({ kind: "Footprint", error: analysis.error });
-  } else {
+  const analysis = analyzeHouse(house);
+  analysis.levels.forEach((result, level) => {
+    if (!result.ok) {
+      if (level > 0 && result.error.kind === "NoWalls") issues.push({ kind: "EmptyLevel", level });
+      else issues.push({ kind: "Footprint", error: result.error, level });
+      return;
+    }
+    checkRooms(house, result.value, level, issues);
+    if (level > 0) {
+      const below = analysis.levels[level - 1];
+      if (below?.ok && !restsOn(result.value.layout.outline, below.value.layout.outline)) issues.push({ kind: "FloorNotSupported", level });
+      if (!house.stairs.some((s) => s.level === level - 1)) issues.push({ kind: "NoStairs", level });
+    }
+  });
+  checkStairs(house, analysis, issues);
+  if (analysis.levels.every((l) => l.ok)) {
     if (house.floorArea() < MIN_FLOOR_AREA) issues.push({ kind: "TooSmall" });
-    checkRooms(house, analysis.value, issues);
     checkRoof(house, issues);
   }
 
@@ -133,7 +150,7 @@ function checkOpenings(house: House, issues: Issue[]): void {
   }
 }
 
-function checkRooms(house: House, analysis: RoomAnalysis, issues: Issue[]): void {
+function checkRooms(house: House, analysis: RoomAnalysis, level: number, issues: Issue[]): void {
   const { layout, rooms, strayLabels, misplaced } = analysis;
 
   for (const end of layout.looseEnds) issues.push({ kind: "LooseWallEnd", wall: end.wall, x: end.at.x, y: end.at.y });
@@ -159,9 +176,44 @@ function checkRooms(house: House, analysis: RoomAnalysis, issues: Issue[]): void
 
   // Garage doors lead from outside into a garage.
   for (const o of house.openings) {
-    if (o.kind !== "GarageDoor") continue;
+    if (o.kind !== "GarageDoor" || house.levelOf(o.wall) !== level) continue;
     const ok = rooms.some((r) => r.type === "Garage" && r.doors.some((d) => d.opening.id === o.id && d.to < 0));
     if (!ok && !misplaced.some((m) => m.opening.id === o.id)) issues.push({ kind: "GarageDoorNotToGarage", opening: o.id });
+  }
+}
+
+/** Whether an upper storey's outline lies within the outline of the storey below. */
+function restsOn(upper: readonly Vec2[], lower: readonly Vec2[]): boolean {
+  const onEdge = (p: Vec2) => lower.some((a, i) => {
+    const b = lower[(i + 1) % lower.length];
+    return a.add(b.sub(a).normalize().scale(projectOntoSegment(p, a, b))).distance(p) < 0.05;
+  });
+  for (let i = 0; i < upper.length; i++) {
+    const [a, b] = [upper[i], upper[(i + 1) % upper.length]];
+    const steps = Math.max(1, Math.ceil(a.distance(b) / 0.25));
+    for (let k = 0; k < steps; k++) {
+      const p = a.add(b.sub(a).scale(k / steps));
+      if (!pointInPolygon(p, lower) && !onEdge(p)) return false;
+    }
+  }
+  return true;
+}
+
+/** Stairs must lead to a storey, start and end inside rooms, and not cut through walls. */
+function checkStairs(house: House, analysis: HouseAnalysis, issues: Issue[]): void {
+  for (const link of analysis.stairs) {
+    const { stair } = link;
+    if (stair.level + 1 >= house.levels) {
+      issues.push({ kind: "StairsToNowhere", stair: stair.id });
+      continue;
+    }
+    // Shrunk a little so stairs may stand against a wall.
+    const outline = stairOutline(stair).map((p) => p.add(stair.at.sub(p).normalize().scale(0.15)));
+    const cuts = house.walls.some((w) => {
+      if (w.boundary || (w.level !== stair.level && w.level !== stair.level + 1)) return false;
+      return outline.some((a, i) => segmentsIntersect(a, outline[(i + 1) % 4], w.start, w.end)) || pointInPolygon(w.start, outline);
+    });
+    if (!link.from || !link.to || cuts) issues.push({ kind: "StairBlocked", stair: stair.id });
   }
 }
 

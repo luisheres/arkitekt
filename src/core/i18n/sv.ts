@@ -33,6 +33,8 @@ export const sv: Messages = {
   roofMaterial: { Shingles: "Shingel", Metal: "Plåt", Tiles: "Takpannor" },
   opening: { Window: "Fönster", Door: "Dörr", GarageDoor: "Garageport" },
 
+  levelName: (level) => (level === 0 ? "Bottenvåning" : `Våning ${level + 1}`),
+
   footprint(e) {
     switch (e.kind) {
       case "NoWalls":
@@ -53,7 +55,8 @@ export const sv: Messages = {
   },
 
   issue(i) {
-    const room = (r: { type: RoomType | null; area: number }) => `${r.type ? this.rooms[r.type].name : "Ett rum"} (${area(this, r.area)})`;
+    const room = (r: { type: RoomType | null; area: number; level: number }) =>
+      `${r.type ? this.rooms[r.type].name : "Ett rum"} (${area(this, r.area)}${r.level > 0 ? `, ${this.levelName(r.level).toLowerCase()}` : ""})`;
     switch (i.kind) {
       case "WallTooShort":
         return `En vägg är kortare än ${meters(this, R.MIN_WALL_LENGTH)}`;
@@ -88,7 +91,20 @@ export const sv: Messages = {
       case "GarageDoorNotToGarage":
         return "En garageport måste leda utifrån in i ett garage";
       case "Footprint":
-        return `Väggarna bildar inget hus: ${this.footprint(i.error)}`;
+        return i.level > 0
+          ? `Väggarna på ${this.levelName(i.level).toLowerCase()} bildar ingen våning: ${this.footprint(i.error)}`
+          : `Väggarna bildar inget hus: ${this.footprint(i.error)}`;
+      case "EmptyLevel":
+        return `${this.levelName(i.level)} har inga väggar än`;
+      case "FloorNotSupported":
+        return `${this.levelName(i.level)} vilar inte helt på våningen under; håll den inom konturen nedanför`;
+      case "NoStairs":
+        return `Ingen trappa leder upp till ${this.levelName(i.level).toLowerCase()}`;
+      case "StairBlocked":
+        return "En trappa är blockerad: den måste stå inne i rum på båda våningarna, fri från väggar";
+      case "StairsToNowhere":
+        return "En trappa leder till en våning som inte finns";
+
       case "TooSmall":
         return `Boytan är mindre än minimikravet ${m2(this, R.MIN_FLOOR_AREA)}`;
       case "NoDoor":
@@ -123,8 +139,15 @@ export const sv: Messages = {
       case "rooms": {
         const words = this.rooms[r.room];
         const what = r.count === 1 ? cap(words.one) : `${r.count} ${words.many}`;
-        return r.minArea ? `${what} på minst ${m2(this, r.minArea)}` : what;
+        const where = r.floor === "ground" ? " på bottenvåningen" : r.floor === "upper" ? " på övervåningen" : "";
+        return `${what}${r.minArea ? ` på minst ${m2(this, r.minArea)}` : ""}${where}`;
       }
+      case "storeys":
+        if (r.max === 1) return "Allt på ett plan";
+        if (r.min !== undefined && r.min === r.max) return `${r.min} våningar`;
+        return r.min !== undefined ? `Minst ${r.min} våningar` : `Högst ${r.max} våningar`;
+      case "everyFloor":
+        return `${cap(this.rooms[r.room].one)} på varje våning`;
       case "floorArea":
         if (r.min !== undefined && r.max !== undefined) return `Boyta mellan ${m2(this, r.min)} och ${m2(this, r.max)}`;
         return r.min !== undefined ? `Boyta på minst ${m2(this, r.min)}` : `Boyta på högst ${m2(this, r.max ?? 0)}`;
@@ -170,7 +193,7 @@ export const sv: Messages = {
     briefTitle: "Läs kundens uppdrag igen",
     present: "Presentera för kunden",
     presentTitle: "Visa ritningen för kunden",
-    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr" },
+    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa" },
     undo: "Ångra",
     undoTitle: "Ångra (Ctrl+Z)",
     redo: "Gör om",
@@ -199,6 +222,17 @@ export const sv: Messages = {
     boundaryNote: "Delar en öppen planlösning i rum. Här byggs ingenting: rummen på var sida är öppna mot varandra och delar dagsljus.",
     makeBoundary: "Gör öppen",
     makeWall: "Gör till vägg",
+    floors: "Våningar",
+    addFloor: "Lägg till våning",
+    addFloorTitle: "Lägg till en våning ovanpå, med samma kontur som våningen under",
+    removeFloor: "Ta bort våning",
+    removeFloorTitle: "Ta bort översta våningen och allt på den",
+    stairs: "Trappa",
+    rotate: "Vrid",
+    stairsRoute: (from, to) => `Från ${from.toLowerCase()} till ${to.toLowerCase()}`,
+    needFloorAbove: "Lägg först till en våning ovanför: trappan leder upp till den.",
+    up: "Upp",
+    down: "Ner",
     type: "Typ",
     width: "Bredd",
     height: "Höjd",
@@ -225,6 +259,8 @@ export const sv: Messages = {
       doors: "Dörrar",
       roof: "Tak",
       foundation: "Grund",
+      floors: "Bjälklag",
+      stairs: "Trappor",
       total: "Totalt",
       budgetLeft: "Kvar av budgeten",
       overBudget: "Över budget",
@@ -255,6 +291,7 @@ export const sv: Messages = {
       boundary: "Rita en öppen rumsgräns som en vägg: klicka ut hörn, börja och sluta på väggar. Den delar en öppen planlösning i rum utan att något byggs.",
       window: "Klicka på en yttervägg för att lägga till ett fönster.",
       door: "Klicka på en vägg för att lägga till en dörr.",
+      stairs: "Klicka inne i ett rum för att placera en trappa upp till våningen ovanför; vrid den i sidopanelen.",
     },
     street: "GATA",
     room: "Rum",

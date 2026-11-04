@@ -35,10 +35,11 @@ export class View3D {
     this.scene.add(this.world.root);
     this.orbit = this.homeOrbit();
 
-    let showRoof = store.showRoof;
+    // What the house was last built for: the cutaway depends on the storey being edited.
+    let shown = { roof: store.showRoof, level: store.level };
     store.subscribe((change) => {
-      if (change !== "ui" || store.showRoof !== showRoof) this.houseDirty = true;
-      showRoof = store.showRoof;
+      if (change !== "ui" || store.showRoof !== shown.roof || (!store.showRoof && store.level !== shown.level)) this.houseDirty = true;
+      shown = { roof: store.showRoof, level: store.level };
       if (change === "client") {
         // A new client means a new plot.
         disposeWorld(this.world);
@@ -68,9 +69,18 @@ export class View3D {
   /** Render the four appraisal views (always from the default camera, without guides). */
   capture(): CapturedView[] {
     this.syncHouse();
-    const views = captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]);
-    this.requestRender();
-    return views;
+    // The appraiser always sees the whole house with its roof, whatever the player is viewing.
+    const full = buildHouse(this.store.house, { roof: true });
+    const shown = this.houseGroup;
+    if (shown) shown.visible = false;
+    this.scene.add(full);
+    try {
+      return captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]);
+    } finally {
+      disposeHouse(full);
+      if (shown) shown.visible = true;
+      this.requestRender();
+    }
   }
 
   private resize(): void {
@@ -91,7 +101,9 @@ export class View3D {
     if (!this.houseDirty) return;
     this.houseDirty = false;
     if (this.houseGroup) disposeHouse(this.houseGroup);
-    this.houseGroup = buildHouse(this.store.house, { roof: this.store.showRoof });
+    const { house, showRoof, level } = this.store;
+    // With the roof off, cut away the storeys above the one being edited.
+    this.houseGroup = buildHouse(house, { roof: showRoof, upTo: showRoof ? house.topLevel() : level });
     this.scene.add(this.houseGroup);
   }
 

@@ -7,7 +7,7 @@ import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { Vec2, interiorPoint, pointInPolygon, signedArea } from "./geometry";
 import { type Layout, OUTSIDE, analyzeLayout } from "./layout";
-import type { FootprintError, House, Opening, RoomLabel, RoomType } from "./model";
+import type { FootprintError, House, Opening, RoomLabel, RoomType, Stair } from "./model";
 import { type Result, ok } from "./result";
 
 export interface RoomInfo {
@@ -39,7 +39,9 @@ export interface DoorLink {
 }
 
 export interface Room {
+  /** Index among the rooms of its storey. */
   index: number;
+  level: number;
   polygon: Vec2[];
   area: number;
   /** Where the room's name is drawn: its label, or a point inside it. */
@@ -79,13 +81,18 @@ export function roomAt(rooms: readonly Room[], p: Vec2): Room | undefined {
   return rooms.find((r) => pointInPolygon(p, r.polygon));
 }
 
-export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError> {
-  const result = analyzeLayout(house);
+/**
+ * Analyze the rooms of one storey. Reachability here only follows doors from outside on
+ * the ground floor; {@link analyzeHouse} adds the stairs between storeys.
+ */
+export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, FootprintError> {
+  const result = analyzeLayout(house, level);
   if (!result.ok) return result;
   const layout = result.value;
 
   const rooms: Room[] = layout.rooms.map((polygon, index) => ({
     index,
+    level,
     polygon,
     area: signedArea(polygon),
     anchor: interiorPoint(polygon),
@@ -100,6 +107,7 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
 
   const strayLabels: RoomLabel[] = [];
   for (const label of house.labels) {
+    if (label.level !== level) continue;
     const room = roomAt(rooms, label.at);
     if (room) room.labels.push(label);
     else strayLabels.push(label);
@@ -116,6 +124,7 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
   const misplaced: RoomAnalysis["misplaced"] = [];
   const eps = 1e-6;
   for (const o of house.openings) {
+    if (house.levelOf(o.wall) !== level) continue;
     if (house.wall(o.wall)?.boundary) {
       misplaced.push({ opening: o, reason: "InBoundary" });
       continue;
@@ -162,7 +171,8 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
   }
 
   // Walk in from outside, through doors and open plan.
-  const queue = rooms.filter((r) => r.doors.some((d) => d.to === OUTSIDE));
+  // Upper-floor doors to outside lead onto balconies or terraces, not into the house.
+  const queue = level === 0 ? rooms.filter((r) => r.doors.some((d) => d.to === OUTSIDE)) : [];
   queue.forEach((r) => (r.reachable = true));
   while (queue.length) {
     const room = queue.pop()!;
@@ -176,4 +186,60 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
   }
 
   return ok({ layout, rooms, strayLabels, misplaced });
+}
+
+/** Where a flight of stairs starts and ends: the rooms around its footprint on each storey. */
+export interface StairLink {
+  stair: Stair;
+  /** The room it starts in, on `stair.level`. */
+  from?: Room;
+  /** The room it arrives in, on the storey above. */
+  to?: Room;
+}
+
+export interface HouseAnalysis {
+  /** Each storey's analysis, or why its walls do not form rooms. */
+  levels: Result<RoomAnalysis, FootprintError>[];
+  /** Rooms of every storey that could be analyzed. */
+  rooms: Room[];
+  stairs: StairLink[];
+}
+
+/**
+ * Analyze every storey and connect them through the stairs: a room is reachable when you
+ * can walk to it from the front door through doors, open plan and stairs.
+ */
+export function analyzeHouse(house: House): HouseAnalysis {
+  const levels = Array.from({ length: house.levels }, (_, k) => analyzeRooms(house, k));
+  const roomsOn = (k: number) => {
+    const a = levels[k];
+    return a?.ok ? a.value.rooms : [];
+  };
+  const rooms = levels.flatMap((_, k) => roomsOn(k));
+  const stairs: StairLink[] = house.stairs.map((stair) => ({
+    stair,
+    from: roomAt(roomsOn(stair.level), stair.at),
+    to: roomAt(roomsOn(stair.level + 1), stair.at),
+  }));
+
+  // Walk from the front door through doors, open plan and stairs.
+  for (const r of rooms) r.reachable = false;
+  const queue = roomsOn(0).filter((r) => r.doors.some((d) => d.to === OUTSIDE));
+  queue.forEach((r) => (r.reachable = true));
+  while (queue.length) {
+    const room = queue.pop()!;
+    const same = roomsOn(room.level);
+    const next = [
+      ...[...room.doors.map((d) => d.to), ...room.openTo].filter((i) => i !== OUTSIDE).map((i) => same[i]),
+      ...stairs.filter((s) => s.from === room).map((s) => s.to),
+      ...stairs.filter((s) => s.to === room).map((s) => s.from),
+    ];
+    for (const r of next) {
+      if (r && !r.reachable) {
+        r.reachable = true;
+        queue.push(r);
+      }
+    }
+  }
+  return { levels, rooms, stairs };
 }

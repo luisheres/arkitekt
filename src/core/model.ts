@@ -10,6 +10,7 @@ import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { analyzeLayout } from "./layout";
 import type { Result } from "./result";
+import { DEFAULT_WALL_HEIGHT, FLOOR_STRUCTURE, STAIR_LENGTH, STAIR_WIDTH } from "./rules";
 
 /** Default wall thickness in meters. */
 export const DEFAULT_WALL_THICKNESS = 0.25;
@@ -34,11 +35,40 @@ export type RoomType = (typeof ROOM_TYPES)[number];
 
 export type LabelId = number;
 
-/** Says what the room containing `at` is used for. */
+/** Says what the room containing `at` (on `level`) is used for. */
 export interface RoomLabel {
   id: LabelId;
   type: RoomType;
   at: Vec2;
+  level: number;
+}
+
+export type StairId = number;
+
+/**
+ * A straight flight of stairs from `level` up to the level above. `at` is the center of
+ * its footprint; `facing` counts quarter turns from climbing towards +y (away from the
+ * street): 0 = +y, 1 = -x, 2 = -y, 3 = +x.
+ */
+export interface Stair {
+  id: StairId;
+  level: number;
+  at: Vec2;
+  facing: number;
+}
+
+/** Unit vector in the direction you walk when climbing the stairs. */
+export function stairDirection(s: Pick<Stair, "facing">): Vec2 {
+  return [new Vec2(0, 1), new Vec2(-1, 0), new Vec2(0, -1), new Vec2(1, 0)][((s.facing % 4) + 4) % 4];
+}
+
+/** The stairs' footprint, counter-clockwise, starting at the bottom step. */
+export function stairOutline(s: Pick<Stair, "at" | "facing">): Vec2[] {
+  const d = stairDirection(s);
+  const n = new Vec2(-d.y, d.x);
+  const [hl, hw] = [STAIR_LENGTH / 2, STAIR_WIDTH / 2];
+  const c = s.at;
+  return [c.sub(d.scale(hl)).sub(n.scale(hw)), c.sub(d.scale(hl)).add(n.scale(hw)), c.add(d.scale(hl)).add(n.scale(hw)), c.add(d.scale(hl)).sub(n.scale(hw))].reverse();
 }
 
 export class Wall {
@@ -54,6 +84,8 @@ export class Wall {
      * not built, costs nothing and leaves the rooms on either side open to each other.
      */
     public boundary = false,
+    /** Storey: 0 is the ground floor. */
+    public level = 0,
   ) {}
 
   length(): number {
@@ -132,10 +164,13 @@ export interface HouseJson {
     thickness: number;
     material: WallMaterial;
     boundary?: boolean;
+    level?: number;
   }[];
   openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
   roof: Roof | null;
-  labels?: { id: number; type: RoomType; at: { x: number; y: number } }[];
+  labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number }[];
+  levels?: number;
+  stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   nextId: number;
 }
 
@@ -144,6 +179,9 @@ export class House {
   openings: Opening[] = [];
   roof: Roof | null = null;
   labels: RoomLabel[] = [];
+  stairs: Stair[] = [];
+  /** Number of storeys, including empty ones being started. */
+  levels = 1;
   private nextId = 0;
 
   private freshId(): number {
@@ -151,20 +189,60 @@ export class House {
     return this.nextId;
   }
 
-  addWall(start: Vec2, end: Vec2, height: number, material: WallMaterial, boundary = false): WallId {
+  addWall(start: Vec2, end: Vec2, height: number, material: WallMaterial, boundary = false, level = 0): WallId {
     const id = this.freshId();
-    this.walls.push(new Wall(id, start, end, height, DEFAULT_WALL_THICKNESS, material, boundary));
+    this.walls.push(new Wall(id, start, end, height, DEFAULT_WALL_THICKNESS, material, boundary, level));
     return id;
   }
 
   /** Add a room boundary: divides space into rooms without building a wall. */
-  addBoundary(start: Vec2, end: Vec2): WallId {
-    return this.addWall(start, end, this.eaveHeight() || 2.7, "Plaster", true);
+  addBoundary(start: Vec2, end: Vec2, level = 0): WallId {
+    return this.addWall(start, end, this.storeyHeight(level), "Plaster", true, level);
   }
 
   /** Add walls along a closed loop of corner points (the last point connects back to the first). */
-  addWallLoop(corners: readonly Vec2[], height: number, material: WallMaterial): WallId[] {
-    return corners.map((c, i) => this.addWall(c, corners[(i + 1) % corners.length], height, material));
+  addWallLoop(corners: readonly Vec2[], height: number, material: WallMaterial, level = 0): WallId[] {
+    return corners.map((c, i) => this.addWall(c, corners[(i + 1) % corners.length], height, material, false, level));
+  }
+
+  /** The walls (and room boundaries) of one storey. */
+  wallsOn(level: number): Wall[] {
+    return this.walls.filter((w) => w.level === level);
+  }
+
+  /** The level a wall, opening or label is on. */
+  levelOf(wallId: WallId): number {
+    return this.wall(wallId)?.level ?? 0;
+  }
+
+  addStair(level: number, at: Vec2, facing = 0): StairId {
+    const id = this.freshId();
+    this.stairs.push({ id, level, at, facing });
+    return id;
+  }
+
+  stair(id: StairId): Stair | undefined {
+    return this.stairs.find((s) => s.id === id);
+  }
+
+  removeStair(id: StairId): void {
+    this.stairs = this.stairs.filter((s) => s.id !== id);
+  }
+
+  /** Add an empty storey on top. Returns its level. */
+  addLevel(): number {
+    this.levels += 1;
+    return this.levels - 1;
+  }
+
+  /** Remove the top storey with everything on it, and the stairs leading up to it. */
+  removeTopLevel(): void {
+    if (this.levels <= 1) return;
+    const top = this.levels - 1;
+    for (const w of this.wallsOn(top)) this.removeWall(w.id);
+    this.labels = this.labels.filter((l) => l.level !== top);
+    this.stairs = this.stairs.filter((s) => s.level < top - 1);
+    this.levels -= 1;
   }
 
   /** Remove a wall together with all openings in it. */
@@ -198,9 +276,9 @@ export class House {
     return id;
   }
 
-  addLabel(type: RoomType, at: Vec2): LabelId {
+  addLabel(type: RoomType, at: Vec2, level = 0): LabelId {
     const id = this.freshId();
-    this.labels.push({ id, type, at });
+    this.labels.push({ id, type, at, level });
     return id;
   }
 
@@ -229,20 +307,42 @@ export class House {
     return this.openings.filter((o) => o.wall === wall).sort((a, b) => a.offset - b.offset);
   }
 
-  /** Height of the top of the walls, where the roof sits. */
-  eaveHeight(): number {
-    return this.walls.reduce((m, w) => (w.boundary ? m : Math.max(m, w.height)), 0);
+  /** Height of the walls of a storey above its floor (0 when it has no walls). */
+  eaveHeight(level = 0): number {
+    return this.walls.reduce((m, w) => (w.boundary || w.level !== level ? m : Math.max(m, w.height)), 0);
   }
 
-  /** The outline of the house along the outer wall centerlines, counter-clockwise. */
-  footprint(): Result<Vec2[], FootprintError> {
-    const layout = analyzeLayout(this);
+  /** Floor-to-ceiling height of a storey, assuming the default before walls exist. */
+  storeyHeight(level: number): number {
+    return this.eaveHeight(level) || DEFAULT_WALL_HEIGHT;
+  }
+
+  /** Height of a storey's floor above the ground. */
+  levelBase(level: number): number {
+    let base = 0;
+    for (let k = 0; k < level; k++) base += this.storeyHeight(k) + FLOOR_STRUCTURE;
+    return base;
+  }
+
+  /** The highest storey, where the roof sits. */
+  topLevel(): number {
+    return this.levels - 1;
+  }
+
+  /** The outline of a storey along its outer wall centerlines, counter-clockwise. */
+  footprint(level = 0): Result<Vec2[], FootprintError> {
+    const layout = analyzeLayout(this, level);
     return layout.ok ? { ok: true, value: layout.value.outline } : layout;
   }
 
-  /** Floor area enclosed by the wall centerlines (0 if the walls are not closed). */
-  floorArea(): number {
-    const fp = this.footprint();
+  /** Floor area of one storey, or of all storeys when `level` is omitted (0 where the walls are not closed). */
+  floorArea(level?: number): number {
+    if (level === undefined) {
+      let total = 0;
+      for (let k = 0; k < this.levels; k++) total += this.floorArea(k);
+      return total;
+    }
+    const fp = this.footprint(level);
     return fp.ok ? signedArea(fp.value) : 0;
   }
 
@@ -256,20 +356,25 @@ export class House {
         thickness: w.thickness,
         material: w.material,
         ...(w.boundary ? { boundary: true } : {}),
+        level: w.level,
       })),
       openings: this.openings.map((o) => ({ ...o })),
       roof: this.roof ? { ...this.roof } : null,
-      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON() })),
+      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level })),
+      levels: this.levels,
+      stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       nextId: this.nextId,
     };
   }
 
   static fromJSON(j: HouseJson): House {
     const h = new House();
-    h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false));
+    h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false, w.level ?? 0));
     h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
     h.roof = j.roof ? { ...j.roof } : null;
-    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at) }));
+    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0 }));
+    h.levels = j.levels ?? 1;
+    h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.nextId = j.nextId;
     return h;
   }

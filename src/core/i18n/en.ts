@@ -30,6 +30,8 @@ export const en: Messages = {
   roofMaterial: { Shingles: "Shingles", Metal: "Metal", Tiles: "Tiles" },
   opening: { Window: "Window", Door: "Door", GarageDoor: "Garage door" },
 
+  levelName: (level) => (level === 0 ? "Ground floor" : `Floor ${level + 1}`),
+
   footprint(e) {
     switch (e.kind) {
       case "NoWalls":
@@ -50,7 +52,8 @@ export const en: Messages = {
   },
 
   issue(i) {
-    const room = (r: { type: RoomType | null; area: number }) => `${r.type ? this.rooms[r.type].name : "A room"} (${area(this, r.area)})`;
+    const room = (r: { type: RoomType | null; area: number; level: number }) =>
+      `${r.type ? this.rooms[r.type].name : "A room"} (${area(this, r.area)}${r.level > 0 ? `, ${this.levelName(r.level).toLowerCase()}` : ""})`;
     switch (i.kind) {
       case "WallTooShort":
         return `A wall is shorter than ${meters(this, R.MIN_WALL_LENGTH)}`;
@@ -85,7 +88,20 @@ export const en: Messages = {
       case "GarageDoorNotToGarage":
         return "A garage door must lead from outside into a garage";
       case "Footprint":
-        return `The walls do not form a house: ${this.footprint(i.error)}`;
+        return i.level > 0
+          ? `The walls on ${this.levelName(i.level).toLowerCase()} do not form a storey: ${this.footprint(i.error)}`
+          : `The walls do not form a house: ${this.footprint(i.error)}`;
+      case "EmptyLevel":
+        return `${this.levelName(i.level)} has no walls yet`;
+      case "FloorNotSupported":
+        return `${this.levelName(i.level)} is not fully supported by the floor below; keep it within the outline below`;
+      case "NoStairs":
+        return `No stairs lead up to ${this.levelName(i.level).toLowerCase()}`;
+      case "StairBlocked":
+        return "A staircase is blocked: it must stand inside rooms on both floors, clear of walls";
+      case "StairsToNowhere":
+        return "A staircase leads to a floor that does not exist";
+
       case "TooSmall":
         return `The floor area is below the minimum of ${m2(this, R.MIN_FLOOR_AREA)}`;
       case "NoDoor":
@@ -122,8 +138,15 @@ export const en: Messages = {
       case "rooms": {
         const words = this.rooms[r.room];
         const what = r.count === 1 ? cap(words.one) : `${r.count} ${words.many}`;
-        return r.minArea ? `${what} of at least ${m2(this, r.minArea)}` : what;
+        const where = r.floor === "ground" ? " on the ground floor" : r.floor === "upper" ? " upstairs" : "";
+        return `${what}${r.minArea ? ` of at least ${m2(this, r.minArea)}` : ""}${where}`;
       }
+      case "storeys":
+        if (r.max === 1) return "All on one level";
+        if (r.min !== undefined && r.min === r.max) return `${r.min} storeys`;
+        return r.min !== undefined ? `At least ${r.min} storeys` : `At most ${r.max} storeys`;
+      case "everyFloor":
+        return `${cap(this.rooms[r.room].one)} on every floor`;
       case "floorArea":
         if (r.min !== undefined && r.max !== undefined) return `Floor area between ${m2(this, r.min)} and ${m2(this, r.max)}`;
         return r.min !== undefined ? `Floor area of at least ${m2(this, r.min)}` : `Floor area of at most ${m2(this, r.max ?? 0)}`;
@@ -169,7 +192,7 @@ export const en: Messages = {
     briefTitle: "Read the client's brief again",
     present: "Present to client",
     presentTitle: "Show the design to the client",
-    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door" },
+    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs" },
     undo: "Undo",
     undoTitle: "Undo (Ctrl+Z)",
     redo: "Redo",
@@ -198,6 +221,17 @@ export const en: Messages = {
     boundaryNote: "Divides open-plan space into rooms. Nothing is built here: the rooms on either side are open to each other and share daylight.",
     makeBoundary: "Make it open",
     makeWall: "Make it a wall",
+    floors: "Floors",
+    addFloor: "Add floor",
+    addFloorTitle: "Add a storey on top, starting from the outline of the floor below",
+    removeFloor: "Remove floor",
+    removeFloorTitle: "Remove the top storey and everything on it",
+    stairs: "Stairs",
+    rotate: "Rotate",
+    stairsRoute: (from, to) => `From ${from.toLowerCase()} to ${to.toLowerCase()}`,
+    needFloorAbove: "Add a floor above first: stairs lead up to it.",
+    up: "Up",
+    down: "Down",
     type: "Type",
     width: "Width",
     height: "Height",
@@ -224,6 +258,8 @@ export const en: Messages = {
       doors: "Doors",
       roof: "Roof",
       foundation: "Foundation",
+      floors: "Upper floors",
+      stairs: "Stairs",
       total: "Total",
       budgetLeft: "Budget left",
       overBudget: "Over budget",
@@ -254,6 +290,7 @@ export const en: Messages = {
       boundary: "Draw an open room boundary, like a wall: click corners, start and end on walls. It divides open-plan space into rooms without building anything.",
       window: "Click an exterior wall to add a window.",
       door: "Click a wall to add a door.",
+      stairs: "Click inside a room to place stairs up to the floor above; rotate them in the sidebar.",
     },
     street: "STREET",
     room: "Room",

@@ -62,6 +62,13 @@ look inside.
 | Open | `B` | Draw a room boundary, like a wall but not built: it divides open-plan space into rooms (e.g. kitchen and living room) that are open to each other. Select an interior wall to switch it between wall and open. |
 | Wall | `W` | Click corners. Starting or ending on a wall connects to it (and ends the chain); click the first corner to close a loop. `Enter` or double-click ends an open chain, `Esc` cancels. |
 | Window / Door | `N` / `D` | Click a wall. |
+| Stairs | `S` | Click inside a room to place a straight flight up to the floor above. Rotate it in the sidebar; drag it to move. |
+
+**Floors.** The **Floors** box in the plan switches storeys. **+ Add floor** starts a new
+storey on top with the outline of the one below (up to three); **− Remove floor** removes
+the top one. The floor below shows faintly underneath, and its corners are snap points.
+With the roof hidden (`H`), the 3D view cuts away everything above the floor you are
+editing.
 
 Points snap to a 0.5 m grid, to corners and onto walls; hold `Alt` for 5 cm steps.
 Problem walls, openings and rooms are outlined in red; click an issue in the sidebar to
@@ -98,6 +105,10 @@ feature, and `.devcontainer/post-create-script.sh` runs `npm ci`.
   wall.
 - Rooms have minimum sizes by use (e.g. bedroom 7 m², garage 15 m²), habitable rooms need
   daylight, and every room must be reachable from outside.
+- Upper storeys must rest on the storey below (within its outline), and stairs must
+  lead to them: a staircase stands inside rooms on both floors, clear of walls. Rooms
+  upstairs are reachable only by stairs. The roof sits on the top storey; where a storey
+  is smaller than the one below, the slab below is a flat roof (a terrace).
 - Room boundaries make open plan: rooms on either side count as connected (no door
   needed) and share daylight. Boundaries cost nothing, carry no windows or doors, and
   cannot form the outside of the house.

@@ -13,11 +13,15 @@ import {
   type Opening,
   type Room,
   type RoomAnalysis,
+  type Stair,
   type Wall,
   DEFAULT_OPENING,
   DEFAULT_WALL_HEIGHT,
   DEFAULT_WALL_MATERIAL,
   GRID_STEP,
+  MAX_LEVELS,
+  STAIR_LENGTH,
+  STAIR_WIDTH,
   MIN_WALL_LENGTH,
   OPENING_STEP,
   ROOM_INFO,
@@ -34,6 +38,11 @@ import {
   moveWall,
   nearestWall,
   placeOpening,
+  placeStair,
+  pointInPolygon,
+  snapToGrid,
+  stairDirection,
+  stairOutline,
   roomAt,
   fixed,
   num,
@@ -58,6 +67,7 @@ type Drag =
   | { kind: "wall"; id: number; grab: Vec2; original: { start: Vec2; end: Vec2 }; distance: number }
   | { kind: "opening"; id: number; grab: number }
   | { kind: "label"; id: number; grab: Vec2 }
+  | { kind: "stair"; id: number; grab: Vec2 }
   | { kind: "room"; start: Vec2 };
 
 type Hit =
@@ -65,6 +75,7 @@ type Hit =
   | { kind: "wall"; id: number }
   | { kind: "opening"; id: number }
   | { kind: "label"; id: number; at: Vec2 }
+  | { kind: "stair"; id: number }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -75,6 +86,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export class PlanView {
   private readonly svg: SVGSVGElement;
   private readonly hint: HTMLElement;
+  private readonly levels: HTMLElement;
+  private shownLevel = 0;
   private scale = 20; // pixels per meter
   private center = new Vec2(0, 0);
   private width = 0;
@@ -100,11 +113,14 @@ export class PlanView {
     this.svg.classList.add("plan");
     this.hint = document.createElement("div");
     this.hint.className = "plan-hint";
-    container.append(this.svg, this.hint);
+    this.levels = document.createElement("div");
+    this.levels.className = "level-switch";
+    this.levels.addEventListener("click", (e) => this.levelClick(e));
+    container.append(this.svg, this.hint, this.levels);
 
     this.refresh();
     store.subscribe((change) => {
-      if (change !== "ui") this.refresh();
+      if (change !== "ui" || store.level !== this.shownLevel) this.refresh();
       if (change === "client") this.fit();
       // The chain being drawn belongs to the tool it was started with.
       if (store.tool !== this.draftTool) this.draft = [];
@@ -184,9 +200,25 @@ export class PlanView {
     return this.store.house;
   }
 
+  /** The storey being edited. */
+  private get level(): number {
+    return this.store.level;
+  }
+
+  /** Walls (and room boundaries) of the storey being edited. */
+  private get walls(): Wall[] {
+    return this.house.wallsOn(this.level);
+  }
+
+  /** Stairs that start or arrive on the storey being edited. */
+  private get stairs(): Stair[] {
+    return this.house.stairs.filter((s) => s.level === this.level || s.level + 1 === this.level);
+  }
+
   private refresh(): void {
     const { house, plot, budget, prices } = this.store;
-    const result = analyzeRooms(house);
+    this.shownLevel = this.store.level;
+    const result = analyzeRooms(house, this.level);
     this.analysis = result.ok ? result.value : null;
     this.issues = validate(house, plot, budget, prices);
   }
@@ -205,8 +237,10 @@ export class PlanView {
    */
   private snap(p: Vec2, exclude?: Vec2) {
     const near = (q: Vec2) => !!exclude && q.distance(exclude) < SNAP_EPS;
-    const anchors = [...corners(this.house), ...this.draft].filter((a) => !near(a));
-    const lines = this.house.walls.filter((w) => !near(w.start) && !near(w.end)).map((w) => [w.start, w.end] as const);
+    // The floor below's corners help to stack walls on walls.
+    const below = this.level > 0 ? corners(this.house, this.level - 1) : [];
+    const anchors = [...corners(this.house, this.level), ...below, ...this.draft].filter((a) => !near(a));
+    const lines = this.walls.filter((w) => !near(w.start) && !near(w.end)).map((w) => [w.start, w.end] as const);
     const step = this.freeSnap ? 0.05 : GRID_STEP;
     // When zoomed out, a fixed pixel radius would reach past neighbouring grid points.
     const radius = Math.min(SNAP_PX / this.scale, step * 0.45);
@@ -216,13 +250,13 @@ export class PlanView {
   private hitTest(p: Vec2): Hit {
     const px = 1 / this.scale;
     let corner: Vec2 | null = null;
-    for (const c of corners(this.house)) {
+    for (const c of corners(this.house, this.level)) {
       if (c.distance(p) < (SNAP_PX - 1) * px && (!corner || c.distance(p) < corner.distance(p))) corner = c;
     }
     if (corner) return { kind: "corner", at: corner };
     for (const o of this.house.openings) {
       const wall = this.house.wall(o.wall);
-      if (!wall) continue;
+      if (!wall || wall.level !== this.level) continue;
       const rel = p.sub(wall.start);
       const u = rel.dot(wall.direction());
       const w = rel.dot(leftNormal(wall));
@@ -230,25 +264,28 @@ export class PlanView {
         return { kind: "opening", id: o.id };
       }
     }
-    const hit = nearestWall(this.house, p, 1);
+    const hit = nearestWall(this.house, p, 1, this.level);
     if (hit && hit.distance <= this.thickness(hit.wall) / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
     for (const label of this.house.labels) {
+      if (label.level !== this.level) continue;
       const [sx, sy] = this.toScreen(label.at);
       const [qx, qy] = this.toScreen(p);
       if (Math.abs(qx - sx) < 44 && Math.abs(qy - sy) < 16) return { kind: "label", id: label.id, at: label.at };
     }
+    const stair = this.stairs.find((s) => pointInPolygon(p, stairOutline(s)));
+    if (stair) return { kind: "stair", id: stair.id };
     if (roomAt(this.rooms, p)) return { kind: "room", at: p };
     return null;
   }
 
   /** Height and material for new walls: match the existing walls. */
   private newWallStyle() {
-    const first = this.house.walls[0];
+    const first = this.walls.find((w) => !w.boundary) ?? this.house.walls.find((w) => !w.boundary);
     return { height: first?.height ?? DEFAULT_WALL_HEIGHT, material: first?.material ?? DEFAULT_WALL_MATERIAL };
   }
 
   private openingTarget(p: Vec2) {
-    const hit = nearestWall(this.house, p, Math.max(0.6, 14 / this.scale));
+    const hit = nearestWall(this.house, p, Math.max(0.6, 14 / this.scale), this.level);
     // Windows and doors need a real wall.
     return hit && !hit.wall.boundary ? { wall: hit.wall, offset: hit.offset } : null;
   }
@@ -319,6 +356,9 @@ export class PlanView {
         } else if (hit.kind === "label") {
           store.select({ kind: "room", at: hit.at });
           this.drag = { kind: "label", id: hit.id, grab: p.sub(hit.at) };
+        } else if (hit.kind === "stair") {
+          store.select(hit);
+          this.drag = { kind: "stair", id: hit.id, grab: p.sub(this.house.stair(hit.id)!.at) };
         } else if (hit.kind === "wall") {
           store.select(hit);
           const wall = this.house.wall(hit.id)!;
@@ -338,6 +378,13 @@ export class PlanView {
       case "room":
         this.drag = { kind: "room", start: this.snap(p).point };
         break;
+      case "stairs": {
+        let id: number | null = null;
+        const at = snapToGrid(p, this.freeSnap ? 0.05 : GRID_STEP / 2);
+        store.edit((h) => (id = placeStair(h, this.level, at, 0)));
+        if (id !== null) store.select({ kind: "stair", id });
+        break;
+      }
       case "window":
       case "door": {
         const target = this.openingTarget(p);
@@ -370,7 +417,8 @@ export class PlanView {
       const to = this.snap(p, drag.at).point;
       if (to.distance(drag.at) > 1e-6) {
         const from = drag.at;
-        store.gestureEdit((h) => moveCorner(h, from, to));
+        const level = this.level;
+        store.gestureEdit((h) => moveCorner(h, from, to, level));
         drag.at = to;
       }
     } else if (drag.kind === "wall") {
@@ -397,6 +445,12 @@ export class PlanView {
           drag.grab = grab;
         }
       }
+    } else if (drag.kind === "stair") {
+      const at = snapToGrid(p.sub(drag.grab), this.freeSnap ? 0.05 : GRID_STEP / 2);
+      store.gestureEdit((h) => {
+        const s = h.stair(drag.id);
+        if (s) s.at = at;
+      });
     } else if (drag.kind === "label") {
       const at = p.sub(drag.grab);
       store.gestureEdit((h) => {
@@ -412,7 +466,8 @@ export class PlanView {
     if (drag?.kind === "room" && e.button === 0) {
       const end = this.snap(this.eventPoint(e)).point;
       const { height, material } = this.newWallStyle();
-      this.store.edit((h) => void addRectangle(h, drag.start, end, height, material));
+      const level = this.level;
+      this.store.edit((h) => void addRectangle(h, drag.start, end, height, material, level));
     }
     if (drag?.kind === "label") {
       const label = this.house.label(drag.id);
@@ -448,8 +503,8 @@ export class PlanView {
     const points = this.draft;
     this.draft = [];
     const { height, material } = this.newWallStyle();
-    const boundary = this.store.tool === "boundary";
-    this.store.edit((h) => void addWallChain(h, points, closed, height, material, boundary));
+    const options = { boundary: this.store.tool === "boundary", level: this.level };
+    this.store.edit((h) => void addWallChain(h, points, closed, height, material, options));
   }
 
   // --- Drawing -----------------------------------------------------------------------
@@ -508,6 +563,12 @@ export class PlanView {
     out.push(rect(0, 0, plot.width, plot.depth, "plot-edge"));
     out.push(rect(plot.setback, plot.setback, plot.width - plot.setback, plot.depth - plot.setback, "setback"));
 
+    // The floor below, faintly, to build on.
+    if (this.level > 0) {
+      const below = this.house.wallsOn(this.level - 1).filter((w) => !w.boundary);
+      out.push(`<g class="below">${below.map((w) => `<polyline points="${this.pts([w.start, w.end])}"/>`).join("")}</g>`);
+    }
+
     // Which things have problems.
     const badWalls = new Set<number>();
     const badOpenings = new Set<number>();
@@ -516,7 +577,7 @@ export class PlanView {
       if ("wall" in i) badWalls.add(i.wall);
       if ("opening" in i) badOpenings.add(i.opening);
       if (i.kind === "OpeningsOverlap") [i.a, i.b].forEach((id) => badOpenings.add(id));
-      if ("room" in i) {
+      if ("room" in i && i.room.level === this.level) {
         const r = roomAt(this.rooms, i.room.at);
         if (r) badRooms.add(r);
       }
@@ -525,7 +586,7 @@ export class PlanView {
     const hoverRoom = this.hover?.kind === "room" || this.hover?.kind === "label" ? roomAt(this.rooms, this.hover.at) : undefined;
 
     // Room floors.
-    const fp = house.footprint();
+    const fp = house.footprint(this.level);
     if (fp.ok) out.push(`<polygon class="floor" points="${this.pts(fp.value)}"/>`);
     for (const room of this.rooms) {
       const fill = room.type ? ROOM_INFO[room.type].color : "#f7f3ea";
@@ -536,7 +597,7 @@ export class PlanView {
     // Walls, then openings cut into them.
     const hoverId = (kind: string) => (this.hover?.kind === kind ? (this.hover as { id: number }).id : null);
     const selId = (kind: string) => (selection?.kind === kind ? (selection as { id: number }).id : null);
-    for (const wall of house.walls) {
+    for (const wall of this.walls) {
       const exterior = !this.analysis || this.analysis.layout.exterior.has(wall.id);
       const cls = ["wall", badWalls.has(wall.id) && "bad", hoverId("wall") === wall.id && "hover", selId("wall") === wall.id && "selected"];
       if (wall.boundary) {
@@ -549,11 +610,18 @@ export class PlanView {
     }
     for (const o of house.openings) {
       const wall = house.wall(o.wall);
-      if (!wall) continue;
+      if (!wall || wall.level !== this.level) continue;
       const state = [badOpenings.has(o.id) && "bad", hoverId("opening") === o.id && "hover", selId("opening") === o.id && "selected"];
       out.push(this.openingSymbol(house, wall, o.kind, o.left(), o.right(), state.filter(Boolean).join(" ")));
     }
     if (selectedRoom) out.push(`<polygon class="room-selected" points="${this.pts(selectedRoom.polygon)}"/>`);
+
+    // Stairs: going up from this storey, or arriving from the one below.
+    const badStairs = new Set(this.issues.flatMap((i) => ("stair" in i ? [i.stair] : [])));
+    for (const s of this.stairs) {
+      const state = [badStairs.has(s.id) && "bad", hoverId("stair") === s.id && "hover", selId("stair") === s.id && "selected"];
+      out.push(this.stairSymbol(s, s.level === this.level, state.filter(Boolean).join(" ")));
+    }
 
     // Room names and areas, shortened to fit small rooms.
     for (const room of this.rooms) {
@@ -573,7 +641,7 @@ export class PlanView {
 
     // Wall lengths, outside exterior walls.
     if (this.scale >= 10 && this.analysis) {
-      for (const wall of house.walls) {
+      for (const wall of this.walls) {
         if (!this.analysis.layout.exterior.has(wall.id) || wall.length() * this.scale < 36) continue;
         const out_ = interiorNormal(house, wall).neg();
         const mid = wall.start.add(wall.end).scale(0.5).add(out_.scale(wall.thickness / 2 + 12 / this.scale));
@@ -584,7 +652,7 @@ export class PlanView {
     // Corner handles.
     if (tool === "select" || drawsWalls(tool)) {
       const active = this.drag?.kind === "corner" ? this.drag.at : this.hover?.kind === "corner" ? this.hover.at : null;
-      for (const c of corners(house)) {
+      for (const c of corners(house, this.level)) {
         const [x, y] = this.toScreen(c);
         const on = active && active.distance(c) < 1e-6;
         out.push(`<circle class="handle${on ? " active" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${on ? 6 : 4}"/>`);
@@ -595,7 +663,51 @@ export class PlanView {
     this.svg.innerHTML = out.join("");
     this.svg.dataset.tool = tool;
     this.svg.classList.toggle("dragging", this.drag?.kind === "pan" || this.drag?.kind === "label");
-    this.hint.textContent = m.ui.hints[tool];
+    this.hint.textContent = tool === "stairs" && this.level + 1 >= house.levels ? m.ui.needFloorAbove : m.ui.hints[tool];
+    this.renderLevels();
+  }
+
+  /** The floor switcher: one button per storey, plus adding and removing storeys. */
+  private renderLevels(): void {
+    const { house, level } = this.store;
+    const buttons = Array.from({ length: house.levels }, (_, k) => house.levels - 1 - k).map(
+      (k) => `<button type="button" data-level="${k}" class="${k === level ? "active" : ""}">${esc(m.levelName(k))}</button>`,
+    );
+    const add = house.levels < MAX_LEVELS ? `<button type="button" data-action="add" title="${esc(m.ui.addFloorTitle)}">+ ${esc(m.ui.addFloor)}</button>` : "";
+    const remove = house.levels > 1 ? `<button type="button" data-action="remove" title="${esc(m.ui.removeFloorTitle)}">− ${esc(m.ui.removeFloor)}</button>` : "";
+    const html = `<div class="label">${esc(m.ui.floors)}</div>${add}${buttons.join("")}${remove}`;
+    if (this.levels.innerHTML !== html) this.levels.innerHTML = html;
+  }
+
+  private levelClick(e: Event): void {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (!b) return;
+    if (b.dataset.level) this.store.setLevel(Number(b.dataset.level));
+    else if (b.dataset.action === "add") this.store.addFloor();
+    else if (b.dataset.action === "remove") this.store.removeTopFloor();
+  }
+
+  /** A flight of stairs: treads, and an arrow pointing up (from below) or down (from above). */
+  private stairSymbol(s: Stair, goingUp: boolean, state: string): string {
+    const outline = stairOutline(s);
+    const d = stairDirection(s);
+    const start = s.at.sub(d.scale(STAIR_LENGTH / 2));
+    const n = new Vec2(-d.y, d.x).scale(STAIR_WIDTH / 2);
+    const steps = 14;
+    const treads: string[] = [];
+    for (let i = 1; i < steps; i++) {
+      const c = start.add(d.scale((STAIR_LENGTH * i) / steps));
+      treads.push(`<polyline points="${this.pts([c.sub(n), c.add(n)])}"/>`);
+    }
+    const tail = s.at.sub(d.scale(STAIR_LENGTH * 0.35));
+    const head = s.at.add(d.scale(STAIR_LENGTH * 0.35));
+    const [from, to] = goingUp ? [tail, head] : [head, tail];
+    const back = to.sub(from).normalize().scale(0.3);
+    const side = new Vec2(-back.y, back.x);
+    const arrow = `<polyline class="arrow" points="${this.pts([from, to])}"/><polyline class="arrow" points="${this.pts([to.sub(back).add(side), to, to.sub(back).sub(side)])}"/>`;
+    const [lx, ly] = this.toScreen(from.sub(d.scale(goingUp ? 0.35 : -0.35)));
+    const word = `<text class="stair-word" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}">${esc(goingUp ? m.ui.up : m.ui.down)}</text>`;
+    return `<g class="stair ${goingUp ? "up" : "down"} ${state}"><polygon points="${this.pts(outline)}"/>${treads.join("")}${arrow}${word}</g>`;
   }
 
   /** The wall's footprint rectangle, extended by half its thickness at both ends. */

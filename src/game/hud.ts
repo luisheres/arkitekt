@@ -15,13 +15,27 @@ function issueTarget(i: Issue): Selection {
   if ("opening" in i) return { kind: "opening", id: i.opening };
   if (i.kind === "OpeningsOverlap") return { kind: "opening", id: i.b };
   if ("room" in i) return { kind: "room", at: i.room.at };
+  if ("stair" in i) return { kind: "stair", id: i.stair };
   return null;
 }
 
-function targetAttrs(t: Selection): string {
-  if (!t) return "";
+/** The storey the thing an issue is about is on, so clicking it can switch to that storey. */
+function issueLevel(i: Issue, store: Store): number | null {
+  if ("room" in i) return i.room.level;
+  if ("wall" in i) return store.house.wall(i.wall)?.level ?? null;
+  if ("opening" in i) return store.house.levelOf(store.house.opening(i.opening)?.wall ?? -1);
+  if ("stair" in i) return store.house.stair(i.stair)?.level ?? null;
+  if ("level" in i) return i.level;
+  return null;
+}
+
+function targetAttrs(i: Issue, store: Store): string {
+  const t = issueTarget(i);
+  const level = issueLevel(i, store);
+  const levelAttr = level !== null ? ` data-level="${level}"` : "";
+  if (!t) return level ? `${levelAttr} tabindex="0"` : "";
   const data = t.kind === "room" ? `data-x="${t.at.x}" data-y="${t.at.y}"` : `data-id="${t.id}"`;
-  return ` data-kind="${t.kind}" ${data} tabindex="0"`;
+  return ` data-kind="${t.kind}" ${data}${levelAttr} tabindex="0"`;
 }
 
 /** Live checklist of the client's must-haves and wishes. */
@@ -56,13 +70,15 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${row(rows.doors, cost.doors)}
       ${row(rows.roof, cost.roof)}
       ${row(rows.foundation, cost.foundation)}
+      ${cost.floors ? row(rows.floors, cost.floors) : ""}
+      ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
       ${row(rows.total, total, "total")}
       ${row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over")}
     </table>
     ${
       issues.length
         ? `<div class="bad">${esc(m.ui.buildingProblems)}</div><ul class="issues">${issues
-            .map((i) => `<li${targetAttrs(issueTarget(i))}>${esc(m.issue(i))}</li>`)
+            .map((i) => `<li${targetAttrs(i, store)}>${esc(m.issue(i))}</li>`)
             .join("")}</ul>`
         : `<div class="ok">${esc(m.ui.noBuildingProblems)}</div>`
     }`;

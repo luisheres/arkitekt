@@ -5,7 +5,8 @@
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
-import { House, type LabelId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
+import { analyzeLayout } from "./layout";
+import { House, type LabelId, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { analyzeRooms, roomAt } from "./rooms";
 import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./rules";
 
@@ -14,7 +15,6 @@ export const GRID_STEP = 0.5;
 /** Spacing for sliding openings along a wall, in meters. */
 export const OPENING_STEP = 0.05;
 
-export const DEFAULT_WALL_HEIGHT = 2.7;
 export const DEFAULT_WALL_MATERIAL: WallMaterial = "Plaster";
 
 /** Default sizes for new openings. */
@@ -30,10 +30,10 @@ export function snapToGrid(p: Vec2, step: number): Vec2 {
   return new Vec2(roundTo(p.x, step), roundTo(p.y, step));
 }
 
-/** The distinct wall endpoints of the house. */
-export function corners(house: House): Vec2[] {
+/** The distinct wall endpoints of one storey. */
+export function corners(house: House, level = 0): Vec2[] {
   const out: Vec2[] = [];
-  for (const w of house.walls) {
+  for (const w of house.wallsOn(level)) {
     for (const p of [w.start, w.end]) {
       if (!out.some((q) => q.distance(p) < SNAP_EPS)) out.push(p);
     }
@@ -84,7 +84,7 @@ export function snapPoint(p: Vec2, anchors: readonly Vec2[], radius: number, ste
 function attachedPoints(house: House, wall: Wall): Vec2[] {
   const out: Vec2[] = [];
   const len = wall.length();
-  for (const other of house.walls) {
+  for (const other of house.wallsOn(wall.level)) {
     if (other === wall) continue;
     for (const p of [other.start, other.end]) {
       const t = projectOntoSegment(p, wall.start, wall.end);
@@ -95,8 +95,8 @@ function attachedPoints(house: House, wall: Wall): Vec2[] {
   return out;
 }
 
-function moveEndsAt(house: House, from: Vec2, to: Vec2): void {
-  for (const w of house.walls) {
+function moveEndsAt(house: House, from: Vec2, to: Vec2, level: number): void {
+  for (const w of house.wallsOn(level)) {
     if (w.start.distance(from) < SNAP_EPS) w.start = to;
     if (w.end.distance(from) < SNAP_EPS) w.end = to;
   }
@@ -107,9 +107,9 @@ function moveEndsAt(house: House, from: Vec2, to: Vec2): void {
  * on a moved wall (T-junctions) stay attached: they keep their distance from the wall
  * end that did not move, or shift along when the whole wall moves.
  */
-export function moveCorners(house: House, moves: readonly { from: Vec2; to: Vec2 }[]): void {
+export function moveCorners(house: House, moves: readonly { from: Vec2; to: Vec2 }[], level = 0, depth = 0): void {
   const moved = (p: Vec2) => moves.find((m) => m.from.distance(p) < SNAP_EPS);
-  const touched = house.walls.filter((w) => moved(w.start) || moved(w.end));
+  const touched = house.wallsOn(level).filter((w) => moved(w.start) || moved(w.end));
   const keep = touched.map((w) => {
     const [ms, me] = [moved(w.start), moved(w.end)];
     const len = w.length();
@@ -127,18 +127,18 @@ export function moveCorners(house: House, moves: readonly { from: Vec2; to: Vec2
       };
     });
   });
-  for (const m of moves) moveEndsAt(house, m.from, m.to);
-  touched.forEach((w, i) => {
-    for (const place of keep[i]) {
-      const [from, to] = place(w.start, w.end);
-      moveEndsAt(house, from, to);
-    }
-  });
+  for (const m of moves) moveEndsAt(house, m.from, m.to, level);
+  // Walls attached to the moved walls follow, and so on down the chain of attachments.
+  const follow = touched.flatMap((w, i) => keep[i].map((place) => place(w.start, w.end))).map(([from, to]) => ({ from, to }));
+  const real = follow.filter((m) => m.from.distance(m.to) > 1e-9);
+  if (real.length === 0) return;
+  if (depth < 6) moveCorners(house, real, level, depth + 1);
+  else for (const m of real) moveEndsAt(house, m.from, m.to, level);
 }
 
-/** Move every wall end at `from` to `to`. */
-export function moveCorner(house: House, from: Vec2, to: Vec2): void {
-  moveCorners(house, [{ from, to }]);
+/** Move every wall end at `from` (on `level`) to `to`. */
+export function moveCorner(house: House, from: Vec2, to: Vec2, level = 0): void {
+  moveCorners(house, [{ from, to }], level);
 }
 
 /**
@@ -149,10 +149,14 @@ export function moveWall(house: House, id: WallId, original: { start: Vec2; end:
   const wall = house.wall(id);
   if (!wall) return;
   const shift = leftNormal(wall).scale(distance);
-  moveCorners(house, [
-    { from: wall.start, to: original.start.add(shift) },
-    { from: wall.end, to: original.end.add(shift) },
-  ]);
+  moveCorners(
+    house,
+    [
+      { from: wall.start, to: original.start.add(shift) },
+      { from: wall.end, to: original.end.add(shift) },
+    ],
+    wall.level,
+  );
 }
 
 /** Unit normal pointing to the left of the wall's direction (plan coordinates). */
@@ -164,7 +168,7 @@ export function leftNormal(wall: Wall): Vec2 {
 /** Unit normal pointing into the house, or the left normal when that is unclear. */
 export function interiorNormal(house: House, wall: Wall): Vec2 {
   const n = leftNormal(wall);
-  const fp = house.footprint();
+  const fp = house.footprint(wall.level);
   if (!fp.ok) return n;
   const mid = wall.start.add(wall.end).scale(0.5);
   return pointInPolygon(mid.add(n.scale(wall.thickness)), fp.value) ? n : n.neg();
@@ -179,9 +183,9 @@ export interface WallHit {
 }
 
 /** The wall whose centerline is closest to `p`, if within `maxDistance`. */
-export function nearestWall(house: House, p: Vec2, maxDistance: number): WallHit | null {
+export function nearestWall(house: House, p: Vec2, maxDistance: number, level = 0): WallHit | null {
   let best: WallHit | null = null;
-  for (const wall of house.walls) {
+  for (const wall of house.wallsOn(level)) {
     const offset = projectOntoSegment(p, wall.start, wall.end);
     const distance = wall.start.add(wall.direction().scale(offset)).distance(p);
     if (distance <= maxDistance && (!best || distance < best.distance)) best = { wall, offset, distance };
@@ -218,13 +222,19 @@ export function placeOpening(house: House, wallId: WallId, kind: OpeningKind, of
  * Add a wall from `a` to `b`, leaving out the stretches already covered by existing walls
  * on the same line, so walls can be traced along existing ones without doubling up.
  */
-export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial, boundary = false): WallId[] {
+/** Where new walls go: on which storey, and whether they are room boundaries. */
+export interface WallOptions {
+  level?: number;
+  boundary?: boolean;
+}
+
+export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial, { level = 0, boundary = false }: WallOptions = {}): WallId[] {
   const len = a.distance(b);
   if (len < SNAP_EPS) return [];
   const d = b.sub(a).scale(1 / len);
   const n = new Vec2(-d.y, d.x);
   const covered: [number, number][] = [];
-  for (const w of house.walls) {
+  for (const w of house.wallsOn(level)) {
     if (Math.abs(w.direction().cross(d)) > 1e-6) continue;
     if (Math.abs(w.start.sub(a).dot(n)) > SNAP_EPS) continue;
     const [t0, t1] = [w.start.sub(a).dot(d), w.end.sub(a).dot(d)].sort((x, y) => x - y);
@@ -234,7 +244,7 @@ export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, m
   const ids: WallId[] = [];
   let cursor = 0;
   const add = (from: number, to: number) => {
-    if (to - from > SNAP_EPS) ids.push(house.addWall(a.add(d.scale(from)), a.add(d.scale(to)), height, material, boundary));
+    if (to - from > SNAP_EPS) ids.push(house.addWall(a.add(d.scale(from)), a.add(d.scale(to)), height, material, boundary, level));
   };
   for (const [t0, t1] of covered) {
     add(cursor, t0);
@@ -251,11 +261,11 @@ export function addWallChain(
   closed: boolean,
   height: number,
   material: WallMaterial,
-  boundary = false,
+  options: WallOptions = {},
 ): WallId[] {
   const ids: WallId[] = [];
   const n = closed ? points.length : points.length - 1;
-  for (let i = 0; i < n; i++) ids.push(...addWallClipped(house, points[i], points[(i + 1) % points.length], height, material, boundary));
+  for (let i = 0; i < n; i++) ids.push(...addWallClipped(house, points[i], points[(i + 1) % points.length], height, material, options));
   return ids;
 }
 
@@ -264,19 +274,19 @@ export function addWallChain(
  * the street, at low y). Sides that run along existing walls are not doubled. Returns
  * null when a side would be shorter than a wall may be.
  */
-export function addRectangle(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial): WallId[] | null {
+export function addRectangle(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial, level = 0): WallId[] | null {
   const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
   const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
   if (x1 - x0 < MIN_WALL_LENGTH || y1 - y0 < MIN_WALL_LENGTH) return null;
-  return addWallChain(house, [new Vec2(x0, y0), new Vec2(x1, y0), new Vec2(x1, y1), new Vec2(x0, y1)], true, height, material);
+  return addWallChain(house, [new Vec2(x0, y0), new Vec2(x1, y0), new Vec2(x1, y1), new Vec2(x0, y1)], true, height, material, { level });
 }
 
 /**
  * Say what the room containing `at` is used for (null clears it). Reuses the room's
  * existing label, so the label stays where the player put it.
  */
-export function setRoomType(house: House, at: Vec2, type: RoomType | null): LabelId | null {
-  const analysis = analyzeRooms(house);
+export function setRoomType(house: House, at: Vec2, type: RoomType | null, level = 0): LabelId | null {
+  const analysis = analyzeRooms(house, level);
   if (!analysis.ok) return null;
   const room = roomAt(analysis.value.rooms, at);
   if (!room) return null;
@@ -290,5 +300,30 @@ export function setRoomType(house: House, at: Vec2, type: RoomType | null): Labe
     first.type = type;
     return first.id;
   }
-  return house.addLabel(type, room.anchor);
+  return house.addLabel(type, room.anchor, level);
+}
+
+/**
+ * Start a new storey on top of the house, with exterior walls along the outline of the
+ * storey below (same height and material), ready to be divided into rooms.
+ */
+export function addStoreyAbove(house: House): number {
+  const below = house.topLevel();
+  const level = house.addLevel();
+  const layout = analyzeLayout(house, below);
+  if (layout.ok) {
+    for (const w of house.wallsOn(below)) {
+      if (layout.value.exterior.has(w.id)) house.addWall(w.start, w.end, w.height, w.material, false, level);
+    }
+  }
+  return level;
+}
+
+/**
+ * Put a flight of stairs on `level` centered at `at`, climbing in `facing` (quarter
+ * turns). Returns null when there is no storey above for it to lead to.
+ */
+export function placeStair(house: House, level: number, at: Vec2, facing = 0): StairId | null {
+  if (level + 1 >= house.levels) return null;
+  return house.addStair(level, at, facing);
 }

@@ -82,9 +82,11 @@ class PlanRect {
 export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
   const roof = house.roof;
   if (!roof) return err({ kind: "NoRoof" });
-  const fp = house.footprint();
+  // The roof sits on the top storey.
+  const top = house.topLevel();
+  const fp = house.footprint(top);
   if (!fp.ok) return err({ kind: "Footprint", error: fp.error });
-  const eave = house.eaveHeight();
+  const eave = house.levelBase(top) + house.eaveHeight(top);
   const halfThickness = house.walls.reduce((m, w) => Math.max(m, w.thickness), 0) * 0.5;
   if (roof.style === "Flat") {
     return ok(flatRoof(offsetPolygon(fp.value, halfThickness + FLAT_ROOF_LIP), eave));
@@ -92,6 +94,18 @@ export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
   const rect = PlanRect.fromPolygon(fp.value);
   if (!rect) return err({ kind: "NeedsRectangle", style: roof.style });
   return ok(pitchedRoof(rect, eave, halfThickness, roof));
+}
+
+/**
+ * The outline of the floor slab on top of a storey that has another storey above it:
+ * the storey's outline grown to cover its walls. Where the storey above is smaller, the
+ * slab is a flat roof (a terrace).
+ */
+export function slabOutline(house: House, level: number): Vec2[] | null {
+  const fp = house.footprint(level);
+  if (!fp.ok) return null;
+  const halfThickness = house.wallsOn(level).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) * 0.5;
+  return offsetPolygon(fp.value, halfThickness);
 }
 
 /** A slab on top of the walls covering `outline` (the footprint grown past the walls). */

@@ -74,9 +74,9 @@ function crossing(p1: Vec2, p2: Vec2, q1: Vec2, q2: Vec2): Vec2 | null {
   return t > e && t < 1 - e && u > e && u < 1 - e ? p1.add(r.scale(t)) : null;
 }
 
-/** Analyze the walls of a house. Fails when they do not enclose a single connected area. */
-export function analyzeLayout(house: House): Result<Layout, FootprintError> {
-  const walls = house.walls.filter((w) => w.length() > SNAP_EPS);
+/** Analyze the walls of one storey. Fails when they do not enclose a single connected area. */
+export function analyzeLayout(house: House, level = 0): Result<Layout, FootprintError> {
+  const walls = house.walls.filter((w) => w.level === level && w.length() > SNAP_EPS);
   if (walls.length === 0) return err({ kind: "NoWalls" });
 
   // Shared vertices: wall ends within SNAP_EPS of each other are one point.
