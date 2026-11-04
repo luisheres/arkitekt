@@ -75,14 +75,14 @@ function planks(p: Painter, width: number, length: number, hue: number, sat: num
     const w = PX / pieces;
     const shift = joints ? (r % 3) * (w / 3) : 0;
     for (let k = -1; k < pieces; k++) {
-      ctx.fillStyle = jitter(rnd, hue + (rnd() - 0.5) * 6, sat, light, 6);
+      ctx.fillStyle = jitter(rnd, hue + (rnd() - 0.5) * 4, sat, light, 4);
       ctx.fillRect(k * w + shift, r * h, w, h);
       ctx.fillStyle = "rgba(40, 25, 10, 0.55)";
       if (joints) ctx.fillRect(k * w + shift, r * h, 1.5, h);
     }
-    grain(p, r * h, h, 0.25);
-    ctx.fillStyle = "rgba(30, 18, 8, 0.6)";
-    ctx.fillRect(0, r * h, PX, 1.5);
+    grain(p, r * h, h, 0.12);
+    ctx.fillStyle = "rgba(60, 30, 10, 0.75)";
+    ctx.fillRect(0, r * h, PX, 2.5);
   }
 }
 
@@ -114,14 +114,14 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
   return cached(`wall:${m}`, () => {
     switch (m) {
       case "Wood": // horizontal weatherboards, natural
-        return paint(2.4, 1, (p) => planks(p, 0.16, 6, 28, 45, 42, false));
+        return paint(2.4, 1, (p) => planks(p, 0.2, 6, 32, 62, 55, false));
       case "FaluRed": // vertical board-and-batten in Falu red
         return paint(2.4, 2, (p) => {
           const { ctx, rnd, px } = p;
           const boards = Math.round(PX / px(0.2));
           const w = PX / boards;
           for (let i = 0; i < boards; i++) {
-            ctx.fillStyle = jitter(rnd, 6, 62, 32, 3);
+            ctx.fillStyle = jitter(rnd, 4, 70, 40, 2);
             ctx.fillRect(i * w, 0, w, PX);
           }
           ctx.save();
@@ -132,24 +132,24 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
           for (let i = 0; i < boards; i++) {
             ctx.fillStyle = "rgba(40, 8, 4, 0.55)";
             ctx.fillRect(i * w - 2, 0, 3, PX);
-            ctx.fillStyle = jitter(rnd, 6, 60, 29, 2);
+            ctx.fillStyle = jitter(rnd, 4, 66, 35, 1);
             ctx.fillRect(i * w - px(0.025), 0, px(0.05), PX); // batten
             ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
             ctx.fillRect(i * w - px(0.025), 0, 2, PX);
           }
         });
       case "Brick":
-        return paint(1.2, 3, (p) => bond(p, 0.215, 0.065, 0.012, "#cbc3b4", () => jitter(p.rnd, 12, 52, 36, 6)));
+        return paint(1.6, 3, (p) => bond(p, 0.3, 0.1, 0.02, "#f1e6d2", () => jitter(p.rnd, 10, 62, 47, 5)));
       case "Plaster":
         return paint(2, 4, (p) => {
-          p.ctx.fillStyle = "#ece4d4";
+          p.ctx.fillStyle = "#fbefd2";
           p.ctx.fillRect(0, 0, PX, PX);
-          speckle(p, 9000, () => `rgba(${p.rnd() < 0.5 ? "120,105,85" : "255,255,255"}, 0.12)`, 2);
+          speckle(p, 1500, () => "rgba(200,170,120,0.12)", 3);
         });
       case "Stone":
         return paint(2.4, 5, (p) => {
           const { ctx, rnd, px } = p;
-          ctx.fillStyle = "#8f877a";
+          ctx.fillStyle = "#6f7480";
           ctx.fillRect(0, 0, PX, PX);
           let y = 0;
           while (y < PX) {
@@ -157,7 +157,7 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
             let x = -rnd() * px(0.3);
             while (x < PX) {
               const w = px(0.28 + rnd() * 0.35);
-              ctx.fillStyle = jitter(rnd, 35 + rnd() * 15, 10, 62, 10);
+              ctx.fillStyle = jitter(rnd, 30 + rnd() * 190, 14, 74, 6);
               ctx.beginPath();
               ctx.roundRect(x + 3, y + 3, w - 6, Math.min(h, PX - y) - 6, 8);
               ctx.fill();
@@ -174,9 +174,8 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
 export function interiorTexture(): THREE.Texture {
   return cached("interior", () =>
     paint(2, 6, (p) => {
-      p.ctx.fillStyle = "#f3f0ea";
+      p.ctx.fillStyle = "#fff8ec";
       p.ctx.fillRect(0, 0, PX, PX);
-      speckle(p, 4000, () => "rgba(150,140,125,0.07)", 2);
     }),
   );
 }
@@ -185,14 +184,14 @@ export function floorTexture(f: FloorFinish): THREE.Texture {
   return cached(`floor:${f}`, () => {
     switch (f) {
       case "Wood":
-        return paint(2.4, 11, (p) => planks(p, 0.14, 1.1, 32, 55, 52, true));
+        return paint(2.4, 11, (p) => planks(p, 0.2, 1.2, 30, 65, 58, true));
       case "Laminate":
-        return paint(2.4, 12, (p) => planks(p, 0.19, 1.3, 36, 30, 66, true));
+        return paint(2.4, 12, (p) => planks(p, 0.22, 1.4, 38, 45, 75, true));
       case "Tiles":
-        return paint(1.2, 13, (p) => bond(p, 0.3, 0.3, 0.006, "#a7a49d", () => jitter(p.rnd, 40, 8, 88, 2)));
+        return paint(1.6, 13, (p) => bond(p, 0.38, 0.38, 0.025, "#8fb3c9", () => jitter(p.rnd, 195, 40, 92, 2)));
       case "Stone":
         return paint(2.4, 14, (p) => {
-          bond(p, 0.6, 0.6, 0.008, "#6f6c66", () => jitter(p.rnd, 210, 5, 52, 6));
+          bond(p, 0.6, 0.6, 0.02, "#7d7a74", () => jitter(p.rnd, 30, 12, 72, 6));
           for (let i = 0; i < 40; i++) {
             p.ctx.strokeStyle = "rgba(255,255,255,0.12)";
             p.ctx.beginPath();
@@ -203,13 +202,13 @@ export function floorTexture(f: FloorFinish): THREE.Texture {
         });
       case "Carpet":
         return paint(1, 15, (p) => {
-          p.ctx.fillStyle = "#8b8478";
+          p.ctx.fillStyle = "#e8a46f";
           p.ctx.fillRect(0, 0, PX, PX);
-          speckle(p, 30000, () => jitter(p.rnd, 35, 12, 50, 10), 2);
+          speckle(p, 6000, () => jitter(p.rnd, 22, 70, 62, 6), 3);
         });
       case "Concrete":
         return paint(3, 16, (p) => {
-          p.ctx.fillStyle = "#9c9a95";
+          p.ctx.fillStyle = "#c2c4c8";
           p.ctx.fillRect(0, 0, PX, PX);
           for (let i = 0; i < 60; i++) {
             p.ctx.fillStyle = `rgba(${p.rnd() < 0.5 ? "60,58,55" : "230,228,222"}, 0.05)`;
@@ -217,7 +216,7 @@ export function floorTexture(f: FloorFinish): THREE.Texture {
             p.ctx.arc(p.rnd() * PX, p.rnd() * PX, 20 + p.rnd() * 60, 0, Math.PI * 2);
             p.ctx.fill();
           }
-          speckle(p, 8000, () => "rgba(50,50,50,0.12)", 1.5);
+          speckle(p, 1500, () => "rgba(80,80,90,0.15)", 3);
         });
     }
   });
@@ -235,13 +234,13 @@ export function roofTexture(r: RoofMaterial): THREE.Texture {
           const tab = PX / Math.round(PX / px(0.33));
           for (let r2 = 0; r2 < rows; r2++) {
             for (let x = -tab; x < PX; x += tab) {
-              ctx.fillStyle = jitter(rnd, 220, 6, 26, 5);
+              ctx.fillStyle = jitter(rnd, 215, 38, 42, 4);
               ctx.fillRect(x + (r2 % 2) * (tab / 2), r2 * h, tab - 2, h);
             }
             ctx.fillStyle = "rgba(0,0,0,0.45)";
             ctx.fillRect(0, r2 * h + h - 3, PX, 3);
           }
-          speckle(p, 6000, () => "rgba(255,255,255,0.06)", 2);
+
         });
       case "Metal":
         return paint(2, 22, (p) => {
@@ -250,12 +249,12 @@ export function roofTexture(r: RoofMaterial): THREE.Texture {
           const w = PX / seams;
           for (let i = 0; i < seams; i++) {
             const g = ctx.createLinearGradient(i * w, 0, (i + 1) * w, 0);
-            g.addColorStop(0, "#5d6872");
-            g.addColorStop(0.5, "#75818b");
-            g.addColorStop(1, "#5a646e");
+            g.addColorStop(0, "#2f8f86");
+            g.addColorStop(0.5, "#3fb3a6");
+            g.addColorStop(1, "#2c8a80");
             ctx.fillStyle = g;
             ctx.fillRect(i * w, 0, w, PX);
-            ctx.fillStyle = "#9aa6b0";
+            ctx.fillStyle = "#9fe3d9";
             ctx.fillRect(i * w, 0, 3, PX);
             ctx.fillStyle = "rgba(0,0,0,0.35)";
             ctx.fillRect(i * w + 3, 0, 2, PX);
@@ -271,9 +270,9 @@ export function roofTexture(r: RoofMaterial): THREE.Texture {
             for (let c = 0; c < cols; c++) {
               const g = ctx.createLinearGradient(c * w, 0, (c + 1) * w, 0);
               const base = 18 + (rnd() - 0.5) * 6;
-              g.addColorStop(0, `hsl(${base} 55% 28%)`);
-              g.addColorStop(0.45, `hsl(${base} 60% 44%)`);
-              g.addColorStop(1, `hsl(${base} 55% 26%)`);
+              g.addColorStop(0, `hsl(${base} 72% 40%)`);
+              g.addColorStop(0.45, `hsl(${base} 80% 56%)`);
+              g.addColorStop(1, `hsl(${base} 72% 38%)`);
               ctx.fillStyle = g;
               ctx.fillRect(c * w, r2 * h, w, h);
             }
@@ -290,27 +289,67 @@ export function groundTexture(kind: "grass" | "lawn" | "asphalt" | "wood"): THRE
     if (kind === "wood") return paint(2.4, 31, (p) => planks(p, 0.2, 1.2, 30, 45, 45, true));
     if (kind === "asphalt")
       return paint(4, 32, (p) => {
-        p.ctx.fillStyle = "#4f5054";
+        p.ctx.fillStyle = "#6a7180";
         p.ctx.fillRect(0, 0, PX, PX);
-        speckle(p, 30000, () => jitter(p.rnd, 220, 4, 34, 12), 2);
+        speckle(p, 4000, () => jitter(p.rnd, 220, 10, 46, 8), 3);
       });
-    const [l, seed] = kind === "lawn" ? [42, 33] : [36, 34];
-    return paint(4, seed, (p) => {
-      p.ctx.fillStyle = `hsl(95 38% ${l}%)`;
+    if (kind === "lawn")
+      // A mowed lawn: light and dark stripes.
+      return paint(4, 33, (p) => {
+        for (let i = 0; i < 8; i++) {
+          p.ctx.fillStyle = i % 2 ? "hsl(100 55% 50%)" : "hsl(99 56% 47%)";
+          p.ctx.fillRect(0, (i * PX) / 8, PX, PX / 8);
+        }
+        speckle(p, 2500, () => jitter(p.rnd, 95, 60, 40, 6), 3);
+      });
+    return paint(6, 34, (p) => {
+      p.ctx.fillStyle = "hsl(98 52% 46%)";
       p.ctx.fillRect(0, 0, PX, PX);
-      speckle(p, 40000, () => jitter(p.rnd, 85 + p.rnd() * 25, 45, l, 10), 2);
+      // Soft tufts.
+      for (let i = 0; i < 160; i++) {
+        p.ctx.fillStyle = `hsla(${88 + p.rnd() * 20} 60% ${38 + p.rnd() * 14}% / 0.5)`;
+        p.ctx.beginPath();
+        p.ctx.ellipse(p.rnd() * PX, p.rnd() * PX, 6 + p.rnd() * 10, 3 + p.rnd() * 5, 0, 0, Math.PI * 2);
+        p.ctx.fill();
+      }
     });
   });
 }
 
 /**
- * A standard material drawing `texture` in world space: walls by their horizontal
+ * Cel shading: light falls off in three flat bands instead of a smooth gradient, which,
+ * with outlines and saturated colours, gives the game its cartoon look.
+ */
+const GRADIENT = (() => {
+  const tex = new THREE.DataTexture(new Uint8Array([90, 175, 255]), 3, 1, THREE.RedFormat);
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+})();
+
+/**
+ * A cel-shaded material. Takes standard-material parameters so callers need not care;
+ * roughness and metalness have no meaning in a cartoon and are ignored.
+ */
+export function toon(params: THREE.MeshStandardMaterialParameters = {}): THREE.MeshToonMaterial {
+  const { roughness: _r, metalness: _m, envMapIntensity: _e, flatShading: _f, ...rest } = params;
+  return new THREE.MeshToonMaterial({ ...(rest as THREE.MeshToonMaterialParameters), gradientMap: GRADIENT });
+}
+
+/** Leave a material without an outline (water, glass, sky). */
+export function noOutline<M extends THREE.Material>(m: M): M {
+  m.userData.outlineParameters = { visible: false };
+  return m;
+}
+
+/**
+ * A cel-shaded material drawing `texture` in world space: walls by their horizontal
  * position and height, floors from above, and roof slopes along the slope (v runs
  * down the slope, u along the eaves).
  */
-export function worldMaterial(texture: THREE.Texture, params: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
+export function worldMaterial(texture: THREE.Texture, params: THREE.MeshStandardMaterialParameters = {}): THREE.MeshToonMaterial {
   const meters = (texture.userData.meters as number) ?? 1;
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, ...params, map: texture });
+  const mat = toon({ ...params, map: texture });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.texMeters = { value: meters };
     shader.vertexShader = shader.vertexShader

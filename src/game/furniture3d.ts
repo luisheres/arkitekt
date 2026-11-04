@@ -6,10 +6,10 @@
 
 import * as THREE from "three";
 import type { Furniture } from "../core";
-import { floorTexture, worldMaterial } from "./textures";
+import { floorTexture, toon, worldMaterial } from "./textures";
 
 const srgb = (hex: string) => new THREE.Color(hex);
-const mat = (hex: string, roughness = 0.8, metalness = 0) => new THREE.MeshStandardMaterial({ color: srgb(hex), roughness, metalness });
+const mat = (hex: string, _roughness = 0.8, _metalness = 0) => toon({ color: srgb(hex) });
 
 const M = {
   wood: worldMaterial(floorTexture("Wood"), { roughness: 0.6 }),
@@ -22,8 +22,8 @@ const M = {
   cushion: mat("#7d8a96", 0.95),
   dark: mat("#2b2d31", 0.4),
   steel: mat("#b8bdc2", 0.35, 0.6),
-  water: new THREE.MeshStandardMaterial({ color: srgb("#9ccfe0"), roughness: 0.1, transparent: true, opacity: 0.8 }),
-  glass: new THREE.MeshStandardMaterial({ color: srgb("#cfe6ef"), roughness: 0.05, transparent: true, opacity: 0.3 }),
+  water: toon({ color: srgb("#9ccfe0"), roughness: 0.1, transparent: true, opacity: 0.8 }),
+  glass: toon({ color: srgb("#cfe6ef"), roughness: 0.05, transparent: true, opacity: 0.3 }),
   books: ["#8c3b2e", "#2f5d7c", "#c49a3a", "#4f7a4a", "#6b4a7a"].map((c) => mat(c, 0.8)),
   cars: ["#a32c2c", "#2c4f8c", "#d8d8d8", "#2f2f33", "#3f6b4f"].map((c) => mat(c, 0.35, 0.5)),
   tyre: mat("#1b1b1d", 0.9),

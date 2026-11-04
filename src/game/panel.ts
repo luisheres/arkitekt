@@ -7,14 +7,14 @@ import { lang, m, setLang } from "./i18n";
 import type { Store, Tool } from "./store";
 import { el } from "./ui";
 
-const TOOLS: { tool: Tool; key: string }[] = [
-  { tool: "select", key: "V" },
-  { tool: "room", key: "R" },
-  { tool: "wall", key: "W" },
-  { tool: "boundary", key: "B" },
-  { tool: "window", key: "N" },
-  { tool: "door", key: "D" },
-  { tool: "stairs", key: "S" },
+const TOOLS: { tool: Tool; key: string; icon: string }[] = [
+  { tool: "select", key: "V", icon: "👆" },
+  { tool: "room", key: "R", icon: "🏠" },
+  { tool: "wall", key: "W", icon: "🧱" },
+  { tool: "boundary", key: "B", icon: "✂️" },
+  { tool: "window", key: "N", icon: "🪟" },
+  { tool: "door", key: "D", icon: "🚪" },
+  { tool: "stairs", key: "S", icon: "🪜" },
 ];
 
 export interface PanelActions {
@@ -78,7 +78,7 @@ export class Panel {
     const tools = el("div", { className: "tools", role: "toolbar" });
     for (const t of TOOLS) {
       const label = m.ui.tools[t.tool];
-      const b = el("button", { type: "button", title: `${label} (${t.key})` }, label, el("kbd", {}, t.key));
+      const b = el("button", { type: "button", title: `${label} (${t.key})` }, el("span", { className: "tool-icon", ariaHidden: "true" }, t.icon), label, el("kbd", {}, t.key));
       b.addEventListener("click", () => store.setTool(t.tool));
       this.toolButtons.set(t.tool, b);
       tools.append(b);

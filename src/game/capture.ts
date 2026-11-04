@@ -16,21 +16,34 @@ export interface CapturedView {
   dataUrl: string;
 }
 
-export function captureViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[]): CapturedView[] {
+/** Draws the scene; lets the view add its outline effect. */
+type Draw = (scene: THREE.Scene, camera: THREE.Camera) => void;
+
+export function captureViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[], draw?: Draw): CapturedView[] {
   const { width, height } = CAPTURE_SIZE;
-  return renderViews(renderer, scene, home, hide, width, height, PRESET_VIEWS.map((_, i) => i), "image/png").map((dataUrl, i) => ({
+  return renderViews(renderer, scene, home, hide, width, height, PRESET_VIEWS.map((_, i) => i), "image/png", draw).map((dataUrl, i) => ({
     name: `view${i + 1}-${PRESET_VIEWS[i].name}`,
     dataUrl,
   }));
 }
 
 /** A small picture of the house from the front-right, for the list of saved designs. */
-export function captureThumbnail(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[]): string {
-  return renderViews(renderer, scene, home, hide, 320, 200, [1], "image/jpeg")[0];
+export function captureThumbnail(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[], draw?: Draw): string {
+  return renderViews(renderer, scene, home, hide, 320, 200, [1], "image/jpeg", draw)[0];
 }
 
 /** Render preset views offscreen at a fixed size, as data URLs. */
-function renderViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[], width: number, height: number, views: number[], type: string): string[] {
+function renderViews(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  home: Orbit,
+  hide: THREE.Object3D[],
+  width: number,
+  height: number,
+  views: number[],
+  type: string,
+  draw: Draw = (sc, c) => renderer.render(sc, c),
+): string[] {
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
   const orbit: Orbit = { ...home, target: home.target.clone() };
 
@@ -49,7 +62,7 @@ function renderViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Or
       applyPreset(orbit, i);
       placeCamera(camera, orbit);
       renderer.setRenderTarget(target);
-      renderer.render(scene, camera);
+      draw(scene, camera);
       renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
       // WebGL rows run bottom-up; images run top-down.
       for (let y = 0; y < height; y++) {

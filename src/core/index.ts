@@ -23,4 +23,5 @@ export * from "./roof";
 export * from "./rules";
 export * from "./rooms";
 export * from "./samples";
+export * from "./scenery";
 export * from "./validate";

@@ -3,7 +3,9 @@
 import * as THREE from "three";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureThumbnail, captureViews } from "./capture";
-import { type Pick, SKY_COLOR, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
+import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
+import { HAZE } from "./landscape";
+import { type Pick, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
 import type { Store } from "./store";
 
 /** Vertical field of view, in degrees, on a wide enough screen (and in captures). */
@@ -16,6 +18,7 @@ export class View3D {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 1000);
   private world: World;
+  private readonly effect: OutlineEffect;
   private readonly orbit: Orbit;
   private houseGroup: THREE.Group | null = null;
   private houseDirty = true;
@@ -29,10 +32,14 @@ export class View3D {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    // No tone mapping: cartoon colours are meant to be shown as they are.
+    this.renderer.toneMapping = THREE.NoToneMapping;
 
-    this.scene.background = SKY_COLOR;
+    this.scene.background = HAZE;
+    // Distant hills fade into a soft haze.
+    this.scene.fog = new THREE.Fog(HAZE, 150, 480);
+    // Dark outlines around everything: the cartoon look.
+    this.effect = new OutlineEffect(this.renderer, { defaultThickness: 0.0032, defaultColor: [0.13, 0.12, 0.2], defaultAlpha: 1 });
     this.world = buildWorld(store.plot);
     this.scene.add(this.world.root);
     this.orbit = this.homeOrbit();
@@ -96,12 +103,12 @@ export class View3D {
 
   /** Render the four appraisal views (always from the default camera, without guides). */
   capture(): CapturedView[] {
-    return this.withWholeHouse(() => captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]));
+    return this.withWholeHouse(() => captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides], (sc, c) => this.effect.render(sc, c)));
   }
 
   /** A small picture of the whole house, for saved designs. */
   thumbnail(): string {
-    return this.withWholeHouse(() => captureThumbnail(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]));
+    return this.withWholeHouse(() => captureThumbnail(this.renderer, this.scene, this.homeOrbit(), [this.world.guides], (sc, c) => this.effect.render(sc, c)));
   }
 
   /** Render with the whole house and its roof, whatever the player is viewing. */
@@ -152,7 +159,7 @@ export class View3D {
       this.syncHouse();
       this.world.guides.visible = this.store.showGuides;
       placeCamera(this.camera, this.orbit);
-      this.renderer.render(this.scene, this.camera);
+      this.effect.render(this.scene, this.camera);
     });
   }
 

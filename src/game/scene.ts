@@ -4,10 +4,9 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
-import { floorTexture, groundTexture, interiorTexture, roofTexture, wallTexture, worldMaterial } from "./textures";
+import { floorTexture, interiorTexture, noOutline, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
-  type Plot,
   type TriMesh,
   FLOOR_FINISHES,
   FLOOR_SLAB_HEIGHT,
@@ -32,8 +31,8 @@ import {
 
 const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
-function matte(r: number, g: number, b: number, roughness: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: srgb(r, g, b), roughness, metalness: 0 });
+function matte(r: number, g: number, b: number, _roughness: number): THREE.MeshToonMaterial {
+  return toon({ color: srgb(r, g, b) });
 }
 
 
@@ -53,15 +52,10 @@ const palette = {
   roof: each(ROOF_MATERIALS, (m) =>
     worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide }),
   ),
-  glass: new THREE.MeshStandardMaterial({
-    color: srgb(0.45, 0.62, 0.78),
-    roughness: 0.08,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.55,
-  }),
+  glass: noOutline(toon({ color: "#a8dcff", transparent: true, opacity: 0.6 })),
   frame: matte(0.96, 0.96, 0.94, 0.6),
-  door: worldMaterial(groundTexture("wood"), { color: srgb(0.55, 0.42, 0.34), roughness: 0.7 }),
+  // A cheerfully painted front door.
+  door: toon({ color: "#e0584a" }),
   garageDoor: matte(0.82, 0.83, 0.84, 0.5),
   /** Room floors by finish. */
   floor: each(FLOOR_FINISHES, (f) => worldMaterial(floorTexture(f), { roughness: f === "Tiles" || f === "Stone" ? 0.5 : 0.8 })),
@@ -72,61 +66,8 @@ const palette = {
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 unitBox.userData.shared = true;
 const FRAME_WIDTH = 0.07;
-export const SKY_COLOR = srgb(0.62, 0.78, 0.93);
-
-export interface World {
-  /** Ground, plot, street and lights. */
-  root: THREE.Group;
-  /** Plot boundary and setback lines. */
-  guides: THREE.Object3D;
-}
-
-/** The static surroundings of a plot. */
-export function buildWorld(plot: Plot): World {
-  const root = new THREE.Group();
-  const center = new THREE.Vector3(plot.width * 0.5, 0, plot.depth * 0.5);
-
-  const flat = (w: number, d: number, texture: THREE.Texture, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), worldMaterial(texture, { roughness: 1 }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(x, y, z);
-    mesh.receiveShadow = true;
-    root.add(mesh);
-  };
-  // Surrounding land, the plot's lawn, and a street along the front (low-z) edge.
-  flat(400, 400, groundTexture("grass"), center.x, -0.01, center.z);
-  flat(plot.width, plot.depth, groundTexture("lawn"), center.x, 0, center.z);
-  flat(400, 7, groundTexture("asphalt"), center.x, 0.002, -4.5);
-
-  root.add(new THREE.HemisphereLight(srgb(0.85, 0.9, 1.0), srgb(0.42, 0.55, 0.3), 1.6));
-  const sun = new THREE.DirectionalLight(0xffffff, 3.2);
-  sun.position.set(center.x - 30, 50, center.z - 30);
-  sun.target.position.copy(center);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const extent = Math.max(plot.width, plot.depth);
-  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 200 });
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.03;
-  root.add(sun, sun.target);
-
-  // Plot boundary (white) and setback (yellow).
-  const guides = new THREE.Group();
-  const outline = (inset: number, color: number) => {
-    const h = 0.03;
-    const pts = [
-      new THREE.Vector3(inset, h, inset),
-      new THREE.Vector3(plot.width - inset, h, inset),
-      new THREE.Vector3(plot.width - inset, h, plot.depth - inset),
-      new THREE.Vector3(inset, h, plot.depth - inset),
-    ];
-    guides.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color })));
-  };
-  outline(0, 0xffffff);
-  outline(plot.setback, 0xffd94d);
-  root.add(guides);
-  return { root, guides };
-}
+export { type World, buildWorld } from "./landscape";
+import type { World } from "./landscape";
 
 /** Free a world's geometry and per-world materials. */
 export function disposeWorld(world: World): void {

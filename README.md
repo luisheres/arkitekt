@@ -13,8 +13,8 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
-| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
 
@@ -33,6 +33,20 @@ npm run capture -- --sample 2 --out screenshots/   # render the 4 appraisal view
 Progress (career and the commission in progress) autosaves in the browser. `?sample=N`
 puts sample house N on the current plot, for screenshots. `npm run e2e` and
 `npm run capture` need `npx playwright install chromium` once.
+
+## Look
+
+The 3D view is a bright cartoon: cel shading (three flat bands of light), dark outlines,
+saturated hand-drawn textures, a gradient sky with puffy clouds and haze in the
+distance. Every plot has its own surroundings, generated from fixed seeds
+(`src/core/scenery.ts`) and shown both in 3D and in the plan:
+
+- **Suburban lot**: a street with pavements, neighbours' houses on either side and across
+  the road, rolling gardens and trees.
+- **Lakeside lot**: a lake just behind the garden, with a sandy shore, reeds and a jetty.
+- **Hillside view lot**: wooded hills rising behind, and the land falling away in front.
+
+The plot itself and the street stay flat, so building is the same everywhere.
 
 ## Playing
 

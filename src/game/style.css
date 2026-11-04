@@ -1321,3 +1321,251 @@ button.link:hover {
 .toast.gone {
   opacity: 0;
 }
+
+/* ===================================================================================
+   Friendly look: a rounded font, warm colours, chunky rounded buttons, a garden plan.
+   (Later rules override the plainer ones above.)
+   =================================================================================== */
+
+:root {
+  --bg: #fff6e5;
+  --panel: #ffffff;
+  --ink: #2d2a32;
+  --muted: #776f7d;
+  --line: #eadfca;
+  --accent: #2f8fe0;
+  --accent-soft: #fff1b8;
+  --primary: #ff7a45;
+  --ok: #2e9e4f;
+  --bad: #e0632b;
+  --error: #e5484d;
+}
+
+html,
+body {
+  font-family: "Nunito", ui-rounded, "Segoe UI Rounded", system-ui, sans-serif;
+  font-size: 14.5px;
+}
+
+#sidebar {
+  background: linear-gradient(#fffaf0, #fff6e5);
+  border-right: 3px solid #f0e2c4;
+}
+
+#sidebar header h1 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #ff7a45;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 0 #ffe0cf;
+}
+
+#sidebar h2 {
+  color: #b07c4a;
+  letter-spacing: 0.08em;
+}
+
+#sidebar section {
+  border-bottom: 2px dashed #efe1c3;
+}
+
+button,
+select {
+  border-radius: 12px;
+  border: 2px solid #ecdcbf;
+  padding: 5px 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 0 #ecdcbf;
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+
+button:hover:not(:disabled) {
+  border-color: #e3c99b;
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #ecdcbf;
+}
+
+button.active {
+  background: #ffe066;
+  border-color: #f2c200;
+  color: #5a4300;
+  box-shadow: 0 2px 0 #e0b000;
+}
+
+button.primary {
+  background: var(--primary);
+  border-color: #f0662e;
+  box-shadow: 0 3px 0 #d9541f;
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #ff8a5a;
+  border-color: #f0662e;
+}
+
+.tools {
+  grid-template-columns: 1fr 1fr;
+}
+
+.tools button {
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.tools button kbd {
+  margin-left: auto;
+}
+
+.tool-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.client-name {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.brief li.met .mark {
+  color: #2e9e4f;
+}
+
+.panel,
+.popover,
+.dialog,
+.view-toggles,
+.level-switch,
+.layout-switch button {
+  border-radius: 16px;
+}
+
+.popover {
+  border: 3px solid #f0e2c4;
+  box-shadow: 0 12px 34px rgba(80, 50, 10, 0.22);
+}
+
+.dialog {
+  border: 4px solid #f0e2c4;
+}
+
+.dialog h2 {
+  color: #ff7a45;
+  font-weight: 800;
+}
+
+.dialog blockquote {
+  background: #fff6e0;
+  border-left-color: #ffb347;
+  border-radius: 0 12px 12px 0;
+}
+
+.plan-hint,
+.pane-hint {
+  border-radius: 12px;
+}
+
+/* The plan as a garden map. */
+svg.plan {
+  background: #8fcd6a;
+}
+
+.plan .street {
+  fill: #8e96a6;
+}
+
+.plan .lawn {
+  fill: #a9df82;
+  opacity: 0.9;
+}
+
+.plan .grid {
+  stroke: rgba(30, 70, 20, 0.08);
+}
+
+.plan .grid5 {
+  stroke: rgba(30, 70, 20, 0.16);
+}
+
+.plan .floor {
+  fill: #fff6e3;
+}
+
+.plan .wall {
+  stroke: #3d2e22;
+  stroke-width: 1;
+}
+
+.plan .tree {
+  stroke: #2f6b2a;
+  stroke-width: 1;
+}
+
+.plan .tree.round {
+  fill: #4fae4a;
+}
+
+.plan .tree.birch {
+  fill: #9ad84f;
+}
+
+.plan .tree.pine {
+  fill: #2f8a52;
+}
+
+.plan .tree.bush {
+  fill: #5cbf3f;
+}
+
+.plan .tree-light {
+  fill: rgba(255, 255, 255, 0.22);
+  stroke: none;
+}
+
+.plan .hedge {
+  fill: #4f9f3f;
+  stroke: #2f6b2a;
+  stroke-width: 0.8;
+}
+
+.plan .rock {
+  fill: #c6c1b8;
+  stroke: #7e786e;
+  stroke-width: 1;
+}
+
+.plan .neighbor {
+  stroke: #3d2e22;
+  stroke-width: 1.2;
+}
+
+.plan .neighbor.roof0 {
+  fill: #d9534a;
+}
+
+.plan .neighbor.roof1 {
+  fill: #3f7fbf;
+}
+
+.plan .neighbor.roof2 {
+  fill: #4f9a5a;
+}
+
+.plan .neighbor.roof3 {
+  fill: #e08a2e;
+}
+
+.plan .ridge {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 1.5;
+}
+
+.plan .jetty {
+  fill: #c99a62;
+  stroke: #7a5634;
+  stroke-width: 1;
+}

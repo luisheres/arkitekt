@@ -50,11 +50,13 @@ import {
   num,
   roomName,
   roundTo,
+  sceneryFor,
   snapPoint,
   validate,
   wallThickness,
 } from "../core";
 import { m } from "./i18n";
+import { backdropFor } from "./backdrop";
 import { type Selection, type Store, type Tool, drawsWalls } from "./store";
 
 const PLAN_WALL_COLORS = { Wood: "#7a5134", FaluRed: "#8a2a1e", Brick: "#8c3d2e", Plaster: "#6f6b63", Stone: "#77736a" } as const;
@@ -91,6 +93,8 @@ export class PlanView {
   private readonly svg: SVGSVGElement;
   private readonly hint: HTMLElement;
   private readonly levels: HTMLElement;
+  private readonly backdrop: SVGImageElement;
+  private readonly content: SVGGElement;
   private shownLevel = 0;
   private scale = 20; // pixels per meter
   private center = new Vec2(0, 0);
@@ -119,6 +123,11 @@ export class PlanView {
   ) {
     this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     this.svg.classList.add("plan");
+    // The landscape image stays put; only the drawing on top of it is redrawn.
+    this.backdrop = document.createElementNS("http://www.w3.org/2000/svg", "image");
+    this.backdrop.setAttribute("preserveAspectRatio", "none");
+    this.content = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.svg.append(this.backdrop, this.content);
     this.hint = document.createElement("div");
     this.hint.className = "plan-hint";
     this.levels = document.createElement("div");
@@ -144,7 +153,8 @@ export class PlanView {
   /** Fit the whole plot and the street into view. */
   fit(): void {
     const { plot } = this.store;
-    const [x0, x1, y0, y1] = [-1, plot.width + 1, -8.5, plot.depth + 1];
+    // The plot and street, with some of the surroundings (the lake, the neighbours).
+    const [x0, x1, y0, y1] = [-8, plot.width + 8, -9, plot.depth + 12];
     this.scale = Math.min(this.width / (x1 - x0), this.height / (y1 - y0)) * 0.92;
     this.center = new Vec2((x0 + x1) / 2, (y0 + y1) / 2);
     this.requestRender();
@@ -259,7 +269,8 @@ export class PlanView {
     const px = 1 / this.scale;
     let corner: Vec2 | null = null;
     for (const c of corners(this.house, this.level)) {
-      if (c.distance(p) < (SNAP_PX - 1) * px && (!corner || c.distance(p) < corner.distance(p))) corner = c;
+      // Capped in meters too, so zoomed out a corner does not swallow clicks meant for its walls.
+      if (c.distance(p) < Math.min((SNAP_PX - 1) * px, 0.4) && (!corner || c.distance(p) < corner.distance(p))) corner = c;
     }
     if (corner) return { kind: "corner", at: corner };
     for (const o of this.house.openings) {
@@ -283,7 +294,11 @@ export class PlanView {
       if (label.level !== this.level) continue;
       const [sx, sy] = this.toScreen(label.at);
       const [qx, qy] = this.toScreen(p);
-      if (Math.abs(qx - sx) < 44 && Math.abs(qy - sy) < 16) return { kind: "label", id: label.id, at: label.at };
+      // Only the text itself, and never reaching into a neighbouring room.
+      const halfWidth = Math.max(16, m.rooms[label.type].name.length * 3.8);
+      if (Math.abs(qx - sx) > halfWidth || Math.abs(qy - sy) > 14) continue;
+      if (roomAt(this.rooms, p) !== roomAt(this.rooms, label.at)) continue;
+      return { kind: "label", id: label.id, at: label.at };
     }
     const stair = this.stairs.find((s) => pointInPolygon(p, stairOutline(s)));
     if (stair) return { kind: "stair", id: stair.id };
@@ -579,8 +594,14 @@ export class PlanView {
     const house = this.house;
     const out: string[] = [];
 
-    // Ground, street and plot.
-    out.push(`<rect class="land" width="${this.width}" height="${this.height}"/>`);
+    // The landscape underneath, then the street and the plot.
+    const bd = backdropFor(plot);
+    const [bx, by] = this.toScreen(new Vec2(bd.x1, bd.y1));
+    if (this.backdrop.getAttribute("href") !== bd.url) this.backdrop.setAttribute("href", bd.url);
+    this.backdrop.setAttribute("x", bx.toFixed(1));
+    this.backdrop.setAttribute("y", by.toFixed(1));
+    this.backdrop.setAttribute("width", ((bd.x1 - bd.x0) * this.scale).toFixed(1));
+    this.backdrop.setAttribute("height", ((bd.y1 - bd.y0) * this.scale).toFixed(1));
     const rect = (x0: number, y0: number, x1: number, y1: number, cls: string) =>
       `<polygon class="${cls}" points="${this.pts([new Vec2(x0, y0), new Vec2(x1, y0), new Vec2(x1, y1), new Vec2(x0, y1)])}"/>`;
     const tl = this.toPlan(0, 0);
@@ -608,6 +629,7 @@ export class PlanView {
     }
     out.push(rect(0, 0, plot.width, plot.depth, "plot-edge"));
     out.push(rect(plot.setback, plot.setback, plot.width - plot.setback, plot.depth - plot.setback, "setback"));
+    out.push(this.sceneryLayer(vx0, vx1, vy0, vy1));
 
     // The floor below, faintly, to build on.
     if (this.level > 0) {
@@ -722,11 +744,43 @@ export class PlanView {
     }
 
     out.push(this.toolOverlay(tool));
-    this.svg.innerHTML = out.join("");
+    this.content.innerHTML = out.join("");
     this.svg.dataset.tool = tool;
     this.svg.classList.toggle("dragging", this.drag?.kind === "pan" || this.drag?.kind === "label");
     this.hint.textContent = tool === "stairs" && this.level + 1 >= house.levels ? m.ui.needFloorAbove : m.ui.hints[tool];
     this.renderLevels();
+  }
+
+  /** Trees, rocks, the neighbours' houses and the jetty around the plot. */
+  private sceneryLayer(vx0: number, vx1: number, vy0: number, vy1: number): string {
+    const s = sceneryFor(this.store.plot);
+    const out: string[] = [];
+    const visible = (p: Vec2, r: number) => p.x > vx0 - r && p.x < vx1 + r && p.y > vy0 - r && p.y < vy1 + r;
+    const circle = (p: Vec2, r: number, cls: string) => {
+      const [x, y] = this.toScreen(p);
+      return `<circle class="${cls}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(1.5, r * this.scale).toFixed(1)}"/>`;
+    };
+    if (s.jetty) {
+      const j = s.jetty;
+      const n = new Vec2(j.width / 2, 0);
+      out.push(`<polygon class="jetty" points="${this.pts([j.from.sub(n), j.from.add(n), j.to.add(n), j.to.sub(n)])}"/>`);
+    }
+    for (const n of s.neighbors) {
+      const [hw, hd] = [n.width / 2, n.depth / 2];
+      const c = n.at;
+      const corners = [new Vec2(c.x - hw, c.y - hd), new Vec2(c.x + hw, c.y - hd), new Vec2(c.x + hw, c.y + hd), new Vec2(c.x - hw, c.y + hd)];
+      out.push(`<polygon class="neighbor roof${n.roof % 4}" points="${this.pts(corners)}"/>`);
+      out.push(`<polyline class="ridge" points="${this.pts([new Vec2(c.x - hw, c.y), new Vec2(c.x + hw, c.y)])}"/>`);
+    }
+    for (const r of s.rocks) if (visible(r.at, 2)) out.push(circle(r.at, r.size * 0.8, "rock"));
+    // Hedges along the sides of the garden.
+    for (const x of [-0.4, this.store.plot.width + 0.4]) for (let y = 1; y < this.store.plot.depth - 0.5; y += 1.1) out.push(circle(new Vec2(x, y), 0.55, "hedge"));
+    for (const t of s.trees) {
+      const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9 }[t.kind] * t.size;
+      if (!visible(t.at, r)) continue;
+      out.push(circle(t.at, r, `tree ${t.kind}`), circle(t.at.add(new Vec2(r * 0.3, r * 0.3)), r * 0.45, "tree-light"));
+    }
+    return `<g class="scenery">${out.join("")}</g>`;
   }
 
   /** A piece of furniture: its outline and a detail or two so it reads at a glance. */
