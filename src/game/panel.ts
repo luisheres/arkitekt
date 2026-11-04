@@ -19,6 +19,10 @@ const TOOLS: { tool: Tool; key: string }[] = [
 
 export interface PanelActions {
   capture(): void;
+  /** Save the design (asking for a name). */
+  save(): void;
+  /** Show the saved designs. */
+  openDesigns(): void;
   /** Open the pop-up menu for the current selection near (x, y). */
   openMenu(x: number, y: number): void;
   /** Turn the current client down and meet another. */
@@ -37,6 +41,8 @@ export class Panel {
   private readonly clientBox: HTMLElement;
   private readonly brief: HTMLElement;
   private readonly status: HTMLElement;
+  private readonly saveBtn: HTMLButtonElement;
+  private readonly designName: HTMLElement;
 
   constructor(
     root: HTMLElement,
@@ -48,7 +54,14 @@ export class Panel {
     this.career = el("div", { className: "sub" });
     const langSelect = el("select", { title: m.ui.language, ariaLabel: m.ui.language }, ...LANGS.map((l) => el("option", { value: l, selected: l === lang }, messages(l).languageName)));
     langSelect.addEventListener("change", () => setLang(langSelect.value as (typeof LANGS)[number], actions.beforeReload));
-    root.append(el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.career));
+    this.saveBtn = el("button", { type: "button", title: m.ui.saveTitle }, m.ui.save);
+    this.saveBtn.addEventListener("click", actions.save);
+    const openBtn = el("button", { type: "button", title: m.ui.openTitle }, m.ui.open);
+    openBtn.addEventListener("click", actions.openDesigns);
+    this.designName = el("span", { className: "sub design-name" });
+    root.append(
+      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.career, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName)),
+    );
 
     // The client and their brief.
     this.clientBox = el("div", { className: "client" });
@@ -131,6 +144,8 @@ export class Panel {
       el("div", { className: "sub" }, m.ui.clientPlot(client.plot.name[lang], plotSize(client), money(client.budget))),
     );
     for (const [tool, b] of this.toolButtons) b.classList.toggle("active", tool === store.tool);
+    this.saveBtn.disabled = !store.working;
+    this.designName.textContent = store.design?.name ?? "";
     this.undoBtn.disabled = !store.canUndo();
     this.redoBtn.disabled = !store.canRedo();
 

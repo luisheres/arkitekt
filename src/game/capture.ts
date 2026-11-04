@@ -18,6 +18,19 @@ export interface CapturedView {
 
 export function captureViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[]): CapturedView[] {
   const { width, height } = CAPTURE_SIZE;
+  return renderViews(renderer, scene, home, hide, width, height, PRESET_VIEWS.map((_, i) => i), "image/png").map((dataUrl, i) => ({
+    name: `view${i + 1}-${PRESET_VIEWS[i].name}`,
+    dataUrl,
+  }));
+}
+
+/** A small picture of the house from the front-right, for the list of saved designs. */
+export function captureThumbnail(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[]): string {
+  return renderViews(renderer, scene, home, hide, 320, 200, [1], "image/jpeg")[0];
+}
+
+/** Render preset views offscreen at a fixed size, as data URLs. */
+function renderViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, home: Orbit, hide: THREE.Object3D[], width: number, height: number, views: number[], type: string): string[] {
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
   const orbit: Orbit = { ...home, target: home.target.clone() };
 
@@ -32,7 +45,7 @@ export function captureViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   const wasVisible = hide.map((o) => o.visible);
   hide.forEach((o) => (o.visible = false));
   try {
-    return PRESET_VIEWS.map((view, i) => {
+    return views.map((i) => {
       applyPreset(orbit, i);
       placeCamera(camera, orbit);
       renderer.setRenderTarget(target);
@@ -44,7 +57,7 @@ export function captureViews(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
         image.data.set(pixels.subarray(src, src + width * 4), y * width * 4);
       }
       ctx.putImageData(image, 0, 0);
-      return { name: `view${i + 1}-${view.name}`, dataUrl: canvas.toDataURL("image/png") };
+      return canvas.toDataURL(type, 0.8);
     });
   } finally {
     renderer.setRenderTarget(null);

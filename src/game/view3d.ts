@@ -2,7 +2,7 @@
 
 import * as THREE from "three";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
-import { type CapturedView, captureViews } from "./capture";
+import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { type Pick, SKY_COLOR, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
 import type { Store } from "./store";
 
@@ -96,14 +96,23 @@ export class View3D {
 
   /** Render the four appraisal views (always from the default camera, without guides). */
   capture(): CapturedView[] {
+    return this.withWholeHouse(() => captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]));
+  }
+
+  /** A small picture of the whole house, for saved designs. */
+  thumbnail(): string {
+    return this.withWholeHouse(() => captureThumbnail(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]));
+  }
+
+  /** Render with the whole house and its roof, whatever the player is viewing. */
+  private withWholeHouse<T>(render: () => T): T {
     this.syncHouse();
-    // The appraiser always sees the whole house with its roof, whatever the player is viewing.
     const full = buildHouse(this.store.house, { roof: true, furniture: true });
     const shown = this.houseGroup;
     if (shown) shown.visible = false;
     this.scene.add(full);
     try {
-      return captureViews(this.renderer, this.scene, this.homeOrbit(), [this.world.guides]);
+      return render();
     } finally {
       disposeHouse(full);
       if (shown) shown.visible = true;

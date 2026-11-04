@@ -9,9 +9,10 @@
 
 import * as core from "../core";
 import { allSamples, defaultPrices, presentDesign } from "../core";
-import { m, translatePage } from "./i18n";
+import { lang, m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
-import { confirmTurnDown, isModalOpen, showClient, showVerdict } from "./dialogs";
+import { type DesignListItem, confirmTurnDown, isModalOpen, showClient, showDesigns, showSaveDialog, showVerdict, toast } from "./dialogs";
+import { deleteDesign, listDesigns, newDesignId, putDesign } from "./designs";
 import { Panel } from "./panel";
 import { Popover } from "./popover";
 import { PlanView } from "./plan";
@@ -59,7 +60,75 @@ const present = () => {
     meetClient();
   });
 };
+// --- Saved designs ------------------------------------------------------------------
+
+const defaultDesignName = () => `${store.client.text[lang].name} – ${new Intl.DateTimeFormat(m.locale, { dateStyle: "medium" }).format(Date.now())}`;
+
+/** Save without asking; reports success or a full browser storage. */
+function saveDesign(name: string, asNew: boolean, quiet = false): boolean {
+  try {
+    store.saveDesign(name, asNew, view3d.thumbnail());
+    if (!quiet) toast(m.ui.saved(name));
+    return true;
+  } catch {
+    toast(m.ui.storageFull);
+    return false;
+  }
+}
+
+const askToSave = () => {
+  if (store.working) showSaveDialog(defaultDesignName(), store.design, (name, asNew) => saveDesign(name, asNew));
+};
+
+function downloadDesign(d: core.SavedDesign): void {
+  const url = URL.createObjectURL(new Blob([core.designToFile(d)], { type: "application/json" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `${d.name.replace(/[\\/:*?"<>|]+/g, "-")}.json` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function openDesigns(notice = ""): void {
+  const items: DesignListItem[] = listDesigns().map((d) => {
+    const house = core.House.fromJSON(d.house);
+    const cost = core.totalCost(core.estimate(house, store.prices));
+    return {
+      design: d,
+      client: core.clientById(d.clientId)?.text[lang].name ?? "",
+      facts: `${core.area(m, house.floorArea())} · ${core.money(m, cost)}`,
+      sold: store.isSold(d.clientId),
+    };
+  });
+  showDesigns(
+    items,
+    {
+      open: (d) => {
+        // Keep the design being worked on: save it before switching.
+        if (store.working && store.house.walls.length && store.design?.id !== d.id) saveDesign(store.design?.name ?? defaultDesignName(), false, true);
+        if (store.openDesign(d)) toast(d.name);
+      },
+      remove: (d) => {
+        deleteDesign(d.id);
+        openDesigns();
+      },
+      export: downloadDesign,
+      import: async (file) => {
+        const d = core.parseDesignFile(await file.text(), newDesignId());
+        if (!d) return openDesigns(m.ui.importFailed);
+        try {
+          putDesign(d);
+        } catch {
+          return openDesigns(m.ui.storageFull);
+        }
+        openDesigns();
+      },
+    },
+    notice,
+  );
+}
+
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
+  save: askToSave,
+  openDesigns: () => openDesigns(),
   capture: () => showCaptures(view3d.capture()),
   openMenu,
   beforeReload: () => store.save(),
@@ -146,6 +215,13 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (e.shiftKey) store.redo();
     else store.undo();
+    return;
+  }
+  if (mod && e.code === "KeyS") {
+    e.preventDefault();
+    // Saving again updates the design quietly; the first time asks for a name.
+    if (store.design && store.working) saveDesign(store.design.name, false);
+    else askToSave();
     return;
   }
   if (mod && e.code === "KeyY") {

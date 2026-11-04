@@ -7,6 +7,7 @@
 export * from "./brief";
 export * from "./clients";
 export * from "./cost";
+export * from "./designfile";
 export * from "./edit";
 export * from "./furnish";
 export * from "./furniture";

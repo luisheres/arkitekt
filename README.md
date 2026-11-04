@@ -13,8 +13,8 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
-| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
 
@@ -55,6 +55,14 @@ puts sample house N on the current plot, for screenshots. `npm run e2e` and
 6. **Present to client.** They accept when every must-have is met, the house has no
    building problems and it is within budget. Your fee is 8% of their budget, plus up to
    half again for wishes granted.
+
+**Saving.** The design you are working on is kept automatically. To keep designs and come
+back to them, **Save** (`Ctrl+S`) stores the design under a name in the browser, with a
+picture; saving again updates it, or save a new copy. **Open…** lists your saved designs
+and picks one up again (its client becomes your current commission; the design you
+were on is saved first). Designs can be exported to a `.json` file and imported again,
+to keep a backup or move them to another computer. Sold designs stay in the list but
+cannot be sold twice.
 
 Not keen on a job? **New client** turns the request down (the design is discarded) and
 the next client calls. Once the five written clients are served or turned down, new

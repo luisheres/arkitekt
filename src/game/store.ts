@@ -4,6 +4,7 @@
  * change to the house goes through `edit` or a gesture so it can be undone.
  */
 
+import { newDesignId, putDesign } from "./designs";
 import {
   type Career,
   type Client,
@@ -11,6 +12,7 @@ import {
   House,
   type HouseJson,
   type PriceList,
+  type SavedDesign,
   type Vec2,
   clientById,
   completeCommission,
@@ -51,7 +53,7 @@ const SAVE_KEY = "architect.game.v2";
 interface Saved {
   career: Career;
   /** The commission in progress; null between clients. */
-  current: { clientId: string; house: HouseJson } | null;
+  current: { clientId: string; house: HouseJson; design?: { id: string; name: string } } | null;
 }
 
 export class Store {
@@ -60,6 +62,8 @@ export class Store {
   career: Career;
   /** False until the player has taken on the current client's brief. */
   working = false;
+  /** The saved design being worked on, so saving again updates it. */
+  design: { id: string; name: string } | null = null;
   tool: Tool = "select";
   /** The storey being edited in the plan. */
   level = 0;
@@ -85,6 +89,7 @@ export class Store {
       this.house = House.fromJSON(saved.current.house);
       // Saves from before furniture was stored: furnish the rooms once.
       if (!saved.current.house.furniture) furnishAll(this.house);
+      this.design = saved.current.design ?? null;
       this.working = true;
     } else {
       this.client = nextClient(this.career);
@@ -116,6 +121,7 @@ export class Store {
 
   /** Take on the current client's brief, starting from an empty plot. */
   startCommission(house = new House()): void {
+    this.design = null;
     this.house = house;
     this.history = new History();
     this.selection = null;
@@ -129,6 +135,7 @@ export class Store {
   completeCommission(fee: number, stars: number): void {
     const done = this.client.id;
     this.career = completeCommission(this.career, done, fee, stars);
+    this.design = null;
     this.client = nextClient(this.career, done);
     this.working = false;
     this.house = new House();
@@ -142,6 +149,7 @@ export class Store {
   declineClient(): void {
     const declined = this.client.id;
     this.career = declineClient(this.career, declined);
+    this.design = null;
     this.client = nextClient(this.career, declined);
     this.working = false;
     this.house = new House();
@@ -149,6 +157,43 @@ export class Store {
     this.selection = null;
     this.level = 0;
     this.emit("client");
+  }
+
+  // --- Saved designs ------------------------------------------------------------------
+
+  /** Whether a client's commission has already been sold. */
+  isSold(clientId: string): boolean {
+    return this.career.completed.some((c) => c.clientId === clientId);
+  }
+
+  /**
+   * Save the design under `name`: over the design it came from, or as a new one.
+   * Throws when the browser cannot store it.
+   */
+  saveDesign(name: string, asNew: boolean, thumbnail?: string): SavedDesign {
+    const id = !asNew && this.design ? this.design.id : newDesignId();
+    const design: SavedDesign = { id, name, clientId: this.client.id, savedAt: Date.now(), house: this.house.toJSON(), thumbnail };
+    putDesign(design);
+    this.design = { id, name };
+    this.emit("ui");
+    this.scheduleSave();
+    return design;
+  }
+
+  /** Pick a saved design up again: its client becomes the current commission. */
+  openDesign(d: SavedDesign): boolean {
+    const client = clientById(d.clientId);
+    if (!client || this.isSold(d.clientId)) return false;
+    this.client = client;
+    this.house = House.fromJSON(d.house);
+    if (!d.house.furniture) furnishAll(this.house);
+    this.design = { id: d.id, name: d.name };
+    this.working = true;
+    this.history = new History();
+    this.selection = null;
+    this.level = 0;
+    this.emit("client");
+    return true;
   }
 
   // --- Editing -----------------------------------------------------------------------
@@ -312,7 +357,7 @@ export class Store {
     try {
       const saved: Saved = {
         career: this.career,
-        current: this.working ? { clientId: this.client.id, house: this.house.toJSON() } : null,
+        current: this.working ? { clientId: this.client.id, house: this.house.toJSON(), ...(this.design ? { design: this.design } : {}) } : null,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
     } catch {

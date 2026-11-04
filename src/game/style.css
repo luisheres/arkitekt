@@ -1211,3 +1211,113 @@ button.link:hover {
 .plan .room-name.stray.selected {
   text-decoration: underline;
 }
+
+/* --- Saved designs ---------------------------------------------------------------- */
+
+#sidebar header .files {
+  margin-top: 8px;
+  align-items: center;
+}
+
+#sidebar .design-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
+.field.wide {
+  grid-template-columns: 70px 1fr;
+}
+
+.field.wide input {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.design-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.design-card {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.design-card img,
+.design-card .no-thumb {
+  width: 120px;
+  height: 75px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #dfe6d5;
+  grid-row: span 2;
+}
+
+.design-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.design-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.design-actions .tag {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e7f4ea;
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialog .notice {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff3e6;
+  color: var(--bad);
+}
+
+.button-like {
+  padding: 4px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.button-like:hover {
+  border-color: #b9b4aa;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(30, 32, 36, 0.9);
+  color: #fff;
+  transition: opacity 0.5s;
+}
+
+.toast.gone {
+  opacity: 0;
+}

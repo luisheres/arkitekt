@@ -346,6 +346,34 @@ try {
   assert.equal(await page.evaluate(() => window.architect.store.house.levels), 1);
   assert.equal(await page.evaluate(() => window.architect.store.house.stairs.length), 0);
 
+  // Save the design, clear the plot, and open it again from the saved designs.
+  const walls = (await model()).walls;
+  await page.keyboard.press("Control+s");
+  await page.fill("#modal input.design-name", "Two storeys for the Anderssons");
+  await page.click("#modal button.primary");
+  await page.locator(".toast").waitFor();
+  assert.match(await page.locator("#sidebar header").innerText(), /Two storeys for the Anderssons/);
+  await page.click("text=Clear plot");
+  assert.equal((await model()).walls, 0);
+  await page.click('#sidebar header button:has-text("Open")');
+  assert.equal(await page.locator("#modal .design-card").count(), 1);
+  assert.ok((await page.locator("#modal .design-card img").getAttribute("src")).startsWith("data:image/jpeg"), "a picture of the house");
+  await page.click('#modal .design-card button[data-cmd="open"]');
+  assert.equal((await model()).walls, walls, "the design is back");
+
+  // Export it to a file and import that file as a second design.
+  await page.click('#sidebar header button:has-text("Open")');
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click('#modal button[data-cmd="export"]')]);
+  assert.match(download.suggestedFilename(), /^Two storeys for the Anderssons\.json$/);
+  await page.setInputFiles("#modal input[type=file]", await download.path());
+  await page.locator("#modal .design-card >> nth=1").waitFor();
+  assert.equal(await page.locator("#modal .design-card").count(), 2);
+  // A file that is not a design is refused with a message.
+  await page.setInputFiles("#modal input[type=file]", { name: "x.json", mimeType: "application/json", buffer: Buffer.from("{}") });
+  assert.match(await page.locator("#modal .notice").textContent(), /not an Architect design/);
+  await shot("saved-designs");
+  await page.keyboard.press("Escape");
+
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");
 } catch (e) {

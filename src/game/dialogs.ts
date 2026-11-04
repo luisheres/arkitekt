@@ -1,6 +1,6 @@
 /** Modal dialogs: meeting a client, and their verdict on a design. */
 
-import { type Client, type Verdict, num } from "../core";
+import { type Client, type SavedDesign, type Verdict, num } from "../core";
 import { esc, money } from "./hud";
 import { lang, m } from "./i18n";
 
@@ -110,4 +110,102 @@ export function confirmTurnDown(client: Client, onConfirm: () => void): void {
     { confirm: onConfirm },
     true,
   );
+}
+
+/** Name a design and save it, over the one being worked on or as a new one. */
+export function showSaveDialog(defaultName: string, current: { name: string } | null, onSave: (name: string, asNew: boolean) => void): void {
+  let name = current?.name ?? defaultName;
+  open(
+    `<h2>${esc(m.ui.saveDesign)}</h2>
+     <label class="field wide"><span>${esc(m.ui.designName)}</span><input type="text" class="design-name" maxlength="120" value="${esc(name)}"></label>
+     <div class="actions">
+       <button type="button" data-action="cancel">${esc(m.ui.cancel)}</button>
+       ${current ? `<button type="button" data-action="saveNew">${esc(m.ui.saveAsNew)}</button>` : ""}
+       <button type="button" class="primary" data-action="save">${esc(m.ui.save)}</button>
+     </div>`,
+    { save: () => onSave(name.trim() || defaultName, false), saveNew: () => onSave(name.trim() || defaultName, true) },
+    true,
+  );
+  const input = modal().querySelector<HTMLInputElement>("input.design-name")!;
+  input.addEventListener("input", () => (name = input.value));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") modal().querySelector<HTMLButtonElement>("button.primary")?.click();
+  });
+  input.focus();
+  input.select();
+}
+
+export interface DesignListItem {
+  design: SavedDesign;
+  client: string;
+  /** e.g. "112.0 m² · 64,300" */
+  facts: string;
+  sold: boolean;
+}
+
+export interface DesignListActions {
+  open(d: SavedDesign): void;
+  remove(d: SavedDesign): void;
+  export(d: SavedDesign): void;
+  import(file: File): void;
+}
+
+/** The saved designs, newest first, with what can be done with each. */
+export function showDesigns(items: DesignListItem[], actions: DesignListActions, notice = ""): void {
+  const date = new Intl.DateTimeFormat(m.locale, { dateStyle: "medium", timeStyle: "short" });
+  const cards = items
+    .map(
+      ({ design: d, client, facts, sold }, i) => `
+      <li class="design-card">
+        ${d.thumbnail ? `<img src="${esc(d.thumbnail)}" alt="">` : `<div class="no-thumb"></div>`}
+        <div class="design-info">
+          <strong>${esc(d.name)}</strong>
+          <span class="sub">${esc(client)}</span>
+          <span class="sub">${esc(facts)} · ${esc(date.format(d.savedAt))}</span>
+        </div>
+        <div class="design-actions">
+          ${sold ? `<span class="tag">${esc(m.ui.soldTag)}</span>` : `<button type="button" class="primary" data-cmd="open" data-i="${i}">${esc(m.ui.openDesign)}</button>`}
+          <button type="button" data-cmd="export" data-i="${i}">${esc(m.ui.exportDesign)}</button>
+          <button type="button" class="danger" data-cmd="remove" data-i="${i}">${esc(m.ui.delete)}</button>
+        </div>
+      </li>`,
+    )
+    .join("");
+  open(
+    `<h2>${esc(m.ui.savedDesigns)}</h2>
+     ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
+     ${items.length ? `<ul class="design-list">${cards}</ul>` : `<p class="sub">${esc(m.ui.noSavedDesigns)}</p>`}
+     <div class="actions">
+       <label class="button-like">${esc(m.ui.importDesign)}<input type="file" accept=".json,application/json" hidden></label>
+       <button type="button" class="primary" data-action="close" data-focus>${esc(m.ui.close)}</button>
+     </div>`,
+    {},
+    true,
+  );
+  const root = modal();
+  root.querySelectorAll<HTMLButtonElement>("button[data-cmd]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const d = items[Number(b.dataset.i)].design;
+      if (b.dataset.cmd === "open") {
+        root.hidden = true;
+        root.innerHTML = "";
+        actions.open(d);
+      } else if (b.dataset.cmd === "export") actions.export(d);
+      else actions.remove(d);
+    }),
+  );
+  const file = root.querySelector<HTMLInputElement>("input[type=file]")!;
+  file.addEventListener("change", () => {
+    if (file.files?.[0]) actions.import(file.files[0]);
+  });
+}
+
+/** A short message that fades away, e.g. after saving. */
+export function toast(text: string): void {
+  // One message at a time: a new one replaces the last.
+  document.querySelectorAll(".toast").forEach((old) => old.remove());
+  const t = Object.assign(document.createElement("div"), { className: "toast", textContent: text, role: "status" });
+  document.body.append(t);
+  setTimeout(() => t.classList.add("gone"), 1800);
+  setTimeout(() => t.remove(), 2400);
 }
