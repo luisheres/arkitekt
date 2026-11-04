@@ -111,7 +111,7 @@ export class Panel {
     const d = li.dataset;
     if (d.level !== undefined) this.store.setLevel(Number(d.level));
     if (d.kind === "room") this.store.select({ kind: "room", at: new Vec2(Number(d.x), Number(d.y)) });
-    else if (d.kind) this.store.select({ kind: d.kind as "wall" | "opening" | "stair", id: Number(d.id) });
+    else if (d.kind) this.store.select({ kind: d.kind as "wall" | "opening" | "stair" | "label", id: Number(d.id) });
     this.store.setTool("select");
     if (d.kind) {
       const r = li.getBoundingClientRect();

@@ -159,7 +159,7 @@ export const en: Messages = {
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
       case "LabelOutsideRooms":
-        return "A room label is outside the house";
+        return `The label "${this.rooms[i.type].name}" is no longer inside a room (its room was moved or removed); drag it into a room or delete it`;
       case "RoofNeedsRectangle": {
         const style = this.roofStyle[i.style].toLowerCase();
         return `${cap(/^[aeiou]/.test(style) ? "an" : "a")} ${style} roof needs a rectangular house; use a flat roof for other shapes`;

@@ -15,6 +15,7 @@ function issueTarget(i: Issue): Selection {
   if ("opening" in i) return { kind: "opening", id: i.opening };
   if (i.kind === "OpeningsOverlap") return { kind: "opening", id: i.b };
   if ("room" in i) return { kind: "room", at: i.room.at };
+  if (i.kind === "LabelOutsideRooms") return { kind: "label", id: i.label };
   if ("stair" in i) return { kind: "stair", id: i.stair };
   return null;
 }

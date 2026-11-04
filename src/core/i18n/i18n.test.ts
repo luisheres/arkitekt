@@ -64,7 +64,7 @@ const ISSUES: Issue[] = [
   { kind: "RoomUnreachable", room: { ...room, type: null } },
   { kind: "RoomHasTwoLabels", room },
   { kind: "GarageNeedsGarageDoor", room: { ...room, type: "Garage" } },
-  { kind: "LabelOutsideRooms", label: 1, at: new Vec2(0, 0) },
+  { kind: "LabelOutsideRooms", label: 1, at: new Vec2(0, 0), type: "Bedroom", level: 0 },
   { kind: "RoofNeedsRectangle", style: "Gable" },
   { kind: "RoofPitchOutOfRange" },
   { kind: "RoofOverhangOutOfRange" },

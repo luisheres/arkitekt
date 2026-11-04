@@ -34,6 +34,8 @@ export type Selection =
   | { kind: "opening"; id: number }
   | { kind: "stair"; id: number }
   | { kind: "furniture"; id: number }
+  /** A room label that is no longer inside any room. */
+  | { kind: "label"; id: number }
   /** The room containing `at`, on the current level. */
   | { kind: "room"; at: Vec2 }
   /** The whole roof, or every outer wall's facade. */
@@ -278,6 +280,7 @@ export class Store {
       else if (sel.kind === "opening") h.removeOpening(sel.id);
       else if (sel.kind === "stair") h.removeStair(sel.id);
       else if (sel.kind === "furniture") h.removeFurniture(sel.id);
+      else if (sel.kind === "label") h.removeLabel(sel.id);
       else if (sel.kind === "room") {
         setRoomType(h, sel.at, null, this.level);
         clearRoomFurnitureAt(h, sel.at, this.level);
@@ -293,6 +296,7 @@ export class Store {
     const sel = this.selection;
     if (sel?.kind === "stair" && !this.house.stair(sel.id)) this.selection = null;
     if (sel?.kind === "furniture" && !this.house.furniturePiece(sel.id)) this.selection = null;
+    if (sel?.kind === "label" && !this.house.label(sel.id)) this.selection = null;
     if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
     if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
   }

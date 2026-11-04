@@ -55,7 +55,7 @@ import {
   wallThickness,
 } from "../core";
 import { m } from "./i18n";
-import { type Store, type Tool, drawsWalls } from "./store";
+import { type Selection, type Store, type Tool, drawsWalls } from "./store";
 
 const PLAN_WALL_COLORS = { Wood: "#7a5134", FaluRed: "#8a2a1e", Brick: "#8c3d2e", Plaster: "#6f6b63", Stone: "#77736a" } as const;
 const INTERIOR_WALL_COLOR = "#a19b90";
@@ -291,6 +291,11 @@ export class PlanView {
     return null;
   }
 
+  /** A label inside a room selects the room; a label left outside every room selects itself. */
+  private labelSelection(id: number, at: Vec2): NonNullable<Selection> {
+    return roomAt(this.rooms, at) ? { kind: "room", at } : { kind: "label", id };
+  }
+
   /** Height and material for new walls: match the existing walls. */
   private newWallStyle() {
     const first = this.walls.find((w) => !w.boundary) ?? this.house.walls.find((w) => !w.boundary);
@@ -368,7 +373,7 @@ export class PlanView {
         if (hit.kind === "corner") {
           this.drag = { kind: "corner", at: hit.at };
         } else if (hit.kind === "label") {
-          store.select({ kind: "room", at: hit.at });
+          store.select(this.labelSelection(hit.id, hit.at));
           this.drag = { kind: "label", id: hit.id, grab: p.sub(hit.at) };
         } else if (hit.kind === "stair") {
           store.select(hit);
@@ -494,7 +499,7 @@ export class PlanView {
       this.endDrag();
       const hit = this.hitTest(this.eventPoint(e));
       if (hit && hit.kind !== "corner") {
-        this.store.select(hit.kind === "label" ? { kind: "room", at: hit.at } : hit);
+        this.store.select(hit.kind === "label" ? this.labelSelection(hit.id, hit.at) : hit);
         this.onMenu(e.clientX, e.clientY);
       } else this.store.select(null);
       return;
@@ -512,7 +517,7 @@ export class PlanView {
     }
     if (drag?.kind === "label") {
       const label = this.house.label(drag.id);
-      if (label) this.store.select({ kind: "room", at: label.at });
+      if (label) this.store.select(this.labelSelection(label.id, label.at));
     }
     this.endDrag();
   }
@@ -671,6 +676,13 @@ export class PlanView {
     for (const s of this.stairs) {
       const state = [badStairs.has(s.id) && "bad", hoverId("stair") === s.id && "hover", selId("stair") === s.id && "selected"];
       out.push(this.stairSymbol(s, s.level === this.level, state.filter(Boolean).join(" ")));
+    }
+
+    // Labels whose room is gone: shown in red so they can be dragged into a room or deleted.
+    for (const label of this.analysis?.strayLabels ?? []) {
+      const [x, y] = this.toScreen(label.at);
+      const selected = selection?.kind === "label" && selection.id === label.id ? " selected" : "";
+      out.push(`<text class="room-name stray${selected}" x="${x.toFixed(1)}" y="${y.toFixed(1)}">${esc(m.rooms[label.type].name)}</text>`);
     }
 
     // Room names and areas, shortened to fit small rooms.

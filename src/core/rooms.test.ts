@@ -250,3 +250,17 @@ describe("floor finishes", () => {
     expect(estimate(h, defaultPrices()).finishes).toBeCloseTo(35 * 140 + 35 * 35);
   });
 });
+
+describe("room labels left behind", () => {
+  it("a label whose room is gone is reported, with its use", () => {
+    const h = twoRooms();
+    setRoomType(h, v(12, 8), "Kitchen");
+    // Shrink the house so the kitchen's label ends up outdoors.
+    for (const w of h.walls) {
+      if (w.start.x === 15) w.start = v(11, w.start.y);
+      if (w.end.x === 15) w.end = v(11, w.end.y);
+    }
+    const issue = validate(h, starterPlots()[0], 1e9, defaultPrices()).find((i) => i.kind === "LabelOutsideRooms");
+    expect(issue && issue.kind === "LabelOutsideRooms" && [issue.type, issue.level]).toEqual(["Kitchen", 0]);
+  });
+});

@@ -98,6 +98,8 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
       return roofInspector(store);
     case "facade":
       return facadeInspector(store);
+    case "label":
+      return labelInspector(store, sel.id);
   }
 }
 
@@ -361,6 +363,15 @@ function furnitureInspector(store: Store, id: number): Inspector | null {
     );
   const fields = [size(m.ui.width, "width"), size(m.ui.depth, "depth")];
   return { el: el("div", {}, el("h2", {}, m.furnitureName[f.kind]), ...fields.map((x) => x.el), el("div", { className: "row" }, rotate, deleteButton(store))), fields };
+}
+
+// --- Labels left outside every room ------------------------------------------------
+
+function labelInspector(store: Store, id: number): Inspector | null {
+  const label = store.house.label(id);
+  if (!label) return null;
+  const issue = { kind: "LabelOutsideRooms" as const, label: id, at: label.at, type: label.type, level: label.level };
+  return { el: el("div", {}, el("h2", {}, m.rooms[label.type].name), el("p", { className: "sub" }, m.issue(issue)), el("div", { className: "row" }, deleteButton(store))), fields: [] };
 }
 
 // --- Roof --------------------------------------------------------------------------

@@ -1202,3 +1202,12 @@ button.link:hover {
   stroke-width: 2;
   fill: rgba(47, 124, 246, 0.12);
 }
+
+.plan .room-name.stray {
+  fill: var(--error);
+  font-style: italic;
+}
+
+.plan .room-name.stray.selected {
+  text-decoration: underline;
+}

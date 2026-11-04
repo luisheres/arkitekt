@@ -154,6 +154,25 @@ try {
   await page.keyboard.press("Delete");
   assert.ok(!(await furniture()).some((f) => f.id === washer.id), "Delete removes the selected piece");
 
+  // A label left outside every room (as when its room is moved away) shows as an issue;
+  // clicking the issue opens the label's menu, where it can be deleted.
+  await page.evaluate(() => {
+    const { store, core } = window.architect;
+    const id = store.house.labels[0].id;
+    store.edit((h) => (h.label(id).at = new core.Vec2(24, 20)));
+  });
+  assert.match(await status(), /is no longer inside a room/);
+  await page.click('.issues li:has-text("is no longer inside a room")');
+  assert.match(await page.locator(".popover p.sub").textContent(), /drag it into a room or delete it/);
+  await page.click(".popover button.danger");
+  assert.doesNotMatch(await status(), /is no longer inside a room/);
+  await page.keyboard.press("Control+z"); // put the label back for the rest of the test
+  await page.evaluate(() => {
+    const { store, core } = window.architect;
+    store.edit((h) => (h.labels[0].at = new core.Vec2(12, 10)));
+  });
+  assert.match(await status(), /No building problems/);
+
   // A stone facade, then back to plaster, from the Facade menu.
   await fromMenu("Facade", "Stone");
   assert.deepEqual(await page.evaluate(() => [...new Set(window.architect.store.house.walls.filter((w) => w.material === "Stone").map((w) => w.id))].length), 4);

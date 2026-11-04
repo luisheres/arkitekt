@@ -66,7 +66,7 @@ export type Issue =
   | { kind: "RoomHasTwoLabels"; room: RoomRef }
   | { kind: "UnsuitableFloor"; room: RoomRef; floor: FloorFinish; allowed: readonly FloorFinish[] }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
-  | { kind: "LabelOutsideRooms"; label: LabelId; at: Vec2 }
+  | { kind: "LabelOutsideRooms"; label: LabelId; at: Vec2; type: RoomType; level: number }
   | { kind: "RoofNeedsRectangle"; style: RoofStyle }
   | { kind: "RoofPitchOutOfRange" }
   | { kind: "RoofOverhangOutOfRange" }
@@ -160,7 +160,7 @@ function checkRooms(house: House, analysis: RoomAnalysis, level: number, issues:
     issues.push({ kind, opening: m.opening.id });
   }
   for (const wall of layout.outerBoundaries) issues.push({ kind: "BoundaryOnOutside", wall });
-  for (const label of strayLabels) issues.push({ kind: "LabelOutsideRooms", label: label.id, at: label.at });
+  for (const label of strayLabels) issues.push({ kind: "LabelOutsideRooms", label: label.id, at: label.at, type: label.type, level: label.level });
 
   for (const room of rooms) {
     const ref = roomRef(room);

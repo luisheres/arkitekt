@@ -162,7 +162,7 @@ export const sv: Messages = {
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
       case "LabelOutsideRooms":
-        return "En rumsetikett ligger utanför huset";
+        return `Etiketten "${this.rooms[i.type].name}" ligger inte längre i något rum (rummet har flyttats eller tagits bort); dra in den i ett rum eller ta bort den`;
       case "RoofNeedsRectangle":
         return `${cap(ROOF_NOUN[i.style])} kräver ett rektangulärt hus; välj platt tak för andra former`;
       case "RoofPitchOutOfRange":
