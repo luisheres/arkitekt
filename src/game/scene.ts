@@ -3,24 +3,25 @@
  */
 
 import * as THREE from "three";
+import { floorTexture, groundTexture, interiorTexture, roofTexture, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   type Plot,
-  type RoofMaterial,
-  type RoomType,
   type TriMesh,
-  type WallMaterial,
+  FLOOR_FINISHES,
   FLOOR_SLAB_HEIGHT,
+  ROOF_MATERIALS,
+  WALL_MATERIALS,
   FLOOR_STRUCTURE,
   STAIR_LENGTH,
   STAIR_WIDTH,
   type Vec2,
+  interiorNormal,
+  leftNormal,
   pointInPolygon,
   slabOutline,
   stairDirection,
   stairOutline,
-  ROOM_INFO,
-  ROOM_TYPES,
   analyzeRooms,
   buildFloor,
   buildRoof,
@@ -34,36 +35,23 @@ function matte(r: number, g: number, b: number, roughness: number): THREE.MeshSt
   return new THREE.MeshStandardMaterial({ color: srgb(r, g, b), roughness, metalness: 0 });
 }
 
-/** Roofs and gables are thin single-layer surfaces, so they render both sides. */
-function roofMat(r: number, g: number, b: number, roughness: number, metalness: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: srgb(r, g, b), roughness, metalness, side: THREE.DoubleSide });
-}
 
-function roomMaterials(): Record<RoomType, THREE.Material> {
-  const out = {} as Record<RoomType, THREE.Material>;
-  for (const t of ROOM_TYPES) out[t] = new THREE.MeshStandardMaterial({ color: new THREE.Color(ROOM_INFO[t].color), roughness: 0.9 });
+/** One material per entry of an enum, built by `make`. */
+function each<K extends string>(keys: readonly K[], make: (k: K) => THREE.Material): Record<K, THREE.Material> {
+  const out = {} as Record<K, THREE.Material>;
+  for (const k of keys) out[k] = make(k);
   return out;
 }
 
-/** Shared materials, one per building material. */
+/** Shared materials, one per building material, textured in world space. */
 const palette = {
-  wall: {
-    Wood: matte(0.58, 0.4, 0.26, 0.85),
-    Brick: matte(0.6, 0.27, 0.2, 0.95),
-    Plaster: matte(0.93, 0.89, 0.8, 0.9),
-  } satisfies Record<WallMaterial, THREE.Material>,
-  interior: matte(0.95, 0.94, 0.91, 0.9),
-  // Gables and fascia reuse the wall colours but must render from both sides.
-  gable: {
-    Wood: roofMat(0.58, 0.4, 0.26, 0.85, 0),
-    Brick: roofMat(0.6, 0.27, 0.2, 0.95, 0),
-    Plaster: roofMat(0.93, 0.89, 0.8, 0.9, 0),
-  } satisfies Record<WallMaterial, THREE.Material>,
-  roof: {
-    Shingles: roofMat(0.22, 0.22, 0.25, 0.9, 0),
-    Metal: roofMat(0.42, 0.47, 0.52, 0.45, 0.6),
-    Tiles: roofMat(0.56, 0.23, 0.15, 0.8, 0),
-  } satisfies Record<RoofMaterial, THREE.Material>,
+  wall: each(WALL_MATERIALS, (m) => worldMaterial(wallTexture(m), { roughness: m === "Stone" ? 0.95 : 0.85 })),
+  interior: worldMaterial(interiorTexture(), { roughness: 0.9 }),
+  // Gables and fascia use the facade material but must render from both sides.
+  gable: each(WALL_MATERIALS, (m) => worldMaterial(wallTexture(m), { roughness: 0.85, side: THREE.DoubleSide })),
+  roof: each(ROOF_MATERIALS, (m) =>
+    worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide }),
+  ),
   glass: new THREE.MeshStandardMaterial({
     color: srgb(0.45, 0.62, 0.78),
     roughness: 0.08,
@@ -72,14 +60,12 @@ const palette = {
     opacity: 0.55,
   }),
   frame: matte(0.96, 0.96, 0.94, 0.6),
-  door: matte(0.3, 0.18, 0.11, 0.7),
+  door: worldMaterial(groundTexture("wood"), { color: srgb(0.55, 0.42, 0.34), roughness: 0.7 }),
   garageDoor: matte(0.82, 0.83, 0.84, 0.5),
-  floor: matte(0.55, 0.55, 0.53, 0.95),
-  /** Room floors, tinted by what the room is for. */
-  room: roomMaterials(),
-  untypedRoom: matte(0.86, 0.84, 0.8, 0.95),
-  slab: matte(0.72, 0.71, 0.68, 0.95),
-  stairs: matte(0.66, 0.5, 0.34, 0.8),
+  /** Room floors by finish. */
+  floor: each(FLOOR_FINISHES, (f) => worldMaterial(floorTexture(f), { roughness: f === "Tiles" || f === "Stone" ? 0.5 : 0.8 })),
+  slab: worldMaterial(floorTexture("Concrete")),
+  stairs: worldMaterial(floorTexture("Wood"), { roughness: 0.7 }),
 };
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
@@ -98,17 +84,17 @@ export function buildWorld(plot: Plot): World {
   const root = new THREE.Group();
   const center = new THREE.Vector3(plot.width * 0.5, 0, plot.depth * 0.5);
 
-  const flat = (w: number, d: number, color: THREE.Color, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ color, roughness: 1 }));
+  const flat = (w: number, d: number, texture: THREE.Texture, x: number, y: number, z: number) => {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), worldMaterial(texture, { roughness: 1 }));
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
     root.add(mesh);
   };
   // Surrounding land, the plot's lawn, and a street along the front (low-z) edge.
-  flat(400, 400, srgb(0.42, 0.55, 0.3), center.x, -0.01, center.z);
-  flat(plot.width, plot.depth, srgb(0.38, 0.62, 0.28), center.x, 0, center.z);
-  flat(400, 7, srgb(0.32, 0.32, 0.34), center.x, 0.002, -4.5);
+  flat(400, 400, groundTexture("grass"), center.x, -0.01, center.z);
+  flat(plot.width, plot.depth, groundTexture("lawn"), center.x, 0, center.z);
+  flat(400, 7, groundTexture("asphalt"), center.x, 0.002, -4.5);
 
   root.add(new THREE.HemisphereLight(srgb(0.85, 0.9, 1.0), srgb(0.42, 0.55, 0.3), 1.6));
   const sun = new THREE.DirectionalLight(0xffffff, 3.2);
@@ -172,6 +158,8 @@ function toGeometry(t: TriMesh): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(t.positions, 3));
   g.setAttribute("normal", new THREE.Float32BufferAttribute(t.normals, 3));
+  // Textures are mapped in world space; the attribute only has to exist.
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((t.positions.length / 3) * 2), 2));
   return g;
 }
 
@@ -201,8 +189,9 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   };
   const base = (level: number) => house.levelBase(level);
 
-  const box = (u: number, v: number, at: (u: number, v: number) => THREE.Vector3, size: THREE.Vector3, rotY: number, mat: THREE.Material) => {
-    const mesh = solid(unitBox, mat);
+  const box = (u: number, v: number, at: (u: number, v: number) => THREE.Vector3, size: THREE.Vector3, rotY: number, mat: THREE.Material | THREE.Material[]) => {
+    const mesh = new THREE.Mesh(unitBox, mat);
+    mesh.castShadow = mesh.receiveShadow = true;
     mesh.position.copy(at(u, v));
     mesh.scale.copy(size);
     mesh.rotation.y = rotY;
@@ -225,8 +214,17 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     const exterior = !layout || layout.exterior.has(wall.id);
     const size = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
+    // Box faces: +x, -x, +y, -y, +z, -z. Local +z is the wall's left side; an exterior
+    // wall shows its facade outside and plaster on the inside.
+    const facade = palette.wall[wall.material];
+    const inside = palette.interior;
+    let faces: THREE.Material | THREE.Material[] = inside;
+    if (exterior) {
+      const leftIsInside = interiorNormal(house, wall).dot(leftNormal(wall)) > 0;
+      faces = [facade, facade, facade, facade, leftIsInside ? inside : facade, leftIsInside ? facade : inside];
+    }
     for (const p of wallPieces(wall, openings, t)) {
-      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, exterior ? palette.wall[wall.material] : palette.interior);
+      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, faces);
     }
 
     for (const o of openings) {
@@ -269,14 +267,14 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     if (level > upTo) return;
     if (!analysis.ok) {
       const floor = level === 0 ? buildFloor(house) : null;
-      if (floor?.ok) group.add(solid(toGeometry(floor.value), palette.floor));
+      if (floor?.ok) group.add(solid(toGeometry(floor.value), palette.slab));
       return;
     }
     const wells = house.stairs.filter((s) => s.level + 1 === level).map(stairOutline);
     for (const room of analysis.value.rooms) {
       const holes = wells.filter((w) => pointInPolygon(w[0].add(w[2]).scale(0.5), room.polygon));
       const y = level === 0 ? FLOOR_SLAB_HEIGHT : base(level) + 0.01;
-      group.add(flat(room.polygon, holes, y, room.type ? palette.room[room.type] : palette.untypedRoom));
+      group.add(flat(room.polygon, holes, y, palette.floor[room.floor]));
     }
   });
 

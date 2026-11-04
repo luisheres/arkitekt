@@ -10,7 +10,7 @@
 import { allSamples, defaultPrices, presentDesign } from "../core";
 import { m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
-import { isModalOpen, showClient, showVerdict } from "./dialogs";
+import { confirmTurnDown, isModalOpen, showClient, showVerdict } from "./dialogs";
 import { Panel } from "./panel";
 import { PlanView } from "./plan";
 import { Store, type Tool } from "./store";
@@ -37,6 +37,11 @@ const present = () => {
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   capture: () => showCaptures(view3d.capture()),
   beforeReload: () => store.save(),
+  newClient: () =>
+    confirmTurnDown(store.client, () => {
+      store.declineClient();
+      meetClient();
+    }),
   present,
   showBrief: meetClient,
 });

@@ -18,8 +18,20 @@ export const DEFAULT_WALL_THICKNESS = 0.25;
 export type WallId = number;
 export type OpeningId = number;
 
-export const WALL_MATERIALS = ["Wood", "Brick", "Plaster"] as const;
+export const WALL_MATERIALS = ["Wood", "FaluRed", "Brick", "Plaster", "Stone"] as const;
 export type WallMaterial = (typeof WALL_MATERIALS)[number];
+
+/** What a facade is made of, for briefs that ask for "wood" without minding the paint. */
+export const WALL_FAMILY: Record<WallMaterial, "wood" | "brick" | "plaster" | "stone"> = {
+  Wood: "wood",
+  FaluRed: "wood",
+  Brick: "brick",
+  Plaster: "plaster",
+  Stone: "stone",
+};
+
+export const FLOOR_FINISHES = ["Wood", "Laminate", "Tiles", "Stone", "Carpet", "Concrete"] as const;
+export type FloorFinish = (typeof FLOOR_FINISHES)[number];
 
 export const ROOF_STYLES = ["Flat", "Gable", "Hip"] as const;
 export type RoofStyle = (typeof ROOF_STYLES)[number];
@@ -41,6 +53,8 @@ export interface RoomLabel {
   type: RoomType;
   at: Vec2;
   level: number;
+  /** The room's floor finish; unset means the default for its type. */
+  floor?: FloorFinish;
 }
 
 export type StairId = number;
@@ -168,7 +182,7 @@ export interface HouseJson {
   }[];
   openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
   roof: Roof | null;
-  labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number }[];
+  labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish }[];
   levels?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   nextId: number;
@@ -360,7 +374,7 @@ export class House {
       })),
       openings: this.openings.map((o) => ({ ...o })),
       roof: this.roof ? { ...this.roof } : null,
-      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level })),
+      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}) })),
       levels: this.levels,
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       nextId: this.nextId,
@@ -372,7 +386,7 @@ export class House {
     h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false, w.level ?? 0));
     h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
     h.roof = j.roof ? { ...j.roof } : null;
-    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0 }));
+    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}) }));
     h.levels = j.levels ?? 1;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.nextId = j.nextId;

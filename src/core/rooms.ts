@@ -7,7 +7,7 @@ import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { Vec2, interiorPoint, pointInPolygon, signedArea } from "./geometry";
 import { type Layout, OUTSIDE, analyzeLayout } from "./layout";
-import type { FootprintError, House, Opening, RoomLabel, RoomType, Stair } from "./model";
+import { FLOOR_FINISHES, type FloorFinish, type FootprintError, type House, type Opening, type RoomLabel, type RoomType, type Stair } from "./model";
 import { type Result, ok } from "./result";
 
 export interface RoomInfo {
@@ -17,19 +17,29 @@ export interface RoomInfo {
   needsWindow: boolean;
   /** Plan color. */
   color: string;
+  /** Floor finish unless the player chooses another. */
+  floor: FloorFinish;
+  /** Finishes the room can have; wet rooms need waterproof floors, garages hard ones. */
+  floors: readonly FloorFinish[];
 }
 
+const ANY_FLOOR = FLOOR_FINISHES;
+const WET_FLOORS: readonly FloorFinish[] = ["Tiles", "Stone", "Concrete"];
+
+/** The finish of rooms nobody has said anything about yet. */
+export const DEFAULT_FLOOR: FloorFinish = "Laminate";
+
 export const ROOM_INFO: Record<RoomType, RoomInfo> = {
-  Living: { minArea: 12, needsWindow: true, color: "#f3e3b5" },
-  Kitchen: { minArea: 5, needsWindow: true, color: "#f6cfa6" },
-  Bedroom: { minArea: 7, needsWindow: true, color: "#cfdcf5" },
-  Bathroom: { minArea: 3, needsWindow: false, color: "#bfe6e4" },
-  WC: { minArea: 1.2, needsWindow: false, color: "#d4eeec" },
-  Hall: { minArea: 2, needsWindow: false, color: "#e8e2d6" },
-  Office: { minArea: 5, needsWindow: true, color: "#dfd3ef" },
-  Utility: { minArea: 2, needsWindow: false, color: "#dde3cf" },
-  Garage: { minArea: 15, needsWindow: false, color: "#d6d6d6" },
-  Storage: { minArea: 1, needsWindow: false, color: "#e6dfd0" },
+  Living: { minArea: 12, needsWindow: true, color: "#f3e3b5", floor: "Wood", floors: ANY_FLOOR },
+  Kitchen: { minArea: 5, needsWindow: true, color: "#f6cfa6", floor: "Tiles", floors: ANY_FLOOR },
+  Bedroom: { minArea: 7, needsWindow: true, color: "#cfdcf5", floor: "Wood", floors: ANY_FLOOR },
+  Bathroom: { minArea: 3, needsWindow: false, color: "#bfe6e4", floor: "Tiles", floors: WET_FLOORS },
+  WC: { minArea: 1.2, needsWindow: false, color: "#d4eeec", floor: "Tiles", floors: WET_FLOORS },
+  Hall: { minArea: 2, needsWindow: false, color: "#e8e2d6", floor: "Stone", floors: ANY_FLOOR },
+  Office: { minArea: 5, needsWindow: true, color: "#dfd3ef", floor: "Laminate", floors: ANY_FLOOR },
+  Utility: { minArea: 2, needsWindow: false, color: "#dde3cf", floor: "Tiles", floors: WET_FLOORS },
+  Garage: { minArea: 15, needsWindow: false, color: "#d6d6d6", floor: "Concrete", floors: WET_FLOORS },
+  Storage: { minArea: 1, needsWindow: false, color: "#e6dfd0", floor: "Concrete", floors: ANY_FLOOR },
 };
 
 export interface DoorLink {
@@ -49,6 +59,8 @@ export interface Room {
   /** Labels inside the room; normally zero or one. */
   labels: RoomLabel[];
   type: RoomType | null;
+  /** The floor finish: the label's choice or the default for the room type. */
+  floor: FloorFinish;
   /** Doors and garage doors in the room's walls. */
   doors: DoorLink[];
   /** Windows in the room's exterior walls. */
@@ -98,6 +110,7 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
     anchor: interiorPoint(polygon),
     labels: [],
     type: null,
+    floor: DEFAULT_FLOOR,
     doors: [],
     windows: [],
     openTo: [],
@@ -117,6 +130,7 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
     if (first) {
       room.type = first.type;
       room.anchor = first.at;
+      room.floor = first.floor ?? ROOM_INFO[first.type].floor;
     }
   }
 

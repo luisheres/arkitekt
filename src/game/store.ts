@@ -14,6 +14,7 @@ import {
   type Vec2,
   clientById,
   completeCommission,
+  declineClient,
   newCareer,
   nextClient,
   MAX_LEVELS,
@@ -113,8 +114,22 @@ export class Store {
 
   /** The client accepted the design: get paid and line up the next client. */
   completeCommission(fee: number, stars: number): void {
-    this.career = completeCommission(this.career, this.client.id, fee, stars);
-    this.client = nextClient(this.career);
+    const done = this.client.id;
+    this.career = completeCommission(this.career, done, fee, stars);
+    this.client = nextClient(this.career, done);
+    this.working = false;
+    this.house = new House();
+    this.history = new History();
+    this.selection = null;
+    this.level = 0;
+    this.emit("client");
+  }
+
+  /** Turn the current client down and line up the next one; the design is discarded. */
+  declineClient(): void {
+    const declined = this.client.id;
+    this.career = declineClient(this.career, declined);
+    this.client = nextClient(this.career, declined);
     this.working = false;
     this.house = new House();
     this.history = new History();

@@ -4,12 +4,12 @@
  */
 
 import { type PriceList, estimate, totalCost } from "./cost";
-import type { House, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "./model";
+import { type FloorFinish, type House, type RoofMaterial, type RoofStyle, type RoomType, WALL_FAMILY, type WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { area, percent } from "./i18n/format";
 import { en } from "./i18n/en";
 import type { Lang, Messages } from "./i18n/types";
-import { type Room, analyzeHouse } from "./rooms";
+import { ROOM_INFO, type Room, analyzeHouse } from "./rooms";
 import { validate } from "./validate";
 
 export type Requirement =
@@ -29,6 +29,8 @@ export type Requirement =
   | { kind: "connected"; a: RoomType; b: RoomType }
   /** The room of this type with the most glass has at least `min` m² of windows. */
   | { kind: "windowArea"; room: RoomType; min: number }
+  /** This floor finish in every room of a type, or in every dry room when no type is given. */
+  | { kind: "floorFinish"; finish: FloorFinish; room?: RoomType }
   /** Construction cost at most this share of the budget. */
   | { kind: "underBudget"; share: number };
 
@@ -90,12 +92,13 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [a > 0 && a >= (r.min ?? 0) - 1e-6 && a <= (r.max ?? Infinity) + 1e-6, area(m, a)];
       }
       case "wallMaterial": {
+        const family = WALL_FAMILY[r.material];
         const exterior = house.walls.filter((w) => {
           if (w.boundary) return false;
           const level = analysis.levels[w.level];
           return !level?.ok || level.value.layout.exterior.has(w.id);
         });
-        const other = exterior.filter((w) => w.material !== r.material).length;
+        const other = exterior.filter((w) => WALL_FAMILY[w.material] !== family).length;
         return [exterior.length > 0 && other === 0, other === 0 ? m.brief.yes : m.brief.wallsNotMaterial(other, r.material)];
       }
       case "roofStyle":
@@ -114,6 +117,12 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "windowArea": {
         const best = Math.max(0, ...ofType(r.room).map((x) => x.windows.reduce((s, o) => s + o.area(), 0)));
         return [best >= r.min - 1e-6, area(m, best)];
+      }
+      case "floorFinish": {
+        // Without a room type: every room where the finish is allowed (wet rooms and garages are exempt).
+        const target = r.room ? ofType(r.room) : rooms.filter((x) => x.type && ROOM_INFO[x.type].floors.includes(r.finish));
+        const wrong = target.filter((x) => x.floor !== r.finish).length;
+        return [target.length > 0 && wrong === 0, m.brief.countOf(target.length - wrong, target.length)];
       }
       case "storeys":
         return [storeys > 0 && storeys >= (r.min ?? 0) && storeys <= (r.max ?? Infinity), String(storeys)];

@@ -1,6 +1,8 @@
 /** The sidebar: the client's brief, tools, properties of the selection and the house, costs. */
 
 import {
+  FLOOR_FINISHES,
+  type FloorFinish,
   type House,
   type Opening,
   type OpeningKind,
@@ -33,6 +35,7 @@ import {
   placeOpening,
   roomAt,
   roomName,
+  setRoomFloor,
   setRoomType,
 } from "../core";
 import { plotSize } from "./dialogs";
@@ -123,6 +126,8 @@ const opts = <T extends string>(values: readonly T[], labels: Record<T, string>)
 
 export interface PanelActions {
   capture(): void;
+  /** Turn the current client down and meet another. */
+  newClient(): void;
   /** Save state before the page reloads in another language. */
   beforeReload(): void;
   present(): void;
@@ -162,7 +167,9 @@ export class Panel {
     briefBtn.addEventListener("click", actions.showBrief);
     const presentBtn = el("button", { type: "button", className: "primary", title: m.ui.presentTitle }, m.ui.present);
     presentBtn.addEventListener("click", actions.present);
-    root.append(el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn)));
+    const newClientBtn = el("button", { type: "button", className: "new-client", title: m.ui.newClientTitle }, `↻ ${m.ui.newClientButton}`);
+    newClientBtn.addEventListener("click", actions.newClient);
+    root.append(el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn, newClientBtn)));
 
     // Tools.
     const tools = el("div", { className: "tools", role: "toolbar" });
@@ -310,6 +317,13 @@ export class Panel {
       const types: { value: RoomType | ""; label: string }[] = [{ value: "", label: m.ui.notSet }, ...ROOM_TYPES.map((t) => ({ value: t, label: m.rooms[t].name }))];
       this.selectionFields.push(
         selectField<RoomType | "">(m.ui.usedAs, types, () => current()?.type ?? "", (v) => store.edit((h) => void setRoomType(h, at, v === "" ? null : v, store.level))),
+        selectField<FloorFinish>(
+          m.ui.floor,
+          opts(FLOOR_FINISHES, m.floorFinish),
+          // Only labelled rooms keep a floor choice.
+          () => (current()?.labels.length ? current()!.floor : null),
+          (v) => store.edit((h) => void setRoomFloor(h, at, v, store.level)),
+        ),
         readout(m.ui.area, () => area(m, current()?.area ?? 0)),
         readout(m.ui.openings, () => {
           const r = current();
@@ -318,7 +332,7 @@ export class Panel {
         }),
       );
       const info = room.type && ROOM_INFO[room.type];
-      const notes = el("p", { className: "sub" }, room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : m.ui.chooseRoomUse);
+      const notes = el("p", { className: "sub" }, room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : `${m.ui.chooseRoomUse} ${m.ui.floorNeedsUse}`);
       box.append(el("h2", {}, roomName(room, m)), ...this.selectionFields.map((f) => f.el), notes);
       return;
     }

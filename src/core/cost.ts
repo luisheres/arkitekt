@@ -1,7 +1,8 @@
 /** Construction costs. */
 
 import { analyzeLayout } from "./layout";
-import type { House, RoofMaterial, WallMaterial } from "./model";
+import type { FloorFinish, House, RoofMaterial, WallMaterial } from "./model";
+import { analyzeHouse } from "./rooms";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -18,6 +19,8 @@ export interface PriceList {
   garageDoorM2: number;
   /** Per m² of roof covering. */
   roofM2: Record<RoofMaterial, number>;
+  /** Per m² of floor finish. */
+  floorM2: Record<FloorFinish, number>;
   /** Per m² of ground-floor area. */
   foundationM2: number;
   /** Per m² of upper-storey floor (the structure between storeys). */
@@ -28,7 +31,7 @@ export interface PriceList {
 
 export function defaultPrices(): PriceList {
   return {
-    wallM2: { Wood: 120, Brick: 220, Plaster: 150 },
+    wallM2: { Wood: 120, FaluRed: 130, Brick: 220, Plaster: 150, Stone: 320 },
     interiorWallM2: 70,
     windowBase: 300,
     windowM2: 450,
@@ -37,6 +40,7 @@ export function defaultPrices(): PriceList {
     garageDoorBase: 1500,
     garageDoorM2: 250,
     roofM2: { Shingles: 60, Metal: 90, Tiles: 110 },
+    floorM2: { Wood: 70, Laminate: 35, Tiles: 80, Stone: 140, Carpet: 30, Concrete: 15 },
     foundationM2: 180,
     upperFloorM2: 140,
     stairs: 3500,
@@ -52,11 +56,13 @@ export interface CostBreakdown {
   foundation: number;
   /** Floors of the upper storeys. */
   floors: number;
+  /** Floor finishes in every room. */
+  finishes: number;
   stairs: number;
 }
 
 export function totalCost(c: CostBreakdown): number {
-  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.stairs;
+  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.finishes + c.stairs;
 }
 
 /**
@@ -64,7 +70,7 @@ export function totalCost(c: CostBreakdown): number {
  * footprint, an impossible roof) cost nothing; validation reports those separately.
  */
 export function estimate(house: House, prices: PriceList): CostBreakdown {
-  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, stairs: 0 };
+  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, finishes: 0, stairs: 0 };
 
   // Until a storey's walls enclose something, every wall is priced as an exterior wall.
   const layouts = Array.from({ length: house.levels }, (_, k) => analyzeLayout(house, k));
@@ -94,5 +100,6 @@ export function estimate(house: House, prices: PriceList): CostBreakdown {
   c.foundation = house.floorArea(0) * prices.foundationM2;
   for (let k = 1; k < house.levels; k++) c.floors += house.floorArea(k) * prices.upperFloorM2;
   c.stairs = house.stairs.length * prices.stairs;
+  for (const room of analyzeHouse(house).rooms) c.finishes += room.area * prices.floorM2[room.floor];
   return c;
 }

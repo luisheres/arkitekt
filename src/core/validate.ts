@@ -4,7 +4,7 @@ import { type PriceList, estimate, totalCost } from "./cost";
 import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from "./geometry";
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
-import { type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
+import { type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
 import { type Plot, isBuildable } from "./plot";
 import { buildRoof } from "./roof";
 import { type HouseAnalysis, ROOM_INFO, type Room, type RoomAnalysis, analyzeHouse } from "./rooms";
@@ -64,6 +64,7 @@ export type Issue =
   | { kind: "RoomNeedsWindow"; room: RoomRef }
   | { kind: "RoomUnreachable"; room: RoomRef }
   | { kind: "RoomHasTwoLabels"; room: RoomRef }
+  | { kind: "UnsuitableFloor"; room: RoomRef; floor: FloorFinish; allowed: readonly FloorFinish[] }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
   | { kind: "LabelOutsideRooms"; label: LabelId; at: Vec2 }
   | { kind: "RoofNeedsRectangle"; style: RoofStyle }
@@ -169,6 +170,7 @@ function checkRooms(house: House, analysis: RoomAnalysis, level: number, issues:
     const info = ROOM_INFO[room.type];
     if (room.area < info.minArea) issues.push({ kind: "RoomTooSmall", room: ref, min: info.minArea });
     if (info.needsWindow && !room.daylit) issues.push({ kind: "RoomNeedsWindow", room: ref });
+    if (!info.floors.includes(room.floor)) issues.push({ kind: "UnsuitableFloor", room: ref, floor: room.floor, allowed: info.floors });
     if (room.type === "Garage" && !room.doors.some((d) => d.opening.kind === "GarageDoor" && d.to < 0)) {
       issues.push({ kind: "GarageNeedsGarageDoor", room: ref });
     }

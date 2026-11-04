@@ -28,7 +28,16 @@ export const sv: Messages = {
     Garage: { name: "Garage", short: "Garage", one: "ett garage", many: "garage", the: "garaget" },
     Storage: { name: "Förråd", short: "Förråd", one: "ett förråd", many: "förråd", the: "förrådet" },
   },
-  wallMaterial: { Wood: "Trä", Brick: "Tegel", Plaster: "Puts" },
+  wallMaterial: { Wood: "Trä", FaluRed: "Faluröd", Brick: "Tegel", Plaster: "Puts", Stone: "Natursten" },
+  floorFinish: { Wood: "Trä", Laminate: "Laminat", Tiles: "Klinker", Stone: "Sten", Carpet: "Matta", Concrete: "Betong" },
+  floorPhrase: {
+    Wood: { one: "trägolv", many: "trägolv" },
+    Laminate: { one: "laminatgolv", many: "laminatgolv" },
+    Tiles: { one: "klinkergolv", many: "klinkergolv" },
+    Stone: { one: "stengolv", many: "stengolv" },
+    Carpet: { one: "heltäckningsmatta", many: "heltäckningsmatta" },
+    Concrete: { one: "betonggolv", many: "betonggolv" },
+  },
   roofStyle: { Flat: "Platt", Gable: "Sadeltak", Hip: "Valmat" },
   roofMaterial: { Shingles: "Shingel", Metal: "Plåt", Tiles: "Takpannor" },
   opening: { Window: "Fönster", Door: "Dörr", GarageDoor: "Garageport" },
@@ -119,6 +128,11 @@ export const sv: Messages = {
         return `${room(i.room)} går inte att nå; lägg till en dörr`;
       case "RoomHasTwoLabels":
         return `${room(i.room)} har mer än en etikett`;
+      case "UnsuitableFloor": {
+        const names = i.allowed.map((f) => this.floorFinish[f].toLowerCase());
+        const list = `${names.slice(0, -1).join(", ")} eller ${names[names.length - 1]}`;
+        return `${room(i.room)}: ${this.floorFinish[i.floor].toLowerCase()} passar inte som golv här; välj ${list}`;
+      }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
       case "LabelOutsideRooms":
@@ -152,7 +166,13 @@ export const sv: Messages = {
         if (r.min !== undefined && r.max !== undefined) return `Boyta mellan ${m2(this, r.min)} och ${m2(this, r.max)}`;
         return r.min !== undefined ? `Boyta på minst ${m2(this, r.min)}` : `Boyta på högst ${m2(this, r.max ?? 0)}`;
       case "wallMaterial":
-        return `Ytterväggar av ${this.wallMaterial[r.material].toLowerCase()}`;
+        return {
+          Wood: "Ytterväggar av trä",
+          FaluRed: "Faluröda ytterväggar",
+          Brick: "Ytterväggar av tegel",
+          Plaster: "Putsade ytterväggar",
+          Stone: "Ytterväggar av natursten",
+        }[r.material];
       case "roofStyle":
         return cap(r.styles.map((st) => ROOF_NOUN[st]).join(" eller "));
       case "roofMaterial":
@@ -163,6 +183,8 @@ export const sv: Messages = {
         return `En dörr eller öppen planlösning mellan ${this.rooms[r.a].the} och ${this.rooms[r.b].the}`;
       case "windowArea":
         return `Minst ${m2(this, r.min)} fönster i ${this.rooms[r.room].the}`;
+      case "floorFinish":
+        return r.room ? `${cap(this.floorPhrase[r.finish].one)} i ${this.rooms[r.room].the}` : `${cap(this.floorPhrase[r.finish].many)} i alla rum`;
       case "underBudget":
         return `Kostar högst ${percent(this, r.share)} av budgeten`;
     }
@@ -175,7 +197,7 @@ export const sv: Messages = {
     noRoof: "inget tak",
     noDoors: "inga dörrar",
     doorsTooNarrow: (n) => (n === 1 ? "1 dörr för smal" : `${n} dörrar för smala`),
-    wallsNotMaterial: (n, material) => `${s(n, "vägg", "väggar")} inte av ${sv.wallMaterial[material].toLowerCase()}`,
+    wallsNotMaterial: (n) => `${s(n, "vägg", "väggar")} i annat material`,
     missing: (req, detail) => `Saknas: ${req.charAt(0).toLowerCase()}${req.slice(1)} (${detail})`,
     quoteRejected: "Vi gillar hur det tar form, men vi kan inte godkänna det riktigt än.",
     quoteThreeStars: "Det är precis vad vi drömt om. När kan bygget börja?",
@@ -193,6 +215,13 @@ export const sv: Messages = {
     briefTitle: "Läs kundens uppdrag igen",
     present: "Presentera för kunden",
     presentTitle: "Visa ritningen för kunden",
+    newClientButton: "Ny kund",
+    newClientTitle: "Tacka nej till uppdraget och ta emot en annan kund",
+    turnDownTitle: "Tacka nej till uppdraget?",
+    turnDownText: (client) => `Din ritning åt ${client} kastas och du får inget betalt för den. En annan kund väntar.`,
+    turnDown: "Tacka nej",
+    floor: "Golv",
+    floorNeedsUse: "Välj vad rummet ska användas till för att välja golv.",
     tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa" },
     undo: "Ångra",
     undoTitle: "Ångra (Ctrl+Z)",
@@ -260,6 +289,7 @@ export const sv: Messages = {
       roof: "Tak",
       foundation: "Grund",
       floors: "Bjälklag",
+      finishes: "Golvbeläggning",
       stairs: "Trappor",
       total: "Totalt",
       budgetLeft: "Kvar av budgeten",

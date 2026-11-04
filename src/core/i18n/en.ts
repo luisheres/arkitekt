@@ -25,7 +25,16 @@ export const en: Messages = {
     Garage: { name: "Garage", short: "Garage", one: "a garage", many: "garages", the: "the garage" },
     Storage: { name: "Storage", short: "Store", one: "a storage room", many: "storage rooms", the: "the storage room" },
   },
-  wallMaterial: { Wood: "Wood", Brick: "Brick", Plaster: "Plaster" },
+  wallMaterial: { Wood: "Wood", FaluRed: "Falu red", Brick: "Brick", Plaster: "Plaster", Stone: "Stone" },
+  floorFinish: { Wood: "Wood", Laminate: "Laminate", Tiles: "Tiles", Stone: "Stone", Carpet: "Carpet", Concrete: "Concrete" },
+  floorPhrase: {
+    Wood: { one: "a wooden floor", many: "wooden floors" },
+    Laminate: { one: "a laminate floor", many: "laminate floors" },
+    Tiles: { one: "a tiled floor", many: "tiled floors" },
+    Stone: { one: "a stone floor", many: "stone floors" },
+    Carpet: { one: "carpet", many: "carpets" },
+    Concrete: { one: "a concrete floor", many: "concrete floors" },
+  },
   roofStyle: { Flat: "Flat", Gable: "Gable", Hip: "Hip" },
   roofMaterial: { Shingles: "Shingles", Metal: "Metal", Tiles: "Tiles" },
   opening: { Window: "Window", Door: "Door", GarageDoor: "Garage door" },
@@ -116,6 +125,11 @@ export const en: Messages = {
         return `${room(i.room)} cannot be reached; add a door`;
       case "RoomHasTwoLabels":
         return `${room(i.room)} has more than one label`;
+      case "UnsuitableFloor": {
+        const names = i.allowed.map((f) => this.floorFinish[f].toLowerCase());
+        const list = `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+        return `${room(i.room)}: ${this.floorFinish[i.floor].toLowerCase()} is not a suitable floor here; choose ${list}`;
+      }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
       case "LabelOutsideRooms":
@@ -162,6 +176,8 @@ export const en: Messages = {
         return `A door or open plan between ${this.rooms[r.a].the} and ${this.rooms[r.b].the}`;
       case "windowArea":
         return `At least ${m2(this, r.min)} of windows in ${this.rooms[r.room].the}`;
+      case "floorFinish":
+        return r.room ? `${cap(this.floorPhrase[r.finish].one)} in ${this.rooms[r.room].the}` : `${cap(this.floorPhrase[r.finish].many)} throughout`;
       case "underBudget":
         return `Costs at most ${percent(this, r.share)} of the budget`;
     }
@@ -192,6 +208,13 @@ export const en: Messages = {
     briefTitle: "Read the client's brief again",
     present: "Present to client",
     presentTitle: "Show the design to the client",
+    newClientButton: "New client",
+    newClientTitle: "Turn down this request and hear from another client",
+    turnDownTitle: "Turn down this job?",
+    turnDownText: (client) => `Your design for ${client} will be discarded and you will not be paid for it. Another client is waiting.`,
+    turnDown: "Turn it down",
+    floor: "Floor",
+    floorNeedsUse: "Choose what the room is for to pick its floor.",
     tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs" },
     undo: "Undo",
     undoTitle: "Undo (Ctrl+Z)",
@@ -259,6 +282,7 @@ export const en: Messages = {
       roof: "Roof",
       foundation: "Foundation",
       floors: "Upper floors",
+      finishes: "Floor finishes",
       stairs: "Stairs",
       total: "Total",
       budgetLeft: "Budget left",

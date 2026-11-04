@@ -13,7 +13,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the clients and the career; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `clients.ts` the written clients and the career; `generate.ts` generated clients; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -45,9 +45,18 @@ puts sample house N on the current plot, for screenshots. `npm run e2e` and
 4. **Add doors and windows, and a roof.** Every room must be reachable through doors from
    the front door; bedrooms, living rooms, kitchens and offices need a window; a garage
    needs a garage door (select a door and change its type, or use the wall's buttons).
-5. **Present to client.** They accept when every must-have is met, the house has no
+5. **Choose materials.** The facade (wood boards, Falu red panel, brick, plaster or
+   stone) and roof covering are set in the sidebar's House section; each room's floor
+   (wood, laminate, tiles, stone, carpet or concrete) in its room panel. Everything has a
+   price, and wet rooms and garages need hard, waterproof floors.
+6. **Present to client.** They accept when every must-have is met, the house has no
    building problems and it is within budget. Your fee is 8% of their budget, plus up to
    half again for wishes granted.
+
+Not keen on a job? **New client** turns the request down (the design is discarded) and
+the next client calls. Once the five written clients are served or turned down, new
+clients are generated: families, couples, retirees and people working from home, each
+with their own household, brief, plot and budget, in both languages.
 
 ## Editing
 

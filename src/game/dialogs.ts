@@ -29,7 +29,8 @@ function open(html: string, actions: Record<string, () => void>, dismissable: bo
       actions[b.dataset.action!]?.();
     });
   }
-  root.querySelector<HTMLButtonElement>("button.primary")?.focus();
+  // The safe choice gets the focus, so Enter never confirms something destructive.
+  (root.querySelector<HTMLButtonElement>("button[data-focus]") ?? root.querySelector<HTMLButtonElement>("button.primary"))?.focus();
 }
 
 export function isModalOpen(): boolean {
@@ -96,5 +97,17 @@ export function showVerdict(client: Client, v: Verdict, onNext: () => void): voi
      <div class="actions"><button type="button" class="primary" data-action="next">${esc(m.ui.nextClient)}</button></div>`,
     { next: onNext },
     false,
+  );
+}
+
+/** Ask before turning a client down: the design so far is thrown away. */
+export function confirmTurnDown(client: Client, onConfirm: () => void): void {
+  open(
+    `<p class="eyebrow">${esc(client.text[lang].name)}</p>
+     <h2>${esc(m.ui.turnDownTitle)}</h2>
+     <p>${esc(m.ui.turnDownText(client.text[lang].name))}</p>
+     <div class="actions"><button type="button" data-action="cancel" data-focus>${esc(m.ui.keepWorking)}</button><button type="button" class="primary danger-primary" data-action="confirm">${esc(m.ui.turnDown)}</button></div>`,
+    { confirm: onConfirm },
+    true,
   );
 }

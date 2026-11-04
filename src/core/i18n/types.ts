@@ -4,7 +4,7 @@
  */
 
 import type { Requirement } from "../brief";
-import type { FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
+import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
 import type { Issue } from "../validate";
 
 export const LANGS = ["en", "sv"] as const;
@@ -41,6 +41,9 @@ export interface Messages {
   roofStyle: Record<RoofStyle, string>;
   roofMaterial: Record<RoofMaterial, string>;
   opening: Record<OpeningKind, string>;
+  floorFinish: Record<FloorFinish, string>;
+  /** A finish as a kind of floor: "a wooden floor" / "wooden floors". */
+  floorPhrase: Record<FloorFinish, { one: string; many: string }>;
 
   /** "Ground floor", "Floor 2", ... */
   levelName(level: number): string;
@@ -75,6 +78,13 @@ export interface Messages {
     briefTitle: string;
     present: string;
     presentTitle: string;
+    newClientButton: string;
+    newClientTitle: string;
+    turnDownTitle: string;
+    turnDownText(client: string): string;
+    turnDown: string;
+    floor: string;
+    floorNeedsUse: string;
     tools: Record<ToolName, string>;
     undo: string;
     undoTitle: string;
@@ -142,6 +152,7 @@ export interface Messages {
       roof: string;
       foundation: string;
       floors: string;
+      finishes: string;
       stairs: string;
       total: string;
       budgetLeft: string;

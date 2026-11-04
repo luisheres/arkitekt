@@ -1,6 +1,7 @@
 /** The clients who commission houses, easiest first, and the architect's career. */
 
 import type { Client } from "./brief";
+import { generateClient, nextSeed } from "./generate";
 import { starterPlots } from "./plot";
 
 const [suburban, lakeside, hillside] = starterPlots();
@@ -107,13 +108,13 @@ export const CLIENTS: Client[] = [
         name: "Lars Berg",
         who: "A retired carpenter with a lifetime of tools",
         story:
-          "I need a proper workshop: a big garage I can fit the van and the workbench in. The house itself can be modest, but it has to be timber. I've built with wood all my life and I'm not living in anything else.",
+          "I need a proper workshop: a big garage I can fit the van and the workbench in. The house itself can be modest, but it has to be timber. I've built with wood all my life and I'm not living in anything else. Wooden floors too, naturally.",
       },
       sv: {
         name: "Lars Berg",
         who: "En pensionerad snickare med ett helt livs verktyg",
         story:
-          "Jag behöver en riktig verkstad: ett stort garage där både bussen och hyvelbänken får plats. Själva huset kan vara enkelt, men det ska vara av trä. Jag har byggt i trä i hela mitt liv och tänker inte bo i något annat.",
+          "Jag behöver en riktig verkstad: ett stort garage där både bussen och hyvelbänken får plats. Själva huset kan vara enkelt, men det ska vara av trä. Jag har byggt i trä i hela mitt liv och tänker inte bo i något annat. Trägolv också, förstås.",
       },
     },
     plot: lakeside,
@@ -128,6 +129,7 @@ export const CLIENTS: Client[] = [
       { must: false, req: { kind: "rooms", room: "Storage", count: 1, minArea: 3 } },
       { must: false, req: { kind: "roofMaterial", material: "Metal" } },
       { must: false, req: { kind: "roofStyle", styles: ["Gable"] } },
+      { must: false, req: { kind: "floorFinish", finish: "Wood" } },
     ],
   },
   {
@@ -175,6 +177,8 @@ export interface Commission {
 export interface Career {
   earnings: number;
   completed: Commission[];
+  /** Clients the player turned down; they do not come back. */
+  declined?: string[];
 }
 
 export function newCareer(): Career {
@@ -182,16 +186,26 @@ export function newCareer(): Career {
 }
 
 export function clientById(id: string): Client | undefined {
+  if (id.startsWith("gen-")) return generateClient(Number(id.slice(4)));
   return CLIENTS.find((c) => c.id === id);
 }
 
-/** The next client to call: the first one not served yet, then round again. */
-export function nextClient(career: Career): Client {
-  const done = new Set(career.completed.map((c) => c.clientId));
-  return CLIENTS.find((c) => !done.has(c.id)) ?? CLIENTS[career.completed.length % CLIENTS.length];
+/**
+ * The next client to call: the first hand-written client not yet served or turned down,
+ * else a newly generated one. `after` is the client just finished with, so generated
+ * clients follow on from it rather than repeating.
+ */
+export function nextClient(career: Career, after?: string): Client {
+  const gone = new Set([...career.completed.map((c) => c.clientId), ...(career.declined ?? [])]);
+  return CLIENTS.find((c) => !gone.has(c.id)) ?? generateClient(nextSeed(after, career.completed.length + (career.declined?.length ?? 0)));
+}
+
+/** Turn a client down: they will not be called again. */
+export function declineClient(career: Career, clientId: string): Career {
+  return { ...career, declined: [...(career.declined ?? []), clientId] };
 }
 
 /** Record a sold design. */
 export function completeCommission(career: Career, clientId: string, fee: number, stars: number): Career {
-  return { earnings: career.earnings + fee, completed: [...career.completed, { clientId, fee, stars }] };
+  return { ...career, earnings: career.earnings + fee, completed: [...career.completed, { clientId, fee, stars }] };
 }

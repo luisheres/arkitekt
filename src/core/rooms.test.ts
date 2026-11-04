@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultPrices, estimate } from "./cost";
-import { addRectangle, addWallClipped, moveWall, placeOpening, setRoomType, snapPoint } from "./edit";
+import { addRectangle, addWallClipped, moveWall, placeOpening, setRoomFloor, setRoomType, snapPoint } from "./edit";
 import { Vec2, signedArea } from "./geometry";
 import { OUTSIDE, analyzeLayout } from "./layout";
 import { House } from "./model";
@@ -219,5 +219,34 @@ describe("open plan", () => {
   it("round-trips through JSON", () => {
     const h = openPlan();
     expect(House.fromJSON(JSON.parse(JSON.stringify(h))).walls[4].boundary).toBe(true);
+  });
+});
+
+describe("floor finishes", () => {
+  it("rooms get a default finish for their use, which can be changed", () => {
+    const h = twoRooms();
+    setRoomType(h, v(7, 8), "Bathroom");
+    setRoomType(h, v(12, 8), "Bedroom");
+    const byType = () => Object.fromEntries(rooms(h).rooms.map((r) => [r.type, r.floor]));
+    expect(byType()).toEqual({ Bathroom: "Tiles", Bedroom: "Wood" });
+    expect(setRoomFloor(h, v(12, 8), "Carpet")).toBe(true);
+    expect(byType().Bedroom).toBe("Carpet");
+  });
+
+  it("wet rooms need a waterproof floor", () => {
+    const h = twoRooms();
+    setRoomType(h, v(7, 8), "Bathroom");
+    setRoomFloor(h, v(7, 8), "Wood");
+    const issue = validate(h, starterPlots()[0], 1e9, defaultPrices()).find((i) => i.kind === "UnsuitableFloor");
+    expect(issue && issue.kind === "UnsuitableFloor" && [issue.floor, issue.allowed]).toEqual(["Wood", ["Tiles", "Stone", "Concrete"]]);
+  });
+
+  it("finishes are priced per m²", () => {
+    const h = twoRooms();
+    const untyped = estimate(h, defaultPrices()).finishes; // laminate everywhere
+    expect(untyped).toBeCloseTo(70 * defaultPrices().floorM2.Laminate);
+    setRoomType(h, v(7, 8), "Living");
+    setRoomFloor(h, v(7, 8), "Stone");
+    expect(estimate(h, defaultPrices()).finishes).toBeCloseTo(35 * 140 + 35 * 35);
   });
 });

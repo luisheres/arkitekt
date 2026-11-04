@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describeRequirement, evaluateBrief, presentDesign } from "./brief";
-import { CLIENTS, clientById, completeCommission, newCareer, nextClient } from "./clients";
+import { CLIENTS, clientById, completeCommission, declineClient, newCareer, nextClient } from "./clients";
+import { budgetFor, generateClient } from "./generate";
 import { defaultPrices, estimate, totalCost } from "./cost";
 import { addRectangle, setRoomType } from "./edit";
 import { Vec2 } from "./geometry";
@@ -175,15 +176,63 @@ describe("briefs", () => {
 });
 
 describe("career", () => {
-  it("serves clients in order, then starts over", () => {
+  it("serves the written clients in order, then generated ones", () => {
     let career = newCareer();
     const seen: string[] = [];
-    for (let i = 0; i < CLIENTS.length + 1; i++) {
+    for (let i = 0; i < CLIENTS.length + 2; i++) {
       const c = nextClient(career);
       seen.push(c.id);
       career = completeCommission(career, c.id, 1000, 2);
     }
-    expect(seen).toEqual([...CLIENTS.map((c) => c.id), CLIENTS[0].id]);
-    expect(career.earnings).toBe(1000 * (CLIENTS.length + 1));
+    expect(seen.slice(0, CLIENTS.length)).toEqual(CLIENTS.map((c) => c.id));
+    expect(seen.slice(CLIENTS.length).every((id) => id.startsWith("gen-"))).toBe(true);
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(career.earnings).toBe(1000 * (CLIENTS.length + 2));
+  });
+
+  it("turning a client down calls the next one, then generated clients", () => {
+    let career = newCareer();
+    let client = nextClient(career);
+    const order = [client.id];
+    for (let i = 0; i < CLIENTS.length + 2; i++) {
+      career = declineClient(career, client.id);
+      client = nextClient(career, client.id);
+      order.push(client.id);
+    }
+    expect(order.slice(0, CLIENTS.length)).toEqual(CLIENTS.map((c) => c.id));
+    expect(order.slice(CLIENTS.length).every((x) => x.startsWith("gen-"))).toBe(true);
+    expect(new Set(order).size).toBe(order.length);
+    // Selling a later design keeps the turned-down clients away.
+    career = completeCommission(career, client.id, 1000, 3);
+    expect(career.declined).toHaveLength(CLIENTS.length + 2);
+    expect(nextClient(career, client.id).id).toMatch(/^gen-/);
+  });
+
+});
+
+describe("generated clients", () => {
+  const seeds = Array.from({ length: 60 }, (_, i) => i * 7 + 1);
+
+  it("are reproducible from their id", () => {
+    for (const seed of seeds) expect(clientById(`gen-${seed}`)).toEqual(generateClient(seed));
+  });
+
+  it("have a story in every language and briefs that render", () => {
+    for (const seed of seeds) {
+      const c = generateClient(seed);
+      for (const lang of ["en", "sv"] as const) {
+        expect(Object.values(c.text[lang]).every((t) => t.length > 0 && !/undefined/.test(t)), `${seed} ${lang}`).toBe(true);
+      }
+      expect(c.items.filter((i) => !i.must).length).toBeGreaterThanOrEqual(3);
+      for (const i of c.items) expect(describeRequirement(i.req)).not.toMatch(/undefined/);
+    }
+  });
+
+  it("get budgets like the written clients' for similar briefs", () => {
+    for (const id of ["lindgren", "andersson"]) {
+      const c = clientById(id)!;
+      expect(budgetFor(c.items) / c.budget, id).toBeGreaterThan(0.8);
+      expect(budgetFor(c.items) / c.budget, id).toBeLessThan(1.25);
+    }
   });
 });

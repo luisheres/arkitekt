@@ -110,6 +110,17 @@ try {
   assert.match(await status(), /No building problems/);
   await shot("lindgren-design");
 
+  // Floors: a wooden bathroom floor is a building problem; tiles are fine.
+  await click(14.2, 14.5);
+  assert.equal(await page.locator(".selection select >> nth=1").inputValue(), "Tiles");
+  await page.selectOption(".selection select >> nth=1", "Wood");
+  assert.match(await status(), /wood is not a suitable floor here; choose tiles, stone or concrete/);
+  await page.selectOption(".selection select >> nth=1", "Tiles");
+  assert.match(await status(), /No building problems/);
+  // A stone facade for the street side.
+  await page.selectOption("#sidebar .house select >> nth=0", "Stone");
+  await page.selectOption("#sidebar .house select >> nth=0", "Plaster");
+
   // Look inside with the roof off.
   await page.keyboard.press("h");
   await page.waitForTimeout(200);
@@ -187,7 +198,19 @@ try {
   await page.waitForFunction(() => window.architect);
   assert.equal(await page.locator(".client-section button.primary").textContent(), "Present to client");
 
-  // Two storeys: Noor's home office upstairs.
+  // Turning a client down: confirm, and the next client calls.
+  await page.click(".client-section button.new-client");
+  assert.match(await page.locator("#modal h2").textContent(), /Turn down this job/);
+  await page.keyboard.press("Enter"); // the safe choice has the focus
+  assert.equal((await model()).client, "haddad");
+  await page.click(".client-section button.new-client");
+  await page.click("#modal button[data-action=confirm]");
+  assert.match(await page.locator("#modal h2").textContent(), /Andersson/);
+  await page.click("#modal button.primary");
+  assert.equal((await model()).client, "andersson");
+  assert.equal((await model()).walls, 0);
+
+  // Two storeys: the Anderssons' bedrooms upstairs.
   await page.click("text=Clear plot");
   await page.keyboard.press("r");
   await drag([5, 5], [15, 13]);
@@ -212,17 +235,17 @@ try {
   assert.equal(await page.evaluate(() => window.architect.store.level), 1);
   assert.equal(await upstairs(), 4);
   await page.keyboard.press("w");
-  for (const [a, b] of [[[5, 9], [15, 9]], [[9, 9], [9, 13]], [[10, 5], [10, 9]]]) {
+  for (const [a, b] of [[[5, 9], [15, 9]], [[9, 9], [9, 13]], [[10, 5], [10, 9]], [[12, 9], [12, 13]]]) {
     await click(...a);
     await click(...b);
   }
-  assert.equal(await upstairs(), 7);
+  assert.equal(await upstairs(), 8);
   await page.keyboard.press("d");
-  for (const p of [[7, 9], [10, 7], [9, 11]]) await click(...p);
+  for (const p of [[7, 9], [10, 7], [9, 11], [13.5, 9]]) await click(...p);
   await page.keyboard.press("n");
-  for (const p of [[7.5, 5], [12.5, 5]]) await click(...p);
+  for (const p of [[7.5, 5], [12.5, 5], [13.5, 13]]) await click(...p);
   await page.keyboard.press("v");
-  for (const [x, y, type] of [[7.5, 7, "Office"], [12.5, 7, "Bedroom"], [6, 10.5, "Hall"], [12, 11, "Bathroom"]]) {
+  for (const [x, y, type] of [[7.5, 7, "Bedroom"], [12.5, 7, "Bedroom"], [6, 10.5, "Hall"], [10.5, 11, "Bathroom"], [13.5, 11, "Bedroom"]]) {
     await click(x, y);
     await page.selectOption(".selection select", type);
   }
@@ -237,6 +260,7 @@ try {
   const problems = await page.locator(".issues li").allTextContents();
   assert.deepEqual(problems.filter((p) => !/over the budget/.test(p)), [], "only the budget is a problem");
   assert.deepEqual(await unmetMusts(), [], "every must-have met across both floors");
+  assert.match((await page.locator(".brief.wishes li.met").allInnerTexts()).join("\n"), /3 bedrooms of at least 9 m² upstairs/);
   await shot("two-storeys");
 
   // Cutaway: roof off shows the house up to the floor being edited.

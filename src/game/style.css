@@ -944,3 +944,18 @@ button.primary:hover:not(:disabled) {
   stroke: var(--error);
   stroke-width: 2.5;
 }
+
+/* --- New client ------------------------------------------------------------------ */
+
+.client-section button.new-client {
+  margin-left: auto;
+}
+
+.dialog .actions {
+  gap: 8px;
+}
+
+.dialog button.danger-primary {
+  background: var(--error);
+  border-color: var(--error);
+}

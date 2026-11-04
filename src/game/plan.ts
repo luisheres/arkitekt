@@ -55,7 +55,7 @@ import {
 import { m } from "./i18n";
 import { type Store, type Tool, drawsWalls } from "./store";
 
-const PLAN_WALL_COLORS = { Wood: "#7a5134", Brick: "#8c3d2e", Plaster: "#6f6b63" } as const;
+const PLAN_WALL_COLORS = { Wood: "#7a5134", FaluRed: "#8a2a1e", Brick: "#8c3d2e", Plaster: "#6f6b63", Stone: "#77736a" } as const;
 const INTERIOR_WALL_COLOR = "#a19b90";
 /** Pointer distances, in screen pixels. */
 const SNAP_PX = 10;

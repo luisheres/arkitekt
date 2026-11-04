@@ -6,7 +6,7 @@
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
 import { analyzeLayout } from "./layout";
-import { House, type LabelId, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
+import { type FloorFinish, House, type LabelId, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { analyzeRooms, roomAt } from "./rooms";
 import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./rules";
 
@@ -326,4 +326,14 @@ export function addStoreyAbove(house: House): number {
 export function placeStair(house: House, level: number, at: Vec2, facing = 0): StairId | null {
   if (level + 1 >= house.levels) return null;
   return house.addStair(level, at, facing);
+}
+
+/** Choose the floor finish of the (labelled) room containing `at`. Returns false for unlabelled rooms. */
+export function setRoomFloor(house: House, at: Vec2, floor: FloorFinish, level = 0): boolean {
+  const analysis = analyzeRooms(house, level);
+  if (!analysis.ok) return false;
+  const label = roomAt(analysis.value.rooms, at)?.labels[0];
+  if (!label) return false;
+  label.floor = floor;
+  return true;
 }
