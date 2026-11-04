@@ -51,6 +51,7 @@ import {
   roomName,
   roundTo,
   sceneryFor,
+  treeLook,
   snapPoint,
   validate,
   wallThickness,
@@ -778,7 +779,9 @@ export class PlanView {
     for (const t of s.trees) {
       const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9 }[t.kind] * t.size;
       if (!visible(t.at, r)) continue;
-      out.push(circle(t.at, r, `tree ${t.kind}`), circle(t.at.add(new Vec2(r * 0.3, r * 0.3)), r * 0.45, "tree-light"));
+      const look = treeLook(t);
+      out.push(circle(t.at, r, `tree ${t.kind} ${look}`), circle(t.at.add(new Vec2(r * 0.3, r * 0.3)), r * 0.45, "tree-light"));
+      if (look === "apple") for (const [ax, ay] of [[-0.4, 0.2], [0.35, -0.35], [0.1, 0.5], [-0.2, -0.5]]) out.push(circle(t.at.add(new Vec2(ax * r, ay * r)), r * 0.12, "apple"));
     }
     return `<g class="scenery">${out.join("")}</g>`;
   }

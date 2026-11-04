@@ -205,6 +205,13 @@ function lakeShorePoint(l: Lake, rnd: () => number): Vec2 {
   return new Vec2(l.center.x + Math.cos(a) * l.rx * s, l.center.y + Math.sin(a) * l.ry * s);
 }
 
+/** How a tree looks beyond its kind: some round trees blossom pink, some bear apples. */
+export function treeLook(t: Tree): "plain" | "blossom" | "apple" {
+  if (t.kind !== "round") return "plain";
+  const v = Math.abs(Math.round(t.at.x * 13 + t.at.y * 7)) % 20;
+  return v < 3 ? "blossom" : v < 7 ? "apple" : "plain";
+}
+
 /** Whether a plan point is under water. */
 export function inLake(l: Lake, p: Vec2): boolean {
   return lakeE(l, p.x, p.y) < 1;

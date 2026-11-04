@@ -336,12 +336,6 @@ export function toon(params: THREE.MeshStandardMaterialParameters = {}): THREE.M
   return new THREE.MeshToonMaterial({ ...(rest as THREE.MeshToonMaterialParameters), gradientMap: GRADIENT });
 }
 
-/** Leave a material without an outline (water, glass, sky). */
-export function noOutline<M extends THREE.Material>(m: M): M {
-  m.userData.outlineParameters = { visible: false };
-  return m;
-}
-
 /**
  * A cel-shaded material drawing `texture` in world space: walls by their horizontal
  * position and height, floors from above, and roof slopes along the slope (v runs

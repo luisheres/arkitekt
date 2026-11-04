@@ -5,8 +5,8 @@
  */
 
 import * as THREE from "three";
-import { type Plot, STREET, type Scenery, type Tree, sceneryFor } from "../core";
-import { groundTexture, noOutline, toon, wallTexture, worldMaterial } from "./textures";
+import { type Plot, STREET, type Scenery, type Tree, sceneryFor, treeLook } from "../core";
+import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
 const SKY_HORIZON = new THREE.Color("#cfeeff");
@@ -56,7 +56,7 @@ function sky(): THREE.Mesh {
     fragmentShader:
       "uniform vec3 top;\nuniform vec3 horizon;\nvarying vec3 vDir;\nvoid main() {\n  float t = pow(clamp(vDir.y, 0.0, 1.0), 0.6);\n  gl_FragColor = vec4(mix(horizon, top, t), 1.0);\n  #include <colorspace_fragment>\n}",
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), noOutline(material));
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), material);
   mesh.renderOrder = -1;
   mesh.userData.followCamera = true;
   return mesh;
@@ -64,7 +64,7 @@ function sky(): THREE.Mesh {
 
 function clouds(center: THREE.Vector3): THREE.Group {
   const g = new THREE.Group();
-  const white = noOutline(toon({ color: "#ffffff", emissive: "#dfefff", emissiveIntensity: 0.35, fog: false }));
+  const white = toon({ color: "#ffffff", emissive: "#dfefff", emissiveIntensity: 0.35, fog: false });
   const puff = new THREE.IcosahedronGeometry(1, 2);
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -184,11 +184,11 @@ function lake(s: Scenery): THREE.Group {
     m.position.set(l.center.x, y, l.center.y);
     return m;
   };
-  g.add(flat(ellipse(1.02), noOutline(toon({ color: "#3fb3e8", transparent: true, opacity: 0.88 })), l.level));
+  g.add(flat(ellipse(1.02), toon({ color: "#3fb3e8", transparent: true, opacity: 0.88 }), l.level));
   // A white rim of foam where the water meets the shore.
   const rim = ellipse(1.03);
   rim.holes.push(new THREE.Path().absellipse(0, 0, l.rx * 0.985, l.ry * 0.985, 0, Math.PI * 2, true, 0));
-  g.add(flat(rim, noOutline(toon({ color: "#ffffff" })), l.level + 0.01));
+  g.add(flat(rim, toon({ color: "#ffffff" }), l.level + 0.01));
   // Reeds along the shore.
   const reed = toon({ color: "#5f9e3f" });
   for (let i = 0; i < 40; i++) {
@@ -229,52 +229,143 @@ function jetty(s: Scenery): THREE.Group {
 
 // --- Trees, rocks, hedges ---------------------------------------------------------
 
-const blob = new THREE.IcosahedronGeometry(1, 1);
-const leafColors = ["#4caf50", "#5cbf3f", "#3f9f4a", "#7ccf4a"].map((c) => toon({ color: c, flatShading: true }));
-const pineColor = toon({ color: "#2f8a52", flatShading: true });
-const birchLeaves = toon({ color: "#9ad84f", flatShading: true });
-const trunk = toon({ color: "#8a5a3a" });
-const birchTrunk = toon({ color: "#f4efe6" });
+/**
+ * A soft, slightly lumpy ball for canopies and bushes, shaded darker underneath and
+ * lighter on top (vertex colours multiply the material colour).
+ */
+function lumpyBall(detail: number, lumps: number): THREE.BufferGeometry {
+  const g = new THREE.IcosahedronGeometry(1, detail);
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const bump = 1 + lumps * (Math.sin(v.x * 5.1) * Math.sin(v.y * 4.3) * Math.sin(v.z * 4.7));
+    v.multiplyScalar(bump);
+    pos.setXYZ(i, v.x, v.y, v.z);
+    const shade = 0.62 + 0.38 * ((v.y + 1) / 2);
+    colors.set([shade, shade, shade], i * 3);
+  }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+const blob = lumpyBall(1, 0.05);
+const canopy = lumpyBall(3, 0.07);
+
+/** A cone shaded darker at its base, for pine tiers. */
+const pineTier = (() => {
+  const g = new THREE.ConeGeometry(1, 1, 10, 2);
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    // Droop the rim a little between the branch tips.
+    if (y < -0.45) pos.setY(i, y - 0.08 * (1 + Math.sin(Math.atan2(pos.getZ(i), pos.getX(i)) * 5)));
+    const shade = 0.7 + 0.3 * (y + 0.5);
+    colors.set([shade, shade, shade], i * 3);
+  }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  return g;
+})();
+
+const leaf = (c: string) => toon({ color: c, vertexColors: true });
+const LEAVES = ["#4caf50", "#5cbf3f", "#43a84f", "#6fc94a"].map(leaf);
+const LEAVES_LIGHT = ["#7fd65c", "#8fdc5a", "#79cf62", "#97e06a"].map(leaf);
+const BLOSSOM = leaf("#ff9ec7");
+const BLOSSOM_LIGHT = leaf("#ffc7de");
+const PINE = leaf("#2f8a52");
+const PINE_LIGHT = leaf("#4aa865");
+const BIRCH_LEAVES = leaf("#a6dc52");
+const APPLE = toon({ color: "#e8332e" });
+const TRUNK = toon({ color: "#8a5a3a" });
+const BIRCH_TRUNK = toon({ color: "#f6f2ea" });
+const BIRCH_MARK = toon({ color: "#2d2a2a" });
+const FLOWERS = ["#ff6f91", "#ffd23f", "#ffffff", "#b388ff"].map((c) => toon({ color: c }));
+const trunkGeo = new THREE.CylinderGeometry(0.62, 1, 1, 8);
+const ball = new THREE.SphereGeometry(1, 8, 6);
 
 function tree(s: Scenery, t: Tree): THREE.Group {
   const g = new THREE.Group();
   const k = t.size;
   const variant = Math.abs(Math.round(t.at.x * 3 + t.at.y * 5));
-  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy = sx, sz = sx) => {
+  const rnd = (i: number) => (Math.sin(variant * 12.9898 + i * 78.233) * 43758.5453) % 1;
+  const r = (i: number) => Math.abs(rnd(i));
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy = sx, sz = sx, rotZ = 0, rotX = 0) => {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
     m.scale.set(sx, sy, sz);
+    m.rotation.set(rotX, 0, rotZ);
     m.castShadow = true;
     g.add(m);
+    return m;
   };
-  const cyl = new THREE.CylinderGeometry(0.5, 0.65, 1, 7);
+
   switch (t.kind) {
-    case "round":
-      add(cyl, trunk, 0, 1.2 * k, 0, 0.45 * k, 2.4 * k, 0.45 * k);
-      add(blob, leafColors[variant % leafColors.length], 0, 3.2 * k, 0, 1.9 * k);
-      add(blob, leafColors[(variant + 1) % leafColors.length], 0.9 * k, 2.6 * k, 0.4 * k, 1.3 * k);
-      add(blob, leafColors[(variant + 2) % leafColors.length], -0.8 * k, 2.8 * k, -0.5 * k, 1.2 * k);
-      break;
-    case "birch":
-      add(cyl, birchTrunk, 0, 1.8 * k, 0, 0.28 * k, 3.6 * k, 0.28 * k);
-      add(blob, birchLeaves, 0, 4.1 * k, 0, 1.3 * k, 2.0 * k, 1.3 * k);
-      break;
-    case "pine": {
-      add(cyl, trunk, 0, 0.6 * k, 0, 0.4 * k, 1.2 * k, 0.4 * k);
-      const cone = new THREE.ConeGeometry(1, 1, 7);
-      for (let i = 0; i < 3; i++) add(cone, pineColor, 0, (1.6 + i * 1.2) * k, 0, (1.9 - i * 0.5) * k, 2.2 * k, (1.9 - i * 0.5) * k);
-      break;
-    }
-    case "bush":
-      add(blob, leafColors[variant % leafColors.length], 0, 0.55 * k, 0, 0.9 * k, 0.7 * k, 0.9 * k);
-      add(blob, leafColors[(variant + 2) % leafColors.length], 0.5 * k, 0.45 * k, 0.3 * k, 0.6 * k, 0.5 * k, 0.6 * k);
-      // A few flowers.
-      for (let i = 0; i < 4; i++) {
-        const flower = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), toon({ color: ["#ff6f91", "#ffd23f", "#ffffff", "#b388ff"][(variant + i) % 4] }));
-        flower.position.set(Math.cos(i * 1.7) * 0.75 * k, 0.75 * k + (i % 2) * 0.15, Math.sin(i * 1.7) * 0.75 * k);
-        g.add(flower);
+    case "round": {
+      const look = treeLook(t);
+      const [dark, light] = look === "blossom" ? [BLOSSOM, BLOSSOM_LIGHT] : [LEAVES[variant % 4], LEAVES_LIGHT[variant % 4]];
+      // A tapered trunk with two branches reaching into the crown.
+      add(trunkGeo, TRUNK, 0, 1.25 * k, 0, 0.32 * k, 2.5 * k, 0.32 * k);
+      add(trunkGeo, TRUNK, 0.45 * k, 2.4 * k, 0, 0.12 * k, 1.3 * k, 0.12 * k, -0.7);
+      add(trunkGeo, TRUNK, -0.4 * k, 2.5 * k, 0.15 * k, 0.11 * k, 1.2 * k, 0.11 * k, 0.75);
+      // The crown: a big ball with smaller ones around it, lighter on top.
+      add(canopy, dark, 0, 3.4 * k, 0, 1.75 * k, 1.5 * k, 1.75 * k);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + r(i);
+        add(canopy, dark, Math.cos(a) * 1.25 * k, (2.9 + r(i + 9) * 0.7) * k, Math.sin(a) * 1.25 * k, (0.95 + r(i + 3) * 0.35) * k);
+      }
+      add(canopy, light, 0.2 * k, 4.45 * k, -0.1 * k, 1.15 * k, 0.95 * k, 1.15 * k);
+      add(canopy, light, -0.7 * k, 4.0 * k, 0.6 * k, 0.8 * k);
+      if (look === "apple") {
+        for (let i = 0; i < 9; i++) {
+          const a = i * 2.39996;
+          const y = 2.8 + r(i + 20) * 1.6;
+          const rr = 1.75 - Math.abs(y - 3.4) * 0.35;
+          add(ball, APPLE, Math.cos(a) * rr * k, y * k, Math.sin(a) * rr * k, 0.13 * k);
+        }
       }
       break;
+    }
+    case "birch": {
+      add(trunkGeo, BIRCH_TRUNK, 0, 2.2 * k, 0, 0.17 * k, 4.4 * k, 0.17 * k);
+      // The birch's black markings.
+      for (let i = 0; i < 7; i++) {
+        const a = r(i) * Math.PI * 2;
+        const y = (0.5 + i * 0.5) * k;
+        const m = add(ball, BIRCH_MARK, Math.cos(a) * 0.15 * k, y, Math.sin(a) * 0.15 * k, 0.07 * k, 0.025 * k, 0.07 * k);
+        m.castShadow = false;
+      }
+      add(canopy, BIRCH_LEAVES, 0, 4.2 * k, 0, 1.05 * k, 1.6 * k, 1.05 * k);
+      add(canopy, BIRCH_LEAVES, 0.55 * k, 3.6 * k, 0.2 * k, 0.75 * k, 1.1 * k, 0.75 * k);
+      add(canopy, BIRCH_LEAVES, -0.5 * k, 3.4 * k, -0.25 * k, 0.7 * k, 1.0 * k, 0.7 * k);
+      add(canopy, BIRCH_LEAVES, 0.1 * k, 5.2 * k, 0, 0.7 * k, 0.9 * k, 0.7 * k);
+      break;
+    }
+    case "pine": {
+      add(trunkGeo, TRUNK, 0, 0.7 * k, 0, 0.22 * k, 1.4 * k, 0.22 * k);
+      const tiers = 4;
+      for (let i = 0; i < tiers; i++) {
+        const w = (1.85 - i * 0.38) * k;
+        add(pineTier, i === tiers - 1 ? PINE_LIGHT : PINE, 0, (1.6 + i * 1.05) * k, 0, w, 1.7 * k, w);
+      }
+      add(pineTier, PINE_LIGHT, 0, (1.6 + tiers * 1.05) * k, 0, 0.45 * k, 0.9 * k, 0.45 * k);
+      break;
+    }
+    case "bush": {
+      const [dark, light] = [LEAVES[variant % 4], LEAVES_LIGHT[variant % 4]];
+      add(blob, dark, 0, 0.5 * k, 0, 0.9 * k, 0.7 * k, 0.9 * k);
+      add(blob, dark, 0.6 * k, 0.4 * k, 0.3 * k, 0.6 * k, 0.5 * k, 0.6 * k);
+      add(blob, light, -0.4 * k, 0.55 * k, -0.35 * k, 0.6 * k, 0.55 * k, 0.6 * k);
+      add(blob, light, 0.1 * k, 0.85 * k, 0.05 * k, 0.55 * k, 0.45 * k, 0.55 * k);
+      for (let i = 0; i < 7; i++) {
+        const a = i * 2.39996 + r(i);
+        add(ball, FLOWERS[(variant + i) % FLOWERS.length], Math.cos(a) * 0.8 * k, (0.55 + r(i + 5) * 0.35) * k, Math.sin(a) * 0.8 * k, 0.09 * k);
+      }
+      break;
+    }
   }
   g.position.copy(at(s, t.at.x, t.at.y));
   g.rotation.y = variant;
@@ -339,7 +430,7 @@ function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group
   g.add(roof);
   // A door and windows on the side facing the plot's street (low y), so neighbours look lived in.
   const frame = toon({ color: "#ffffff" });
-  const glass = noOutline(toon({ color: "#8fd3ff" }));
+  const glass = toon({ color: "#8fd3ff" });
   const door = new THREE.Mesh(new THREE.BoxGeometry(1, 2.1, 0.1), toon({ color: ROOF_COLORS[(n.roof + 1) % ROOF_COLORS.length] }));
   door.position.set(0, plinth + 1.05, -n.depth / 2 - 0.03);
   g.add(door);

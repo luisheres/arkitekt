@@ -48,6 +48,15 @@ distance. Every plot has its own surroundings, generated from fixed seeds
 
 The plot itself and the street stay flat, so building is the same everywhere.
 
+Outlines are drawn the same way on everything (`src/game/toonPost.ts`): after the colour
+pass, the scene is drawn again for surface directions and depth, and a full-screen pass
+draws a line wherever the depth jumps (silhouettes) or surfaces meet at a sharp angle.
+Far away the lines soften to a darker shade of what they outline.
+
+Trees come in a few kinds: round leafy trees (some blossom pink, some bear apples), birches
+with white, marked trunks, layered pines, and flowering bushes. Their crowns are shaded
+darker underneath, and the plan shows the same trees from above.
+
 ## Playing
 
 1. **Meet the client.** Read their story, budget, must-haves and wishes. **Brief** in the

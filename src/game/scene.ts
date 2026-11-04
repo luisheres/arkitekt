@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
-import { floorTexture, interiorTexture, noOutline, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { floorTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   type TriMesh,
@@ -52,7 +52,7 @@ const palette = {
   roof: each(ROOF_MATERIALS, (m) =>
     worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide }),
   ),
-  glass: noOutline(toon({ color: "#a8dcff", transparent: true, opacity: 0.6 })),
+  glass: toon({ color: "#a8dcff", transparent: true, opacity: 0.6 }),
   frame: matte(0.96, 0.96, 0.94, 0.6),
   // A cheerfully painted front door.
   door: toon({ color: "#e0584a" }),
@@ -196,14 +196,14 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       pick = { kind: "opening", id: o.id };
       const [w, h, fw] = [o.width, o.height, FRAME_WIDTH];
       const midV = o.sill + h * 0.5;
-      const frameDepth = t + 0.04;
+      const frameDepth = t + 0.1; // a chunky lip, so it outlines as a solid line
       // Frame: top, left and right bars (plus a sill bar for windows).
       box(o.offset, o.top() - fw * 0.5, at, size(w, fw, frameDepth), rotY, palette.frame);
       for (const side of [o.left() + fw * 0.5, o.right() - fw * 0.5]) {
         box(side, midV, at, size(fw, h, frameDepth), rotY, palette.frame);
       }
       if (o.kind === "Window") {
-        box(o.offset, o.sill + fw * 0.5, at, size(w, fw, frameDepth + 0.04), rotY, palette.frame);
+        box(o.offset, o.sill + fw * 0.5, at, size(w, fw, frameDepth + 0.06), rotY, palette.frame);
         if (w >= 1.6) {
           // Split wide windows with mullions roughly every metre.
           const panes = Math.round(w);

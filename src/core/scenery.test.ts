@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Vec2 } from "./geometry";
 import { starterPlots } from "./plot";
-import { STREET, inLake, sceneryFor } from "./scenery";
+import { STREET, inLake, sceneryFor, treeLook } from "./scenery";
 
 const [suburban, lakeside, hillside] = starterPlots();
 
@@ -53,5 +53,12 @@ describe("scenery", () => {
 
   it("looks the same every time", () => {
     expect(sceneryFor(hillside).trees).toEqual(sceneryFor(hillside).trees);
+  });
+
+  it("gives some round trees blossom or apples, and only round trees", () => {
+    const trees = [suburban, lakeside].flatMap((p) => sceneryFor(p).trees);
+    const looks = new Set(trees.filter((t) => t.kind === "round").map(treeLook));
+    expect(looks).toEqual(new Set(["plain", "blossom", "apple"]));
+    expect(trees.filter((t) => t.kind !== "round").every((t) => treeLook(t) === "plain")).toBe(true);
   });
 });

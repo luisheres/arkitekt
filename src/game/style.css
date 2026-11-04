@@ -1521,6 +1521,15 @@ svg.plan {
   fill: #5cbf3f;
 }
 
+.plan .tree.blossom {
+  fill: #ff9ec7;
+  stroke: #c45f8c;
+}
+
+.plan .apple {
+  fill: #e8332e;
+}
+
 .plan .tree-light {
   fill: rgba(255, 255, 255, 0.22);
   stroke: none;
