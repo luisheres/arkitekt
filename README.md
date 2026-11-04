@@ -59,6 +59,7 @@ look inside.
 |---|---|---|
 | Select | `V` | Click a room to set its use. Drag a corner to reshape, a wall to push it in or out (walls attached to it follow), a window or door along (or onto another) wall, a room name to move it. Drag empty space to pan. |
 | Room | `R` | Drag a rectangle to create four walls. Sides along existing walls are shared, so rooms can be added next to each other. |
+| Open | `B` | Draw a room boundary, like a wall but not built: it divides open-plan space into rooms (e.g. kitchen and living room) that are open to each other. Select an interior wall to switch it between wall and open. |
 | Wall | `W` | Click corners. Starting or ending on a wall connects to it (and ends the chain); click the first corner to close a loop. `Enter` or double-click ends an open chain, `Esc` cancels. |
 | Window / Door | `N` / `D` | Click a wall. |
 
@@ -96,7 +97,10 @@ feature, and `.devcontainer/post-create-script.sh` runs `npm ci`.
 - Windows go in exterior walls; no window or door may straddle a junction with another
   wall.
 - Rooms have minimum sizes by use (e.g. bedroom 7 m², garage 15 m²), habitable rooms need
-  a window, and every room must be reachable from outside through doors.
+  daylight, and every room must be reachable from outside.
+- Room boundaries make open plan: rooms on either side count as connected (no door
+  needed) and share daylight. Boundaries cost nothing, carry no windows or doors, and
+  cannot form the outside of the house.
 - A sellable house also needs a front door, a roof, at least 20 m² of floor, walls inside
   the plot's setback, and openings that fit their walls. See `src/core/validate.ts`.
 

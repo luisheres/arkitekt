@@ -49,6 +49,11 @@ export class Wall {
     public height: number,
     public thickness: number,
     public material: WallMaterial,
+    /**
+     * A room boundary: an invisible line that divides open-plan space into rooms. It is
+     * not built, costs nothing and leaves the rooms on either side open to each other.
+     */
+    public boundary = false,
   ) {}
 
   length(): number {
@@ -119,7 +124,15 @@ export function describeFootprintError(e: FootprintError, m: Messages = en): str
 
 /** Plain-JSON form of a house, for saving and for sending to the appraiser. */
 export interface HouseJson {
-  walls: { id: number; start: { x: number; y: number }; end: { x: number; y: number }; height: number; thickness: number; material: WallMaterial }[];
+  walls: {
+    id: number;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    height: number;
+    thickness: number;
+    material: WallMaterial;
+    boundary?: boolean;
+  }[];
   openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
   roof: Roof | null;
   labels?: { id: number; type: RoomType; at: { x: number; y: number } }[];
@@ -138,10 +151,15 @@ export class House {
     return this.nextId;
   }
 
-  addWall(start: Vec2, end: Vec2, height: number, material: WallMaterial): WallId {
+  addWall(start: Vec2, end: Vec2, height: number, material: WallMaterial, boundary = false): WallId {
     const id = this.freshId();
-    this.walls.push(new Wall(id, start, end, height, DEFAULT_WALL_THICKNESS, material));
+    this.walls.push(new Wall(id, start, end, height, DEFAULT_WALL_THICKNESS, material, boundary));
     return id;
+  }
+
+  /** Add a room boundary: divides space into rooms without building a wall. */
+  addBoundary(start: Vec2, end: Vec2): WallId {
+    return this.addWall(start, end, this.eaveHeight() || 2.7, "Plaster", true);
   }
 
   /** Add walls along a closed loop of corner points (the last point connects back to the first). */
@@ -213,7 +231,7 @@ export class House {
 
   /** Height of the top of the walls, where the roof sits. */
   eaveHeight(): number {
-    return this.walls.reduce((m, w) => Math.max(m, w.height), 0);
+    return this.walls.reduce((m, w) => (w.boundary ? m : Math.max(m, w.height)), 0);
   }
 
   /** The outline of the house along the outer wall centerlines, counter-clockwise. */
@@ -237,6 +255,7 @@ export class House {
         height: w.height,
         thickness: w.thickness,
         material: w.material,
+        ...(w.boundary ? { boundary: true } : {}),
       })),
       openings: this.openings.map((o) => ({ ...o })),
       roof: this.roof ? { ...this.roof } : null,
@@ -247,7 +266,7 @@ export class House {
 
   static fromJSON(j: HouseJson): House {
     const h = new House();
-    h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material));
+    h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false));
     h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
     h.roof = j.roof ? { ...j.roof } : null;
     h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at) }));

@@ -71,19 +71,25 @@ try {
   await page.keyboard.press("w");
   for (const [a, b] of [
     [[9, 12.5], [19, 12.5]],
-    [[15, 8], [15, 12.5]],
     [[13, 12.5], [13, 16.5]],
     [[15.5, 12.5], [15.5, 16.5]],
   ]) {
     await click(...a);
     await click(...b);
   }
-  assert.equal((await model()).walls, 8, "four partitions");
+  // An open-plan kitchen: a room boundary instead of a wall to the living room.
+  await page.keyboard.press("b");
+  await click(15, 8);
+  await click(15, 12.5);
+  await frame();
+  assert.equal(await page.locator(".plan .boundary").count(), 1);
+  assert.equal((await model()).walls, 8, "three partitions and a boundary");
   assert.equal(await roomCount(), 5, "five rooms");
 
   // Doors between rooms, and the front door.
   await page.keyboard.press("d");
-  for (const p of [[12.3, 8], [15, 10.25], [11, 12.5], [14, 12.5], [17.25, 12.5]]) await click(...p);
+  for (const p of [[12.3, 8], [11, 12.5], [14, 12.5], [17.25, 12.5]]) await click(...p);
+  assert.equal(await page.evaluate(() => window.architect.store.house.openings.length), 4, "no door on the boundary");
   // Windows for the habitable rooms.
   await page.keyboard.press("n");
   for (const p of [[11, 8], [17, 8], [11, 16.5], [17.25, 16.5]]) await click(...p);
@@ -100,6 +106,7 @@ try {
   // A hip roof: one of the wishes.
   await page.selectOption("#sidebar .house select >> nth=1", "Hip");
   assert.deepEqual(await unmetMusts(), []);
+  assert.match(await page.locator(".brief.wishes li.met").allInnerTexts().then((t) => t.join("\n")), /open plan between the kitchen and the living room/);
   assert.match(await status(), /No building problems/);
   await shot("lindgren-design");
 

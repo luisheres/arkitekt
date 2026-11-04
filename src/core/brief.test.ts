@@ -115,7 +115,7 @@ describe("briefs", () => {
   it("describes requirements in plain words", () => {
     expect(describeRequirement({ kind: "rooms", room: "Bedroom", count: 3, minArea: 9 })).toBe("3 bedrooms of at least 9 m²");
     expect(describeRequirement({ kind: "rooms", room: "Office", count: 1 })).toBe("An office");
-    expect(describeRequirement({ kind: "connected", a: "Kitchen", b: "Living" })).toBe("A door between the kitchen and the living room");
+    expect(describeRequirement({ kind: "connected", a: "Kitchen", b: "Living" })).toBe("A door or open plan between the kitchen and the living room");
   });
 
   it("an empty plot meets no must-haves and is rejected", () => {

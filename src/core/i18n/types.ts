@@ -13,7 +13,7 @@ export type Lang = (typeof LANGS)[number];
 /** A piece of text in every language. */
 export type Localized = Record<Lang, string>;
 
-export type ToolName = "select" | "room" | "wall" | "window" | "door";
+export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door";
 
 /** The forms of a room type's name that sentences need. */
 export interface RoomWords {
@@ -98,6 +98,10 @@ export interface Messages {
     add(kind: OpeningKind): string;
     exteriorWall: string;
     interiorWall: string;
+    boundary: string;
+    boundaryNote: string;
+    makeBoundary: string;
+    makeWall: string;
     type: string;
     width: string;
     height: string;

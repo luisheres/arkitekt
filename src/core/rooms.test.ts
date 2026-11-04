@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultPrices, estimate } from "./cost";
-import { addRectangle, addWallClipped, moveWall, setRoomType, snapPoint } from "./edit";
+import { addRectangle, addWallClipped, moveWall, placeOpening, setRoomType, snapPoint } from "./edit";
 import { Vec2, signedArea } from "./geometry";
 import { OUTSIDE, analyzeLayout } from "./layout";
 import { House } from "./model";
@@ -168,5 +168,56 @@ describe("rooms", () => {
     const c = estimate(h, defaultPrices());
     expect(c.interiorWalls).toBeCloseTo(7 * 2.7 * 70);
     expect(c.walls).toBeCloseTo(34 * 2.7 * 150);
+  });
+});
+
+describe("open plan", () => {
+  /** The two-room house, but divided by a room boundary instead of a wall. */
+  function openPlan(): House {
+    const h = new House();
+    addRectangle(h, v(5, 5), v(15, 12), 2.7, "Plaster");
+    h.addBoundary(v(10, 5), v(10, 12));
+    return h;
+  }
+
+  it("a boundary divides space into rooms that are open to each other", () => {
+    const r = rooms(openPlan());
+    expect(r.rooms).toHaveLength(2);
+    expect(r.rooms[0].openTo).toEqual([1]);
+    expect(r.layout.exterior.has(5)).toBe(false);
+  });
+
+  it("one front door and one window serve the whole open space", () => {
+    const h = openPlan();
+    h.addDoor(h.walls[0].id, 2.5, 0.9, 2.1); // into the room at x 5..10
+    h.addWindow(h.walls[0].id, 7.5, 1.2, 1.2, 0.9); // in the room at x 10..15
+    const r = rooms(h);
+    expect(r.rooms.every((x) => x.reachable && x.daylit)).toBe(true);
+    setRoomType(h, v(7, 8), "Kitchen");
+    setRoomType(h, v(12, 8), "Living");
+    h.roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
+    expect(validate(h, starterPlots()[0], 1e9, defaultPrices())).toEqual([]);
+  });
+
+  it("boundaries are not built or paid for", () => {
+    const withWall = estimate(twoRooms(), defaultPrices());
+    const open = estimate(openPlan(), defaultPrices());
+    expect(open.interiorWalls).toBe(0);
+    expect(open.walls).toBeCloseTo(withWall.walls);
+  });
+
+  it("no windows or doors on a boundary, and no boundary as an outer wall", () => {
+    const h = openPlan();
+    expect(placeOpening(h, 5, "Door", 3.5)).toBeNull();
+    h.addDoor(5, 3.5, 0.9, 2.1); // forced in anyway
+    h.walls[1].boundary = true; // the right-hand outer wall
+    const kinds = validate(h, starterPlots()[0], 1e9, defaultPrices()).map((i) => i.kind);
+    expect(kinds).toContain("OpeningInBoundary");
+    expect(kinds).toContain("BoundaryOnOutside");
+  });
+
+  it("round-trips through JSON", () => {
+    const h = openPlan();
+    expect(House.fromJSON(JSON.parse(JSON.stringify(h))).walls[4].boundary).toBe(true);
   });
 });

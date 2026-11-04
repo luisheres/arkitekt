@@ -51,11 +51,15 @@ export interface Room {
   doors: DoorLink[];
   /** Windows in the room's exterior walls. */
   windows: Opening[];
-  /** Whether you can walk in from outside through doors. */
+  /** Rooms joined to this one across a room boundary (open plan). */
+  openTo: number[];
+  /** Whether you can walk in from outside, through doors and open plan. */
   reachable: boolean;
+  /** Whether daylight reaches the room: a window of its own or in its open-plan space. */
+  daylit: boolean;
 }
 
-export type MisplacedReason = "InteriorWindow" | "AcrossJunction";
+export type MisplacedReason = "InteriorWindow" | "AcrossJunction" | "InBoundary";
 
 export interface RoomAnalysis {
   layout: Layout;
@@ -89,7 +93,9 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
     type: null,
     doors: [],
     windows: [],
+    openTo: [],
     reachable: false,
+    daylit: false,
   }));
 
   const strayLabels: RoomLabel[] = [];
@@ -110,6 +116,10 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
   const misplaced: RoomAnalysis["misplaced"] = [];
   const eps = 1e-6;
   for (const o of house.openings) {
+    if (house.wall(o.wall)?.boundary) {
+      misplaced.push({ opening: o, reason: "InBoundary" });
+      continue;
+    }
     const seg = layout.segments.find((s) => s.wall === o.wall && s.left !== null && s.from - eps <= o.left() && o.right() <= s.to + eps);
     if (!seg || seg.left === null || seg.right === null) {
       if (house.wall(o.wall)) misplaced.push({ opening: o, reason: "AcrossJunction" });
@@ -125,15 +135,42 @@ export function analyzeRooms(house: House): Result<RoomAnalysis, FootprintError>
     }
   }
 
-  // Walk in from outside.
+  // Open plan: rooms on either side of a boundary flow into each other.
+  for (const seg of layout.segments) {
+    if (seg.left === null || seg.right === null || seg.left === OUTSIDE || seg.right === OUTSIDE) continue;
+    if (!house.wall(seg.wall)?.boundary) continue;
+    const [a, b] = [rooms[seg.left], rooms[seg.right]];
+    if (a !== b && !a.openTo.includes(b.index)) {
+      a.openTo.push(b.index);
+      b.openTo.push(a.index);
+    }
+  }
+
+  // Daylight spreads through an open-plan space.
+  for (const start of rooms) {
+    if (start.daylit || start.windows.length === 0) continue;
+    const queue = [start];
+    start.daylit = true;
+    while (queue.length) {
+      for (const i of queue.pop()!.openTo) {
+        if (!rooms[i].daylit) {
+          rooms[i].daylit = true;
+          queue.push(rooms[i]);
+        }
+      }
+    }
+  }
+
+  // Walk in from outside, through doors and open plan.
   const queue = rooms.filter((r) => r.doors.some((d) => d.to === OUTSIDE));
   queue.forEach((r) => (r.reachable = true));
   while (queue.length) {
-    for (const d of queue.pop()!.doors) {
-      const next = d.to === OUTSIDE ? undefined : rooms[d.to];
-      if (next && !next.reachable) {
-        next.reachable = true;
-        queue.push(next);
+    const room = queue.pop()!;
+    const next = [...room.doors.map((d) => d.to), ...room.openTo].filter((i) => i !== OUTSIDE).map((i) => rooms[i]);
+    for (const r of next) {
+      if (!r.reachable) {
+        r.reachable = true;
+        queue.push(r);
       }
     }
   }

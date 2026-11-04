@@ -825,3 +825,31 @@ button.primary:hover:not(:disabled) {
   padding: 2px 6px;
   font-size: 13px;
 }
+
+/* --- Room boundaries ----------------------------------------------------------- */
+
+.plan .boundary {
+  fill: none;
+  stroke: #8d877c;
+  stroke-width: 1.5;
+  stroke-dasharray: 7 5;
+}
+
+.plan .boundary.hover {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.plan .boundary.selected {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+}
+
+.plan .boundary.bad {
+  stroke: var(--error);
+  stroke-width: 2.5;
+}
+
+.plan .draft.open {
+  stroke-dasharray: 8 5;
+}

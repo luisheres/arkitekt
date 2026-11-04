@@ -19,7 +19,10 @@ import {
   setRoomType,
 } from "../core";
 
-export type Tool = "select" | "wall" | "room" | "window" | "door";
+export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door";
+
+/** Tools that draw chains of walls (or room boundaries) corner by corner. */
+export const drawsWalls = (t: Tool): t is "wall" | "boundary" => t === "wall" || t === "boundary";
 
 export type Selection =
   | { kind: "wall"; id: number }

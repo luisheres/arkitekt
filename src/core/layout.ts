@@ -37,8 +37,10 @@ export interface Layout {
   /** Outer boundary of the house, counter-clockwise. */
   outline: Vec2[];
   segments: WallSegment[];
-  /** Walls with outside on one side. */
+  /** Walls with outside on one side (never room boundaries). */
   exterior: Set<WallId>;
+  /** Room boundaries with outside on one side: the house's outside needs real walls. */
+  outerBoundaries: WallId[];
   /** Wall ends connected to nothing. */
   looseEnds: { wall: WallId; at: Vec2 }[];
 }
@@ -221,11 +223,15 @@ export function analyzeLayout(house: House): Result<Layout, FootprintError> {
       ? { wall: p.wall.id, from: p.from, to: p.to, left: side(p.a, p.b), right: side(p.b, p.a) }
       : { wall: p.wall.id, from: p.from, to: p.to, left: null, right: null },
   );
-  const exterior = new Set(segments.filter((s) => s.left === OUTSIDE || s.right === OUTSIDE).map((s) => s.wall));
-  return ok({ rooms, outline, segments, exterior, looseEnds });
+  const onOutside = segments.filter((s) => s.left === OUTSIDE || s.right === OUTSIDE).map((s) => s.wall);
+  const isBoundary = (id: WallId) => house.wall(id)?.boundary ?? false;
+  const exterior = new Set(onOutside.filter((id) => !isBoundary(id)));
+  const outerBoundaries = [...new Set(onOutside.filter(isBoundary))];
+  return ok({ rooms, outline, segments, exterior, outerBoundaries, looseEnds });
 }
 
-/** How thick a wall is drawn and built: exterior walls keep their own thickness. */
+/** How thick a wall is built: exterior walls keep their own thickness; boundaries have none. */
 export function wallThickness(layout: Layout | null, wall: Wall): number {
+  if (wall.boundary) return 0;
   return !layout || layout.exterior.has(wall.id) ? wall.thickness : INTERIOR_WALL_THICKNESS;
 }

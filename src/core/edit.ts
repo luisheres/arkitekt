@@ -202,7 +202,7 @@ export function clampOffset(wall: Wall, width: number, offset: number): number {
  */
 export function placeOpening(house: House, wallId: WallId, kind: OpeningKind, offset: number): OpeningId | null {
   const wall = house.wall(wallId);
-  if (!wall) return null;
+  if (!wall || wall.boundary) return null; // a boundary has no wall to put it in
   const d = DEFAULT_OPENING[kind];
   const minWidth = kind === "Door" ? DOOR_WIDTH[0] : kind === "GarageDoor" ? GARAGE_DOOR_WIDTH[0] : MIN_OPENING_SIZE;
   const width = Math.min(d.width, roundTo(wall.length() - 2 * OPENING_END_MARGIN, 0.1));
@@ -218,7 +218,7 @@ export function placeOpening(house: House, wallId: WallId, kind: OpeningKind, of
  * Add a wall from `a` to `b`, leaving out the stretches already covered by existing walls
  * on the same line, so walls can be traced along existing ones without doubling up.
  */
-export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial): WallId[] {
+export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, material: WallMaterial, boundary = false): WallId[] {
   const len = a.distance(b);
   if (len < SNAP_EPS) return [];
   const d = b.sub(a).scale(1 / len);
@@ -234,7 +234,7 @@ export function addWallClipped(house: House, a: Vec2, b: Vec2, height: number, m
   const ids: WallId[] = [];
   let cursor = 0;
   const add = (from: number, to: number) => {
-    if (to - from > SNAP_EPS) ids.push(house.addWall(a.add(d.scale(from)), a.add(d.scale(to)), height, material));
+    if (to - from > SNAP_EPS) ids.push(house.addWall(a.add(d.scale(from)), a.add(d.scale(to)), height, material, boundary));
   };
   for (const [t0, t1] of covered) {
     add(cursor, t0);
@@ -251,10 +251,11 @@ export function addWallChain(
   closed: boolean,
   height: number,
   material: WallMaterial,
+  boundary = false,
 ): WallId[] {
   const ids: WallId[] = [];
   const n = closed ? points.length : points.length - 1;
-  for (let i = 0; i < n; i++) ids.push(...addWallClipped(house, points[i], points[(i + 1) % points.length], height, material));
+  for (let i = 0; i < n; i++) ids.push(...addWallClipped(house, points[i], points[(i + 1) % points.length], height, material, boundary));
   return ids;
 }
 

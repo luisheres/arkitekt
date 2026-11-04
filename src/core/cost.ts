@@ -60,6 +60,7 @@ export function estimate(house: House, prices: PriceList): CostBreakdown {
   // Until the walls enclose something, every wall is priced as an exterior wall.
   const layout = analyzeLayout(house);
   for (const wall of house.walls) {
+    if (wall.boundary) continue; // room boundaries are not built
     const holes = house.openingsIn(wall.id).reduce((s, o) => s + o.area(), 0);
     const net = Math.max(wall.grossArea() - holes, 0);
     if (layout.ok && !layout.value.exterior.has(wall.id)) c.interiorWalls += net * prices.interiorWallM2;

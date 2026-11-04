@@ -21,7 +21,7 @@ export type Requirement =
   | { kind: "roofMaterial"; material: RoofMaterial }
   /** Every door at least this wide (step-free, wheelchair-friendly). */
   | { kind: "doorWidth"; min: number }
-  /** A door directly between a room of type `a` and one of type `b`. */
+  /** A room of type `a` joined to one of type `b` by a door or open plan. */
   | { kind: "connected"; a: RoomType; b: RoomType }
   /** The room of this type with the most glass has at least `min` m² of windows. */
   | { kind: "windowArea"; room: RoomType; min: number }
@@ -96,7 +96,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [narrow === 0, narrow === 0 ? m.brief.yes : m.brief.doorsTooNarrow(narrow)];
       }
       case "connected": {
-        const ok = ofType(r.a).some((x) => x.doors.some((d) => d.to >= 0 && rooms[d.to].type === r.b));
+        const ok = ofType(r.a).some((x) => x.doors.some((d) => d.to >= 0 && rooms[d.to].type === r.b) || x.openTo.some((i) => rooms[i].type === r.b));
         return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "windowArea": {

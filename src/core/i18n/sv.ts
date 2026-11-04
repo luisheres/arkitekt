@@ -77,6 +77,10 @@ export const sv: Messages = {
         return "Ett fönster eller en dörr blockeras av en vägg som ansluter där";
       case "WindowInInteriorWall":
         return "Ett fönster sitter i en innervägg; fönster ska sitta i ytterväggar";
+      case "OpeningInBoundary":
+        return "Ett fönster eller en dörr sitter på en rumsgräns, där det inte finns någon vägg";
+      case "BoundaryOnOutside":
+        return "En rumsgräns ligger i husets ytterkant; utsidan behöver riktiga väggar";
       case "BadDoorSize":
         return `Dörrar måste vara ${num(this, R.DOOR_WIDTH[0])}–${meters(this, R.DOOR_WIDTH[1])} breda och minst ${meters(this, R.DOOR_MIN_HEIGHT)} höga`;
       case "BadGarageDoorSize":
@@ -133,7 +137,7 @@ export const sv: Messages = {
       case "doorWidth":
         return `Alla dörrar minst ${meters(this, r.min)} breda`;
       case "connected":
-        return `En dörr mellan ${this.rooms[r.a].the} och ${this.rooms[r.b].the}`;
+        return `En dörr eller öppen planlösning mellan ${this.rooms[r.a].the} och ${this.rooms[r.b].the}`;
       case "windowArea":
         return `Minst ${m2(this, r.min)} fönster i ${this.rooms[r.room].the}`;
       case "underBudget":
@@ -166,7 +170,7 @@ export const sv: Messages = {
     briefTitle: "Läs kundens uppdrag igen",
     present: "Presentera för kunden",
     presentTitle: "Visa ritningen för kunden",
-    tools: { select: "Markera", room: "Rum", wall: "Vägg", window: "Fönster", door: "Dörr" },
+    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr" },
     undo: "Ångra",
     undoTitle: "Ångra (Ctrl+Z)",
     redo: "Gör om",
@@ -191,6 +195,10 @@ export const sv: Messages = {
     add: (kind) => `Lägg till ${sv.opening[kind].toLowerCase()}`,
     exteriorWall: "Yttervägg",
     interiorWall: "Innervägg",
+    boundary: "Rumsgräns",
+    boundaryNote: "Delar en öppen planlösning i rum. Här byggs ingenting: rummen på var sida är öppna mot varandra och delar dagsljus.",
+    makeBoundary: "Gör öppen",
+    makeWall: "Gör till vägg",
     type: "Typ",
     width: "Bredd",
     height: "Höjd",
@@ -244,6 +252,7 @@ export const sv: Messages = {
       select: "Klicka på ett rum för att ange vad det är. Dra i hörn för att ändra formen, i väggar för att flytta dem, i fönster och dörrar för att skjuta dem och i rumsnamn för att flytta dem. Dra i tom yta för att panorera.",
       wall: "Klicka för att sätta ut hörn; börja eller sluta på en vägg för att dela ett rum. Klicka på första hörnet för att sluta väggen runt. Enter eller dubbelklick avslutar, Esc avbryter.",
       room: "Dra för att rita ett rektangulärt rum. Sidor längs befintliga väggar delas.",
+      boundary: "Rita en öppen rumsgräns som en vägg: klicka ut hörn, börja och sluta på väggar. Den delar en öppen planlösning i rum utan att något byggs.",
       window: "Klicka på en yttervägg för att lägga till ett fönster.",
       door: "Klicka på en vägg för att lägga till en dörr.",
     },

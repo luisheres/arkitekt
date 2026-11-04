@@ -40,6 +40,8 @@ const ISSUES: Issue[] = [
   { kind: "OpeningsOverlap", a: 1, b: 2 },
   { kind: "OpeningAcrossJunction", opening: 1 },
   { kind: "WindowInInteriorWall", opening: 1 },
+  { kind: "OpeningInBoundary", opening: 1 },
+  { kind: "BoundaryOnOutside", wall: 1 },
   { kind: "BadDoorSize", opening: 1 },
   { kind: "BadGarageDoorSize", opening: 1 },
   { kind: "GarageDoorNotToGarage", opening: 1 },
@@ -83,10 +85,11 @@ describe("languages", () => {
     expect(sv.requirement(REQUIREMENTS[0])).toBe("3 sovrum på minst 9 m²");
     expect(sv.requirement(REQUIREMENTS[1])).toBe("Ett arbetsrum");
     expect(sv.requirement(REQUIREMENTS[6])).toBe("Ett platt tak eller ett valmat tak");
-    expect(sv.requirement(REQUIREMENTS[9])).toBe("En dörr mellan köket och vardagsrummet");
+    expect(sv.requirement(REQUIREMENTS[9])).toBe("En dörr eller öppen planlösning mellan köket och vardagsrummet");
     expect(sv.requirement(REQUIREMENTS[10])).toBe("Minst 4 m² fönster i vardagsrummet");
-    expect(sv.issue(ISSUES[18])).toBe("Sovrum (6,3 m²) är mindre än 7 m²");
-    expect(sv.issue(ISSUES[24])).toBe("Ett sadeltak kräver ett rektangulärt hus; välj platt tak för andra former");
+    const issue = (kind: Issue["kind"]) => sv.issue(ISSUES.find((i) => i.kind === kind)!);
+    expect(issue("RoomTooSmall")).toBe("Sovrum (6,3 m²) är mindre än 7 m²");
+    expect(issue("RoofNeedsRectangle")).toBe("Ett sadeltak kräver ett rektangulärt hus; välj platt tak för andra former");
   });
 
   it("the client's verdict comes in the player's language", () => {

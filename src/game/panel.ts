@@ -49,6 +49,7 @@ const TOOLS: { tool: Tool; key: string }[] = [
   { tool: "select", key: "V" },
   { tool: "room", key: "R" },
   { tool: "wall", key: "W" },
+  { tool: "boundary", key: "B" },
   { tool: "window", key: "N" },
   { tool: "door", key: "D" },
 ];
@@ -281,7 +282,7 @@ export class Panel {
       ? ""
       : sel.kind === "room"
         ? `room:${room ? `${room.type}:${room.polygon.map((p) => `${p.x},${p.y}`).join(";")}` : "none"}`
-        : `${sel.kind}:${sel.id}:${opening?.kind ?? ""}:${exterior}`;
+        : `${sel.kind}:${sel.id}:${opening?.kind ?? ""}:${exterior}:${sel.kind === "wall" && store.house.wall(sel.id)?.boundary}`;
     if (key === this.selectionKey) return;
     this.selectionKey = key;
 
@@ -334,7 +335,24 @@ export class Panel {
         });
         return b;
       };
-      const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor"), del] : [add("Door"), del];
+      /** Switch between a built wall and an open room boundary (which cannot hold openings). */
+      const toggle = (boundary: boolean) => {
+        const b = el("button", { type: "button" }, boundary ? m.ui.makeBoundary : m.ui.makeWall);
+        b.addEventListener("click", () =>
+          store.edit((h) => {
+            const w = h.wall(sel.id);
+            if (!w) return;
+            w.boundary = boundary;
+            if (boundary) h.openingsIn(w.id).forEach((o) => h.removeOpening(o.id));
+          }),
+        );
+        return b;
+      };
+      if (store.house.wall(sel.id)?.boundary) {
+        box.append(el("h2", {}, m.ui.boundary), ...this.selectionFields.map((f) => f.el), el("p", { className: "sub" }, m.ui.boundaryNote), el("div", { className: "row" }, toggle(false), del));
+        return;
+      }
+      const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor"), del] : [add("Door"), toggle(true), del];
       box.append(el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), ...this.selectionFields.map((f) => f.el), el("div", { className: "row" }, ...buttons));
       return;
     }

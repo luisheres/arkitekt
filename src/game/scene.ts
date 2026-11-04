@@ -173,6 +173,7 @@ export function buildHouse(house: House, options: { roof: boolean } = { roof: tr
   };
 
   for (const wall of house.walls) {
+    if (wall.boundary) continue; // room boundaries are not built
     const openings = house.openingsIn(wall.id);
     const d = wall.direction();
     const rotY = Math.atan2(-d.y, d.x);

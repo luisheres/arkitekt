@@ -83,7 +83,7 @@ function showCaptures(views: CapturedView[]): void {
 
 // --- Keyboard -----------------------------------------------------------------------
 
-const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyN: "window", KeyD: "door" };
+const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door" };
 
 window.addEventListener("keydown", (e) => {
   if (isModalOpen()) return;

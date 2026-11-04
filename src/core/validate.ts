@@ -45,6 +45,8 @@ export type Issue =
   | { kind: "OpeningsOverlap"; a: OpeningId; b: OpeningId }
   | { kind: "OpeningAcrossJunction"; opening: OpeningId }
   | { kind: "WindowInInteriorWall"; opening: OpeningId }
+  | { kind: "OpeningInBoundary"; opening: OpeningId }
+  | { kind: "BoundaryOnOutside"; wall: WallId }
   | { kind: "BadDoorSize"; opening: OpeningId }
   | { kind: "BadGarageDoorSize"; opening: OpeningId }
   | { kind: "GarageDoorNotToGarage"; opening: OpeningId }
@@ -78,6 +80,7 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
   const issues: Issue[] = [];
 
   for (const w of house.walls) {
+    if (w.boundary) continue; // not built: no size or placement rules
     if (w.length() < MIN_WALL_LENGTH) issues.push({ kind: "WallTooShort", wall: w.id });
     if (!within(w.height, [MIN_WALL_HEIGHT, MAX_WALL_HEIGHT])) issues.push({ kind: "WallHeightOutOfRange", wall: w.id });
     if (!isBuildable(plot, w.start) || !isBuildable(plot, w.end)) issues.push({ kind: "WallOutsidePlot", wall: w.id });
@@ -135,8 +138,10 @@ function checkRooms(house: House, analysis: RoomAnalysis, issues: Issue[]): void
 
   for (const end of layout.looseEnds) issues.push({ kind: "LooseWallEnd", wall: end.wall, x: end.at.x, y: end.at.y });
   for (const m of misplaced) {
-    issues.push({ kind: m.reason === "InteriorWindow" ? "WindowInInteriorWall" : "OpeningAcrossJunction", opening: m.opening.id });
+    const kind = m.reason === "InteriorWindow" ? "WindowInInteriorWall" : m.reason === "InBoundary" ? "OpeningInBoundary" : "OpeningAcrossJunction";
+    issues.push({ kind, opening: m.opening.id });
   }
+  for (const wall of layout.outerBoundaries) issues.push({ kind: "BoundaryOnOutside", wall });
   for (const label of strayLabels) issues.push({ kind: "LabelOutsideRooms", label: label.id, at: label.at });
 
   for (const room of rooms) {
@@ -146,7 +151,7 @@ function checkRooms(house: House, analysis: RoomAnalysis, issues: Issue[]): void
     if (!room.type) continue;
     const info = ROOM_INFO[room.type];
     if (room.area < info.minArea) issues.push({ kind: "RoomTooSmall", room: ref, min: info.minArea });
-    if (info.needsWindow && room.windows.length === 0) issues.push({ kind: "RoomNeedsWindow", room: ref });
+    if (info.needsWindow && !room.daylit) issues.push({ kind: "RoomNeedsWindow", room: ref });
     if (room.type === "Garage" && !room.doors.some((d) => d.opening.kind === "GarageDoor" && d.to < 0)) {
       issues.push({ kind: "GarageNeedsGarageDoor", room: ref });
     }

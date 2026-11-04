@@ -74,6 +74,10 @@ export const en: Messages = {
         return "A window or door is blocked by a wall joining it";
       case "WindowInInteriorWall":
         return "A window is in an interior wall; windows go in exterior walls";
+      case "OpeningInBoundary":
+        return "A window or door is on a room boundary, where there is no wall";
+      case "BoundaryOnOutside":
+        return "A room boundary is on the outside of the house; the outside needs real walls";
       case "BadDoorSize":
         return `Doors must be ${num(this, R.DOOR_WIDTH[0])}–${meters(this, R.DOOR_WIDTH[1])} wide and at least ${meters(this, R.DOOR_MIN_HEIGHT)} tall`;
       case "BadGarageDoorSize":
@@ -132,7 +136,7 @@ export const en: Messages = {
       case "doorWidth":
         return `Every door at least ${meters(this, r.min)} wide`;
       case "connected":
-        return `A door between ${this.rooms[r.a].the} and ${this.rooms[r.b].the}`;
+        return `A door or open plan between ${this.rooms[r.a].the} and ${this.rooms[r.b].the}`;
       case "windowArea":
         return `At least ${m2(this, r.min)} of windows in ${this.rooms[r.room].the}`;
       case "underBudget":
@@ -165,7 +169,7 @@ export const en: Messages = {
     briefTitle: "Read the client's brief again",
     present: "Present to client",
     presentTitle: "Show the design to the client",
-    tools: { select: "Select", room: "Room", wall: "Wall", window: "Window", door: "Door" },
+    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door" },
     undo: "Undo",
     undoTitle: "Undo (Ctrl+Z)",
     redo: "Redo",
@@ -190,6 +194,10 @@ export const en: Messages = {
     add: (kind) => `Add ${en.opening[kind].toLowerCase()}`,
     exteriorWall: "Exterior wall",
     interiorWall: "Interior wall",
+    boundary: "Room boundary",
+    boundaryNote: "Divides open-plan space into rooms. Nothing is built here: the rooms on either side are open to each other and share daylight.",
+    makeBoundary: "Make it open",
+    makeWall: "Make it a wall",
     type: "Type",
     width: "Width",
     height: "Height",
@@ -243,6 +251,7 @@ export const en: Messages = {
       select: "Click a room to say what it is. Drag corners to reshape, walls to push them, windows and doors to slide them, room names to move them. Drag empty space to pan.",
       wall: "Click to place corners; start or end on a wall to divide a room. Click the first corner to close a loop. Enter or double-click finishes, Esc cancels.",
       room: "Drag to draw a rectangular room. Sides along existing walls are shared.",
+      boundary: "Draw an open room boundary, like a wall: click corners, start and end on walls. It divides open-plan space into rooms without building anything.",
       window: "Click an exterior wall to add a window.",
       door: "Click a wall to add a door.",
     },

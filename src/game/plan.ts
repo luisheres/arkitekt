@@ -44,7 +44,7 @@ import {
   wallThickness,
 } from "../core";
 import { m } from "./i18n";
-import type { Store, Tool } from "./store";
+import { type Store, type Tool, drawsWalls } from "./store";
 
 const PLAN_WALL_COLORS = { Wood: "#7a5134", Brick: "#8c3d2e", Plaster: "#6f6b63" } as const;
 const INTERIOR_WALL_COLOR = "#a19b90";
@@ -85,6 +85,7 @@ export class PlanView {
   private cursor: Vec2 | null = null;
   private freeSnap = false; // Alt held: no grid snapping
   private draft: Vec2[] = [];
+  private draftTool: Tool = "select";
   private drag: Drag | null = null;
   private hover: Hit = null;
   private issues: Issue[] = [];
@@ -105,7 +106,9 @@ export class PlanView {
     store.subscribe((change) => {
       if (change !== "ui") this.refresh();
       if (change === "client") this.fit();
-      if (store.tool !== "wall") this.draft = [];
+      // The chain being drawn belongs to the tool it was started with.
+      if (store.tool !== this.draftTool) this.draft = [];
+      this.draftTool = store.tool;
       this.requestRender();
     });
     new ResizeObserver(() => this.resize()).observe(container);
@@ -246,7 +249,8 @@ export class PlanView {
 
   private openingTarget(p: Vec2) {
     const hit = nearestWall(this.house, p, Math.max(0.6, 14 / this.scale));
-    return hit && { wall: hit.wall, offset: hit.offset };
+    // Windows and doors need a real wall.
+    return hit && !hit.wall.boundary ? { wall: hit.wall, offset: hit.offset } : null;
   }
 
   // --- Input -------------------------------------------------------------------------
@@ -264,7 +268,7 @@ export class PlanView {
       this.requestRender();
     });
     svg.addEventListener("dblclick", () => {
-      if (this.store.tool === "wall") this.finish();
+      if (drawsWalls(this.store.tool)) this.finish();
     });
     svg.addEventListener(
       "wheel",
@@ -328,6 +332,7 @@ export class PlanView {
         break;
       }
       case "wall":
+      case "boundary":
         this.addDraftPoint(this.snap(p));
         break;
       case "room":
@@ -443,7 +448,8 @@ export class PlanView {
     const points = this.draft;
     this.draft = [];
     const { height, material } = this.newWallStyle();
-    this.store.edit((h) => void addWallChain(h, points, closed, height, material));
+    const boundary = this.store.tool === "boundary";
+    this.store.edit((h) => void addWallChain(h, points, closed, height, material, boundary));
   }
 
   // --- Drawing -----------------------------------------------------------------------
@@ -533,6 +539,11 @@ export class PlanView {
     for (const wall of house.walls) {
       const exterior = !this.analysis || this.analysis.layout.exterior.has(wall.id);
       const cls = ["wall", badWalls.has(wall.id) && "bad", hoverId("wall") === wall.id && "hover", selId("wall") === wall.id && "selected"];
+      if (wall.boundary) {
+        cls[0] = "boundary";
+        out.push(`<polyline class="${cls.filter(Boolean).join(" ")}" points="${this.pts([wall.start, wall.end])}"/>`);
+        continue;
+      }
       const fill = exterior ? PLAN_WALL_COLORS[wall.material] : INTERIOR_WALL_COLOR;
       out.push(`<polygon class="${cls.filter(Boolean).join(" ")}" style="fill:${fill}" points="${this.pts(this.wallOutline(wall))}"/>`);
     }
@@ -571,7 +582,7 @@ export class PlanView {
     }
 
     // Corner handles.
-    if (tool === "select" || tool === "wall") {
+    if (tool === "select" || drawsWalls(tool)) {
       const active = this.drag?.kind === "corner" ? this.drag.at : this.hover?.kind === "corner" ? this.hover.at : null;
       for (const c of corners(house)) {
         const [x, y] = this.toScreen(c);
@@ -635,11 +646,11 @@ export class PlanView {
       return `<circle class="cursor${s.anchored ? " anchored" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${s.anchored ? 7 : 4}"/>`;
     };
 
-    if (tool === "wall") {
+    if (drawsWalls(tool)) {
       const s = this.snap(cursor);
       if (this.draft.length > 0) {
         const last = this.draft[this.draft.length - 1];
-        out.push(`<polyline class="draft" points="${this.pts(this.draft)}"/>`);
+        out.push(`<polyline class="draft${tool === "boundary" ? " open" : ""}" points="${this.pts(this.draft)}"/>`);
         out.push(`<polyline class="draft preview" points="${this.pts([last, s.point])}"/>`);
         const len = last.distance(s.point);
         if (len > 0) {
