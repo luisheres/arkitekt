@@ -2,7 +2,8 @@
 
 import type { Client } from "./brief";
 import { generateClient, nextSeed } from "./generate";
-import { starterPlots } from "./plot";
+import { type Setting, starterPlots } from "./plot";
+import { type Abilities, type TechniqueId, type Tier, TIER_STARS, abilities, technique, techniquesFor, tierFor } from "./progression";
 
 const [suburban, lakeside, hillside] = starterPlots();
 
@@ -174,22 +175,118 @@ export interface Commission {
   stars: number;
 }
 
+/** The tier of each written client: the campaign's story, from small to grand. */
+export const STORY_TIER: Record<string, Tier> = { lindgren: 1, haddad: 1, andersson: 2, berg: 2, okafor: 3 };
+
 export interface Career {
+  /** Everything ever earned in fees. */
   earnings: number;
   completed: Commission[];
   /** Clients the player turned down; they do not come back. */
   declined?: string[];
+  /** Spent in the Workshop. */
+  spent?: number;
+  /** Techniques learned, in the order they were bought. */
+  techniques?: TechniqueId[];
+  /** How many times the player asked for other clients. */
+  refreshes?: number;
 }
 
 export function newCareer(): Career {
-  return { earnings: 0, completed: [] };
+  return { earnings: 0, completed: [], spent: 0, techniques: [], refreshes: 0 };
 }
+
+/** Money to spend: everything earned less what the Workshop cost. */
+export const careerMoney = (c: Career): number => c.earnings - (c.spent ?? 0);
+
+/** Reputation: every star clients have given. */
+export const careerStars = (c: Career): number => c.completed.reduce((s, x) => s + x.stars, 0);
+
+export const careerTier = (c: Career): Tier => tierFor(careerStars(c));
+
+export const careerAbilities = (c: Career): Abilities => abilities(c.techniques ?? []);
+
+/** Why a technique cannot be bought yet, or null when it can. */
+export function cannotBuy(c: Career, id: TechniqueId): "owned" | "needs" | "money" | null {
+  const t = technique(id);
+  const owned = c.techniques ?? [];
+  if (owned.includes(id)) return "owned";
+  if (t.requires && !owned.includes(t.requires)) return "needs";
+  if (careerMoney(c) < t.price) return "money";
+  return null;
+}
+
+/** Buy a technique; the career unchanged when it cannot be bought. */
+export function buyTechnique(c: Career, id: TechniqueId): Career {
+  if (cannotBuy(c, id)) return c;
+  return { ...c, spent: (c.spent ?? 0) + technique(id).price, techniques: [...(c.techniques ?? []), id] };
+}
+
+/** The techniques a client's must-haves need that the career has not learned. */
+export function clientNeeds(client: Client, a: Abilities): TechniqueId[] {
+  const ids = new Set<TechniqueId>();
+  for (const i of client.items) if (i.must) for (const t of techniquesFor(i.req, a)) ids.add(t);
+  return [...ids];
+}
+
+/**
+ * The clients to choose from: the next written client the career's tier has reached, and
+ * generated clients at the career's tier (one a tier lower, a smaller job, once there is
+ * one). At least one of them can be built with the techniques already learned.
+ */
+export function clientOffers(c: Career): Client[] {
+  const tier = careerTier(c);
+  const gone = new Set([...c.completed.map((x) => x.clientId), ...(c.declined ?? [])]);
+  const offers: Client[] = [];
+  // Written clients wait for their tier, and stop calling once the career has outgrown them.
+  const story = CLIENTS.find((x) => !gone.has(x.id) && (STORY_TIER[x.id] ?? 1) <= tier && (STORY_TIER[x.id] ?? 1) >= tier - 1);
+  if (story) offers.push(story);
+  const tiers: Tier[] = [tier, tier, tier > 1 ? ((tier - 1) as Tier) : tier];
+  let seed = Math.imul(c.completed.length * 131 + (c.refreshes ?? 0) * 977 + 7, 2654435761) >>> 0;
+  const next = () => (seed = (Math.imul(seed ^ 0x5bd1e995, 2654435761) >>> 0) % 1_000_000);
+  for (let i = 0; offers.length < 3; i++) {
+    const client = generateClient(next(), tiers[i % tiers.length]);
+    if (!gone.has(client.id)) offers.push(client);
+  }
+  // Make sure there is something the player can build now.
+  const a = careerAbilities(c);
+  for (let tries = 0; tries < 40 && offers.every((o) => clientNeeds(o, a).length > 0); tries++) {
+    offers[offers.length - 1] = generateClient(next(), tiers[(tries + 1) % tiers.length]);
+  }
+  return offers;
+}
+
+/** Stars still needed for the next tier, or null at the top. */
+export function starsToNextTier(c: Career): { tier: Tier; needed: number } | null {
+  const tier = careerTier(c);
+  if (tier === 4) return null;
+  const next = (tier + 1) as Tier;
+  return { tier: next, needed: TIER_STARS[next] - careerStars(c) };
+}
+
+/** The pretend client of free play: no brief, no budget, just a plot. */
+export function freePlayClient(setting: Setting): Client {
+  const plot = starterPlots().find((p) => p.setting === setting) ?? starterPlots()[0];
+  const name = { en: "Free play", sv: "Fritt byggande" };
+  const who = { en: "Build whatever you like", sv: "Bygg vad du vill" };
+  return {
+    id: `free-${plot.setting}`,
+    text: { en: { name: name.en, who: who.en, story: "" }, sv: { name: name.sv, who: who.sv, story: "" } },
+    plot,
+    budget: Number.POSITIVE_INFINITY,
+    items: [],
+  };
+}
+
+export const isFreePlay = (client: Client): boolean => client.id.startsWith("free-");
 
 export function clientById(id: string): Client | undefined {
+  if (id.startsWith("free-")) return freePlayClient(id.slice(5) as Setting);
   if (id.startsWith("gen-")) return generateClient(Number(id.slice(4)));
+  const tiered = /^gen([1-4])-(\d+)$/.exec(id);
+  if (tiered) return generateClient(Number(tiered[2]), Number(tiered[1]) as Tier);
   return CLIENTS.find((c) => c.id === id);
 }
-
 /**
  * The next client to call: the first hand-written client not yet served or turned down,
  * else a newly generated one. `after` is the client just finished with, so generated

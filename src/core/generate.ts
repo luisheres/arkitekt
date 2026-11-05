@@ -1,13 +1,17 @@
 /**
  * Generated clients, for when the hand-written ones have all been served (or turned
- * down). A client is generated from a seed, so its id ("gen-<seed>") is all that needs
- * saving: the same seed always gives the same household, brief, plot and budget.
+ * down). A client is generated from a seed and a tier, so its id ("gen<tier>-<seed>") is
+ * all that needs saving: the same id always gives the same household, brief, plot and
+ * budget. Higher tiers bring bigger households, finer plots, premium materials and
+ * larger budgets. Ids without a tier ("gen-<seed>") are from before tiers and keep
+ * their old briefs.
  */
 
 import type { BriefItem, Client, ClientText } from "./brief";
 import type { Lang } from "./i18n/types";
-import { ROOF_STYLES, type RoomType, WALL_MATERIALS } from "./model";
-import { starterPlots } from "./plot";
+import { ROOF_STYLES, type RoofStyle, type RoomType, WALL_MATERIALS, type WallMaterial } from "./model";
+import { type Plot, type Setting, starterPlots } from "./plot";
+import { TIER_MIN_BUDGET, type Tier } from "./progression";
 
 /** Small, fast, seedable random numbers (mulberry32). */
 function random(seed: number): () => number {
@@ -38,7 +42,28 @@ const TYPICAL_AREA: Record<RoomType, number> = {
   Storage: 3,
 };
 
-type Archetype = "family" | "couple" | "retirees" | "remote";
+type Archetype = "family" | "couple" | "retirees" | "remote" | "villa" | "signature";
+
+/** Who calls at each tier. */
+const ARCHETYPES: Record<Tier, Archetype[]> = {
+  1: ["couple", "remote", "retirees"],
+  2: ["family", "couple", "remote", "retirees"],
+  3: ["family", "villa"],
+  4: ["villa", "signature"],
+};
+
+/** Where each tier's clients have bought land. */
+const PLOTS: Record<Tier, Setting[]> = { 1: ["suburban"], 2: ["suburban", "lakeside"], 3: ["lakeside", "hillside"], 4: ["hillside"] };
+
+/** The facades and roofs each tier's clients dream of. */
+const WALLS: Record<Tier, WallMaterial[]> = { 1: ["Wood", "Plaster", "FaluRed"], 2: ["FaluRed", "Brick", "Wood"], 3: ["Brick", "Stone", "FaluRed"], 4: ["Stone", "Brick"] };
+const ROOFS: Record<Tier, RoofStyle[]> = { 1: ["Gable", "Hip"], 2: ["Hip", "Flat", "Gable"], 3: ["Flat", "Gable", "Hip"], 4: ["Flat", "Hip"] };
+
+/** Rooms grow with the tier: minimum sizes are scaled by this. */
+const SIZE: Record<Tier, number> = { 1: 1, 2: 1.15, 3: 1.35, 4: 1.6 };
+
+/** Finer houses cost more per m²: budgets are scaled by this. */
+const QUALITY: Record<Tier, number> = { 1: 1, 2: 1.1, 3: 1.25, 4: 1.4 };
 
 interface Draft {
   text: Record<Lang, ClientText>;
@@ -46,13 +71,15 @@ interface Draft {
   wishes: BriefItem["req"][];
 }
 
-function draft(kind: Archetype, rnd: () => number): Draft {
+function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length)];
   const surname = pick(SURNAMES);
   const a = pick(FIRST);
   const b = pick(FIRST.filter((f) => f !== a));
-  const roof = pick(ROOF_STYLES);
-  const wall = pick(WALL_MATERIALS);
+  const roof = pick(tier ? ROOFS[tier] : ROOF_STYLES);
+  const wall = pick(tier ? WALLS[tier] : WALL_MATERIALS);
+  // (Only tiered clients pick this, so clients from before tiers stay the same.)
+  const premium: WallMaterial = tier ? pick<WallMaterial>(["Brick", "Stone"]) : "Brick";
 
   switch (kind) {
     case "family": {
@@ -176,6 +203,77 @@ function draft(kind: Archetype, rnd: () => number): Draft {
           { kind: "floorFinish", finish: "Wood", room: "Office" },
         ],
       };
+    case "villa":
+      return {
+        text: {
+          en: {
+            name: `The ${surname} family`,
+            who: "A family that has done well, with plenty of guests",
+            story: `We love having people over, so the kitchen and living room must be big and open to each other. Everyone needs their own bedroom, there must be a guest room, an office, and a garage for two cars. And we would like the house to look solid: ${premium === "Stone" ? "stone" : "brick"} walls.`,
+          },
+          sv: {
+            name: `Familjen ${surname}`,
+            who: "En familj som har lyckats, med mycket gäster",
+            story: `Vi älskar att ha folk hemma, så köket och vardagsrummet måste vara stora och öppna mot varandra. Alla behöver ett eget sovrum, det ska finnas ett gästrum, ett kontor och ett garage för två bilar. Och huset ska se gediget ut: väggar av ${premium === "Stone" ? "sten" : "tegel"}.`,
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Bedroom", count: 4, minArea: 10 },
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 16 },
+          { kind: "rooms", room: "Bathroom", count: 2, minArea: 5 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 14 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 32 },
+          { kind: "rooms", room: "Office", count: 1, minArea: 9 },
+          { kind: "rooms", room: "Garage", count: 1, minArea: 30 },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "wallMaterial", material: premium },
+        ],
+        wishes: [
+          { kind: "rooms", room: "WC", count: 1 },
+          { kind: "rooms", room: "Utility", count: 1 },
+          { kind: "windowArea", room: "Living", min: 8 },
+          { kind: "roofMaterial", material: "Tiles" },
+          { kind: "storeys", min: 2 },
+          { kind: "everyFloor", room: "Bathroom" },
+          { kind: "floorFinish", finish: "Stone", room: "Hall" },
+        ],
+      };
+    case "signature":
+      return {
+        text: {
+          en: {
+            name: `${a} & ${b} ${surname}`,
+            who: "Two artists who want a house to remember",
+            story: "We want a house people will talk about. A huge living room with walls of glass, a big studio for our work, stone walls, a bathroom on every floor and room for all our friends to stay. Make it special.",
+          },
+          sv: {
+            name: `${a} och ${b} ${surname}`,
+            who: "Två konstnärer som vill ha ett hus att minnas",
+            story: "Vi vill ha ett hus som folk pratar om. Ett enormt vardagsrum med väggar av glas, en stor ateljé för vårt arbete, stenväggar, ett badrum på varje våning och plats för alla våra vänner att sova över. Gör det speciellt.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Living", count: 1, minArea: 45 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 16 },
+          { kind: "rooms", room: "Office", count: 1, minArea: 20 },
+          { kind: "rooms", room: "Bedroom", count: 3, minArea: 12 },
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 20 },
+          { kind: "rooms", room: "Bathroom", count: 3, minArea: 5 },
+          { kind: "rooms", room: "Garage", count: 1, minArea: 30 },
+          { kind: "storeys", min: 2 },
+          { kind: "everyFloor", room: "Bathroom" },
+          { kind: "wallMaterial", material: "Stone" },
+          { kind: "windowArea", room: "Living", min: 10 },
+        ],
+        wishes: [
+          { kind: "roofStyle", styles: [roof] },
+          { kind: "floorFinish", finish: "Stone", room: "Living" },
+          { kind: "floorFinish", finish: "Wood", room: "Bedroom" },
+          { kind: "rooms", room: "Utility", count: 1 },
+          { kind: "storeys", min: 3 },
+          { kind: "underBudget", share: 0.9 },
+        ],
+      };
   }
 }
 
@@ -198,21 +296,43 @@ export function neededArea(items: readonly BriefItem[]): number {
  * A budget that pays for the must-haves with some room for wishes: needed room area,
  * plus walls, halls and circulation, at a typical cost per m², with a margin.
  */
-export function budgetFor(items: readonly BriefItem[]): number {
+export function budgetFor(items: readonly BriefItem[], tier: Tier = 1): number {
   const area = neededArea(items) * 1.9;
-  return Math.ceil((area * 650 * 1.2) / 5000) * 5000;
+  return Math.ceil((area * 650 * 1.2 * QUALITY[tier]) / 5000) * 5000;
 }
 
-/** The client for a seed. */
-export function generateClient(seed: number): Client {
+/** What a household asks for on top at higher tiers. */
+function tierExtras(kind: Archetype, tier: Tier): BriefItem["req"][] {
+  if (kind === "villa" || kind === "signature") return [];
+  const extras: BriefItem["req"][] = [];
+  if (tier >= 2 && kind !== "retirees") extras.push({ kind: "rooms", room: "WC", count: 1 });
+  if (tier >= 3) {
+    extras.push({ kind: "rooms", room: "Bathroom", count: 2, minArea: 5 }, { kind: "rooms", room: "Garage", count: 1, minArea: 20 });
+    if (kind !== "remote") extras.push({ kind: "rooms", room: "Office", count: 1, minArea: 8 });
+  }
+  return extras;
+}
+
+/**
+ * The client for a seed, at a tier; without a tier, a client as generated before tiers
+ * (any household, any plot).
+ */
+export function generateClient(seed: number, tier?: Tier): Client {
   const rnd = random(seed);
-  const kind = (["family", "couple", "retirees", "remote"] as const)[Math.floor(rnd() * 4)];
-  const d = draft(kind, rnd);
+  const kind = tier ? ARCHETYPES[tier][Math.floor(rnd() * ARCHETYPES[tier].length)] : (["family", "couple", "retirees", "remote"] as const)[Math.floor(rnd() * 4)];
+  const d = draft(kind, rnd, tier);
   // Three or four of the archetype's wishes.
   const wishes = [...d.wishes].sort(() => rnd() - 0.5).slice(0, 3 + Math.floor(rnd() * 2));
-  const items: BriefItem[] = [...d.musts.map((req) => ({ req, must: true })), ...wishes.map((req) => ({ req, must: false }))];
+  const size = tier && kind !== "villa" && kind !== "signature" ? SIZE[tier] : 1;
+  const grow = (r: BriefItem["req"]): BriefItem["req"] => (r.kind === "rooms" && r.minArea ? { ...r, minArea: Math.round(r.minArea * size) } : r);
+  const musts = [...d.musts.map(grow), ...(tier ? tierExtras(kind, tier) : [])];
+  const items: BriefItem[] = [...musts.map((req) => ({ req, must: true })), ...wishes.map((req) => ({ req: grow(req), must: false }))];
   const plots = starterPlots();
-  return { id: `gen-${seed}`, text: d.text, plot: plots[Math.floor(rnd() * plots.length)], budget: budgetFor(items), items };
+  if (!tier) return { id: `gen-${seed}`, text: d.text, plot: plots[Math.floor(rnd() * plots.length)], budget: budgetFor(items), items };
+  const settings = PLOTS[tier];
+  const setting = settings[Math.floor(rnd() * settings.length)];
+  const plot = plots.find((p) => p.setting === setting) as Plot;
+  return { id: `gen${tier}-${seed}`, text: d.text, plot, budget: Math.max(budgetFor(items, tier), TIER_MIN_BUDGET[tier]), items };
 }
 
 /** The seed for the generated client after `after` (or the first one). */

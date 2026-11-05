@@ -68,6 +68,79 @@ export const sv: Messages = {
   roofMaterial: { Shingles: "Shingel", Metal: "Plåt", Tiles: "Takpannor" },
   opening: { Window: "Fönster", Door: "Dörr", GarageDoor: "Garageport" },
 
+  technique: {
+    faluRed: { name: "Falu rödfärg", text: "Träfasader i klassisk falu röd." },
+    brick: { name: "Murverk", text: "Gedigna tegelfasader som håller i generationer." },
+    stone: { name: "Stenhuggeri", text: "Fasader av natursten, det finaste som finns." },
+    hipRoof: { name: "Valmade tak", text: "Tak som lutar åt alla fyra håll." },
+    metalRoof: { name: "Plåttak", text: "Falsade plåttak." },
+    flatRoof: { name: "Platta tak", text: "Platta tak för moderna hus i alla former." },
+    tileRoof: { name: "Takpannor", text: "Tak av lertegelpannor." },
+    woodFloor: { name: "Trägolv", text: "Varma golv av trä." },
+    stoneFloor: { name: "Stengolv", text: "Golv av polerad sten." },
+    openPlan: { name: "Öppen planlösning", text: "Rum utan väggar emellan: verktyget ✂️ Öppen och öppna väggar." },
+    garage: { name: "Garage", text: "Garageportar, så att kunderna kan få ett garage." },
+    twoStoreys: { name: "Två våningar", text: "En andra våning, med trappa upp." },
+    threeStoreys: { name: "Tre våningar", text: "En tredje våning överst." },
+    prefab: { name: "Prefabricerade väggar", text: "Väggar byggda i fabrik: 10 % billigare väggar." },
+    carpenters: { name: "Egna snickare", text: "Ditt eget lag lägger golven: 10 % billigare grund och golv." },
+    marketing: { name: "Marknadsföring", text: "Folk känner till dig: 2 % mer av varje budget i arvode." },
+    bulkBuying: { name: "Storinköp", text: "Köp material i lastbilsvis: 5 % billigare allt." },
+  },
+  branch: { facades: "Fasader", roofs: "Tak", floors: "Golv", structure: "Stomme", business: "Företaget" },
+  tierName: { 1: "Små hus", 2: "Familjehus", 3: "Villor", 4: "Drömhus" },
+
+  progress: {
+    welcomeTitle: "Välkommen till Arkitekt!",
+    welcomeText: "Rita hus på riktiga tomter, se dem i 3D och gör dina kunder glada.",
+    campaign: "Kampanj",
+    campaignText: "Rita hus åt kunder och tjäna pengar. Köp nya byggtekniker i verkstaden, och när ditt rykte växer ringer större kunder: från små hus till drömhus.",
+    continueCampaign: (houses, stars, money) => `Fortsätt: ${houses} sålda hus · ⭐ ${stars} · 💰 ${money}`,
+    startOver: "Börja om",
+    startOverTitle: "Börja om kampanjen?",
+    startOverText: "Dina pengar, ditt rykte och dina tekniker börjar om från början. Sparade ritningar finns kvar.",
+    freePlay: "Fritt byggande",
+    freePlayText: "Bygg vad du vill på vilken tomt som helst, med alla tekniker och utan budget.",
+    choosePlot: "Välj en tomt",
+    back: "Tillbaka",
+
+    money: "Pengar",
+    reputation: "Rykte",
+    tier: (tier, name) => `Nivå ${tier} · ${name}`,
+    toNextTier: (stars, name) => `${stars} ⭐ till ${name}`,
+    topTier: "Du är en av landets bästa arkitekter!",
+    workshop: "Verkstad",
+    workshopTitle: "Köp nya byggtekniker",
+    clients: "Kunder",
+    clientsTitle: "Välj din nästa kund",
+    menu: "Meny",
+    menuTitle: "Tillbaka till startskärmen: kampanj eller fritt byggande",
+    plot: "Tomt",
+
+    offersTitle: "Vem vill du bygga åt?",
+    offersText: "De här kunderna vill att du ritar deras hus. Välj en.",
+    feeUpTo: (amount) => `Arvode upp till ${amount}`,
+    needs: "Kräver",
+    choose: "Läs uppdraget",
+    learnFirst: "Lär dig teknikerna först",
+    otherClients: "↻ Andra kunder",
+    story: "Berättelse",
+    nextTierTeaser: (name, stars) => `${name} ringer när du har ${stars} ⭐ till`,
+    designSetAside: (name) => `Din ritning sparades som ”${name}”; du hittar den under Öppna.`,
+
+    workshopText: "Lägg pengarna du tjänar på nya tekniker. Vissa bygger på andra.",
+    learned: "Inlärd",
+    buy: (price) => `Köp · ${price}`,
+    needsFirst: (name) => `Kräver ${name} först`,
+    saveMore: (amount) => `Spara ${amount} till`,
+    boughtToast: (name) => `Du har lärt dig ${name}!`,
+    locked: (name, price) => `🔒 ${name}: lär dig det i verkstaden (${price})`,
+
+    starsEarned: (n, total) => `+${n} ⭐ · ditt rykte är nu ${total} ⭐`,
+    tierUp: (tier, name) => `Nivå ${tier}! Nu ringer ${name.toLowerCase()}.`,
+    canAfford: (n) => (n === 1 ? "Du har råd med en ny teknik i verkstaden." : `Du har råd med ${n} nya tekniker i verkstaden.`),
+  },
+
   levelName: (level) => (level === 0 ? "Bottenvåning" : `Våning ${level + 1}`),
 
   footprint(e) {
@@ -161,6 +234,8 @@ export const sv: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
+      case "NotLearned":
+        return `${this.technique[i.technique].name} är inte inlärt än: köp det i verkstaden, eller ändra ritningen`;
       case "LabelOutsideRooms":
         return `Etiketten "${this.rooms[i.type].name}" ligger inte längre i något rum (rummet har flyttats eller tagits bort); dra in den i ett rum eller ta bort den`;
       case "RoofNeedsRectangle":

@@ -5,6 +5,7 @@
 
 import type { Requirement } from "../brief";
 import type { CostGroup } from "../cost";
+import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
 import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
 import type { Issue } from "../validate";
@@ -47,6 +48,70 @@ export interface Messages {
   furnitureName: Record<FurnitureKind, string>;
   /** A finish as a kind of floor: "a wooden floor" / "wooden floors". */
   floorPhrase: Record<FloorFinish, { one: string; many: string }>;
+
+  /** Building techniques: a name and what they let you do. */
+  technique: Record<TechniqueId, { name: string; text: string }>;
+  branch: Record<Branch, string>;
+  /** The kinds of client each tier brings. */
+  tierName: Record<Tier, string>;
+
+  /** The campaign: welcome, studio, clients to choose from, the Workshop. */
+  progress: {
+    welcomeTitle: string;
+    welcomeText: string;
+    campaign: string;
+    campaignText: string;
+    /** Under "Campaign" when there is a career to continue. */
+    continueCampaign(houses: number, stars: number, money: string): string;
+    startOver: string;
+    startOverTitle: string;
+    startOverText: string;
+    freePlay: string;
+    freePlayText: string;
+    choosePlot: string;
+    back: string;
+
+    money: string;
+    reputation: string;
+    /** "Tier 2 · Family homes" */
+    tier(tier: Tier, name: string): string;
+    toNextTier(stars: number, name: string): string;
+    topTier: string;
+    workshop: string;
+    workshopTitle: string;
+    clients: string;
+    clientsTitle: string;
+    menu: string;
+    menuTitle: string;
+    plot: string;
+
+    offersTitle: string;
+    offersText: string;
+    /** On a client card: what the fee could be. */
+    feeUpTo(amount: string): string;
+    needs: string;
+    choose: string;
+    learnFirst: string;
+    otherClients: string;
+    story: string;
+    /** A card for the tier not reached yet. */
+    nextTierTeaser(name: string, stars: number): string;
+    /** Switching clients puts the current design aside. */
+    designSetAside(name: string): string;
+
+    workshopText: string;
+    learned: string;
+    buy(price: string): string;
+    needsFirst(name: string): string;
+    saveMore(amount: string): string;
+    boughtToast(name: string): string;
+    /** Tooltip of a locked choice. */
+    locked(name: string, price: string): string;
+
+    starsEarned(n: number, total: number): string;
+    tierUp(tier: Tier, name: string): string;
+    canAfford(n: number): string;
+  };
 
   /** "Ground floor", "Floor 2", ... */
   levelName(level: number): string;

@@ -65,6 +65,79 @@ export const en: Messages = {
   roofMaterial: { Shingles: "Shingles", Metal: "Metal", Tiles: "Tiles" },
   opening: { Window: "Window", Door: "Door", GarageDoor: "Garage door" },
 
+  technique: {
+    faluRed: { name: "Falu red panels", text: "Wooden facades painted the classic Swedish red." },
+    brick: { name: "Brickwork", text: "Solid brick facades that last for generations." },
+    stone: { name: "Stonemasonry", text: "Facades of natural stone, the finest there is." },
+    hipRoof: { name: "Hip roofs", text: "Roofs that slope on all four sides." },
+    metalRoof: { name: "Metal roofing", text: "Standing-seam metal roofs." },
+    flatRoof: { name: "Flat roofs", text: "Flat roofs for modern houses of any shape." },
+    tileRoof: { name: "Roof tiles", text: "Clay tile roofs." },
+    woodFloor: { name: "Wooden floors", text: "Warm wooden floorboards." },
+    stoneFloor: { name: "Stone floors", text: "Floors of polished stone." },
+    openPlan: { name: "Open plan", text: "Rooms without walls between them: the ✂️ Open tool and open walls." },
+    garage: { name: "Garages", text: "Garage doors, so clients can have a garage." },
+    twoStoreys: { name: "Two storeys", text: "A second floor, with stairs up to it." },
+    threeStoreys: { name: "Three storeys", text: "A third floor on top." },
+    prefab: { name: "Prefab walls", text: "Walls made in a factory: 10% off every wall." },
+    carpenters: { name: "Own carpenters", text: "Your own team lays the floors: 10% off foundations and floors." },
+    marketing: { name: "Marketing", text: "People know your name: 2% more of every budget as your fee." },
+    bulkBuying: { name: "Bulk buying", text: "Buy materials by the truckload: 5% off everything." },
+  },
+  branch: { facades: "Facades", roofs: "Roofs", floors: "Floors", structure: "Structure", business: "Business" },
+  tierName: { 1: "Starter homes", 2: "Family homes", 3: "Villas", 4: "Signature houses" },
+
+  progress: {
+    welcomeTitle: "Welcome to Architect!",
+    welcomeText: "Design houses on real plots, see them in 3D, and make your clients happy.",
+    campaign: "Campaign",
+    campaignText: "Design houses for clients and earn money. Buy new building techniques in the Workshop, and as your reputation grows, bigger clients call: from starter homes to signature houses.",
+    continueCampaign: (houses, stars, money) => `Continue: ${houses} ${houses === 1 ? "house" : "houses"} sold · ⭐ ${stars} · 💰 ${money}`,
+    startOver: "Start over",
+    startOverTitle: "Start the campaign over?",
+    startOverText: "Your money, reputation and techniques go back to the start. Saved designs are kept.",
+    freePlay: "Free play",
+    freePlayText: "Build anything you like on any plot, with every technique and no budget.",
+    choosePlot: "Choose a plot",
+    back: "Back",
+
+    money: "Money",
+    reputation: "Reputation",
+    tier: (tier, name) => `Tier ${tier} · ${name}`,
+    toNextTier: (stars, name) => `${stars} more ⭐ to ${name}`,
+    topTier: "You are among the best architects in the land!",
+    workshop: "Workshop",
+    workshopTitle: "Buy new building techniques",
+    clients: "Clients",
+    clientsTitle: "Choose your next client",
+    menu: "Menu",
+    menuTitle: "Back to the welcome screen: campaign or free play",
+    plot: "Plot",
+
+    offersTitle: "Who do you want to build for?",
+    offersText: "These clients would like you to design their house. Pick one.",
+    feeUpTo: (amount) => `Fee up to ${amount}`,
+    needs: "Needs",
+    choose: "Read the brief",
+    learnFirst: "Learn the techniques first",
+    otherClients: "↻ Other clients",
+    story: "Story",
+    nextTierTeaser: (name, stars) => `${name} call when you have ${stars} more ⭐`,
+    designSetAside: (name) => `Your design was saved as “${name}”; find it under Open.`,
+
+    workshopText: "Spend the money you earn on new techniques. Some build on others.",
+    learned: "Learned",
+    buy: (price) => `Buy · ${price}`,
+    needsFirst: (name) => `Needs ${name} first`,
+    saveMore: (amount) => `Save ${amount} more`,
+    boughtToast: (name) => `You learned ${name}!`,
+    locked: (name, price) => `🔒 ${name}: learn it in the Workshop (${price})`,
+
+    starsEarned: (n, total) => `+${n} ⭐ · your reputation is now ${total} ⭐`,
+    tierUp: (tier, name) => `Tier ${tier}! ${name} now call you.`,
+    canAfford: (n) => (n === 1 ? "You can afford a new technique in the Workshop." : `You can afford ${n} new techniques in the Workshop.`),
+  },
+
   levelName: (level) => (level === 0 ? "Ground floor" : `Floor ${level + 1}`),
 
   footprint(e) {
@@ -158,6 +231,8 @@ export const en: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
+      case "NotLearned":
+        return `${this.technique[i.technique].name} is not learned yet: buy it in the Workshop, or change the design`;
       case "LabelOutsideRooms":
         return `The label "${this.rooms[i.type].name}" is no longer inside a room (its room was moved or removed); drag it into a room or delete it`;
       case "RoofNeedsRectangle": {

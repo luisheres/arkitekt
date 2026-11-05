@@ -11,6 +11,7 @@ import { en } from "./i18n/en";
 import type { Lang, Messages } from "./i18n/types";
 import { ROOM_INFO, type Room, analyzeHouse } from "./rooms";
 import { validate } from "./validate";
+import type { Abilities } from "./progression";
 
 export type Requirement =
   /** At least `count` rooms of a type, each at least `minArea` m², optionally on the ground floor or upstairs. */
@@ -157,10 +158,13 @@ export interface Verdict {
   quote: string;
 }
 
-/** Present a design to the client. */
-export function presentDesign(house: House, client: Client, prices: PriceList, m: Messages = en): Verdict {
+/**
+ * Present a design to the client. `can` is what the architect has learned (campaign):
+ * designs using anything else are refused, and the Marketing technique raises the fee.
+ */
+export function presentDesign(house: House, client: Client, prices: PriceList, m: Messages = en, can?: Abilities): Verdict {
   const results = evaluateBrief(house, client, prices, m);
-  const issues = validate(house, client.plot, client.budget, prices);
+  const issues = validate(house, client.plot, client.budget, prices, can);
   const problems = [
     ...issues.map((i) => m.issue(i)),
     ...results.filter((r) => r.item.must && !r.met).map((r) => m.brief.missing(r.text, r.detail)),
@@ -170,7 +174,8 @@ export function presentDesign(house: House, client: Client, prices: PriceList, m
   const ratio = wishes.length ? wishesMet / wishes.length : 1;
   const stars = ratio >= 0.999 ? 3 : ratio >= 0.5 ? 2 : 1;
   const accepted = problems.length === 0;
-  const fee = accepted ? Math.round((client.budget * BASE_FEE_SHARE * (1 + 0.5 * ratio)) / 100) * 100 : 0;
+  const share = BASE_FEE_SHARE + (can?.feePoints ?? 0) / 100;
+  const fee = accepted ? Math.round((client.budget * share * (1 + 0.5 * ratio)) / 100) * 100 : 0;
   const quote = !accepted ? m.brief.quoteRejected : stars === 3 ? m.brief.quoteThreeStars : stars === 2 ? m.brief.quoteTwoStars : m.brief.quoteOneStar;
   return { accepted, problems, wishesMet, wishesTotal: wishes.length, stars, fee, quote };
 }

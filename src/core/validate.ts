@@ -1,5 +1,6 @@
 /** Rules a house must satisfy before it can be sold. */
 
+import { type Abilities, type TechniqueId, missingTechniques } from "./progression";
 import { type PriceList, estimate, totalCost } from "./cost";
 import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from "./geometry";
 import { en } from "./i18n/en";
@@ -65,6 +66,8 @@ export type Issue =
   | { kind: "RoomUnreachable"; room: RoomRef }
   | { kind: "RoomHasTwoLabels"; room: RoomRef }
   | { kind: "UnsuitableFloor"; room: RoomRef; floor: FloorFinish; allowed: readonly FloorFinish[] }
+  /** The design uses a technique not learned yet (campaign only). */
+  | { kind: "NotLearned"; technique: TechniqueId }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
   | { kind: "LabelOutsideRooms"; label: LabelId; at: Vec2; type: RoomType; level: number }
   | { kind: "RoofNeedsRectangle"; style: RoofStyle }
@@ -83,7 +86,7 @@ export function roomRef(room: Room): RoomRef {
 }
 
 /** Check everything that must hold for the house to be sellable. An empty result means OK. */
-export function validate(house: House, plot: Plot, budget: number, prices: PriceList): Issue[] {
+export function validate(house: House, plot: Plot, budget: number, prices: PriceList, can?: Abilities): Issue[] {
   const issues: Issue[] = [];
 
   for (const w of house.walls) {
@@ -117,6 +120,7 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
     checkRoof(house, issues);
   }
 
+  if (can) for (const technique of missingTechniques(house, can)) issues.push({ kind: "NotLearned", technique });
   const cost = totalCost(estimate(house, prices));
   if (cost > budget) issues.push({ kind: "OverBudget", cost, budget });
   return issues;

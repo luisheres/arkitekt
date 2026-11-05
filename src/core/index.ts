@@ -26,3 +26,4 @@ export * from "./samples";
 export * from "./scenery";
 export * from "./validate";
 export * from "./treemap";
+export * from "./progression";
