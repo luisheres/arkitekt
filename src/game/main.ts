@@ -13,6 +13,7 @@ import { lang, m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
 import { type DesignListItem, confirmTurnDown, isModalOpen, showClient, showDesigns, showSaveDialog, showVerdict, toast } from "./dialogs";
 import { deleteDesign, listDesigns, newDesignId, putDesign } from "./designs";
+import { CostPanel } from "./costChart";
 import { Panel } from "./panel";
 import { Popover } from "./popover";
 import { PlanView } from "./plan";
@@ -125,6 +126,8 @@ function openDesigns(notice = ""): void {
     notice,
   );
 }
+
+new CostPanel(main, store);
 
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   save: askToSave,

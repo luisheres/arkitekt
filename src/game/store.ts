@@ -73,6 +73,8 @@ export class Store {
   /** Storeys left out of the 3D view. */
   hiddenLevels = new Set<number>();
   showFurniture = true;
+  /** The live cost chart is open. */
+  showCosts = false;
 
   private history = new History();
   private readonly listeners = new Set<(change: Change) => void>();
@@ -308,6 +310,11 @@ export class Store {
   toggleLevelShown(level: number): void {
     if (this.hiddenLevels.has(level)) this.hiddenLevels.delete(level);
     else this.hiddenLevels.add(level);
+    this.emit("ui");
+  }
+
+  toggleCosts(): void {
+    this.showCosts = !this.showCosts;
     this.emit("ui");
   }
 

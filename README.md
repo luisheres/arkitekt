@@ -75,10 +75,12 @@ darker underneath, and the plan shows the same trees from above.
    Click the roof in 3D (or **Roof**) for its style, pitch, overhang and covering. Each
    room's floor (wood, laminate, tiles, stone, carpet or concrete) is in its menu. Everything has a
    price, and wet rooms and garages need hard, waterproof floors. **Where does the money
-   go?** under the costs shows a treemap of the house's costs: a box per group (facade,
-   roof, floors, windows and doors, interior walls, stairs), split into a box per
-   material, floor finish or kind of opening, each sized by what it costs. Point at a box
-   for its area and price per m².
+   go?** under the costs opens a live treemap of the house's costs over the views: a box
+   per group (facade, roof, floors, windows and doors, interior walls, stairs), split into
+   a box per material, floor finish or kind of opening, each sized by what it costs. It
+   follows every edit, and boxes whose cost just changed flash. Point at a box for its
+   area and price per m²; drag the panel by its title, resize it from its corner. It
+   remembers where you put it.
 6. **Present to client.** They accept when every must-have is met, the house has no
    building problems and it is within budget. Your fee is 8% of their budget, plus up to
    half again for wishes granted.

@@ -77,7 +77,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${row(rows.total, total, "total")}
       ${row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over")}
     </table>
-    <button type="button" class="cost-chart-open">📊 ${esc(m.ui.costChart.open)}</button>
+    <button type="button" class="cost-chart-open${store.showCosts ? " active" : ""}" aria-pressed="${store.showCosts}">📊 ${esc(m.ui.costChart.open)}</button>
     ${
       issues.length
         ? `<div class="bad">${esc(m.ui.buildingProblems)}</div><ul class="issues">${issues

@@ -1585,16 +1585,113 @@ svg.plan {
   margin: 8px 0 4px;
 }
 
-.dialog.wide {
-  width: min(800px, 100%);
+.status .cost-chart-open.active {
+  background: var(--accent-soft);
+  border-color: var(--primary, var(--accent));
+}
+
+.cost-panel {
+  position: absolute;
+  right: 10px;
+  bottom: 56px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: 460px;
+  height: 320px;
+  min-width: 260px;
+  min-height: 180px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+  resize: both;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.96);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(45, 42, 50, 0.22);
+}
+
+.cost-panel[hidden] {
+  display: none;
+}
+
+.cost-panel header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 6px 4px 12px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.cost-panel header:active {
+  cursor: grabbing;
+}
+
+.cost-panel header strong {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.cost-panel .cost-summary {
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-panel .cost-summary b {
+  color: var(--ink);
+}
+
+.cost-panel .cost-summary .over,
+.cost-panel .cost-summary .over b {
+  color: var(--error);
+}
+
+.cost-panel .close {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.cost-panel .cost-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 6px 6px;
+  overflow: hidden;
+}
+
+.cost-panel .empty {
+  margin: 20px 12px;
+  color: var(--muted);
 }
 
 .cost-treemap {
   display: block;
-  width: 100%;
-  height: auto;
-  margin: 10px 0 12px;
   font-family: inherit;
+}
+
+.cost-treemap .cost-line.changed .hit {
+  animation: cost-flash 1.2s ease-out;
+}
+
+@keyframes cost-flash {
+  from {
+    fill: rgba(255, 255, 255, 0.85);
+    stroke: var(--ink);
+    stroke-width: 3;
+  }
+  to {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 3;
+  }
 }
 
 .cost-treemap .group-name {
@@ -1622,43 +1719,4 @@ svg.plan {
   fill: rgba(255, 255, 255, 0.25);
   stroke: var(--ink);
   stroke-width: 2;
-}
-
-.dialog .cost-legend {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 4px 20px;
-  padding: 0;
-  list-style: none;
-}
-
-.cost-legend li {
-  display: flex;
-  white-space: nowrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.cost-legend .swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  flex: none;
-}
-
-.cost-legend .amount {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.cost-legend .share {
-  width: 3.2em;
-  text-align: right;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.dialog .facts .over dd {
-  color: var(--error);
 }

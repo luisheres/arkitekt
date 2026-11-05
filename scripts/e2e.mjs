@@ -135,20 +135,31 @@ try {
   await page.click('.popover .choices.swatches button[title="Tiles"]');
   assert.match(await status(), /No building problems/);
 
-  // Where the money goes: a box per group, and the boxes add up to the total.
+  // Where the money goes: a live panel with a box per group that follows every edit.
   await page.click(".cost-chart-open");
-  assert.equal(await page.locator("#modal h2").textContent(), "Where the money goes");
-  const groups = await page.locator("#modal .cost-legend li").allInnerTexts();
-  for (const g of ["Facade", "Roof", "Floors", "Windows and doors", "Interior walls"]) assert.ok(groups.some((t) => t.startsWith(g)), `a ${g} group`);
-  const chartTotal = await page.locator("#modal .facts dd").first().textContent();
-  assert.match(await status(), new RegExp(`Total\\s*${chartTotal}`));
-  assert.ok((await page.locator("#modal .cost-line").count()) >= 7, "a box per material, finish and kind of opening");
-  await shot("cost-chart");
-  await page.keyboard.press("Escape");
-  assert.equal(await page.locator("#modal").isHidden(), true);
+  const panel = page.locator(".cost-panel");
+  await panel.locator(".cost-line").first().waitFor();
+  const groups = await panel.locator(".cost-group").evaluateAll((gs) => gs.map((g) => g.dataset.group).sort());
+  assert.deepEqual(groups, ["facade", "floors", "interiorWalls", "openings", "roof"]);
+  assert.ok((await panel.locator(".cost-line").count()) >= 7, "a box per material, finish and kind of opening");
+  const panelTotal = async () => (await panel.locator(".cost-summary b").first().textContent()).trim();
+  assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
+  // Changing the bathroom floor to stone changes the chart at once, and flashes the box.
+  const totalBefore = await panelTotal();
+  await click(14.2, 14.5);
+  await page.click('.popover .choices.swatches button[title="Stone"]');
+  await frame();
+  assert.notEqual(await panelTotal(), totalBefore, "the total follows the edit");
+  assert.ok((await panel.locator('.cost-line.changed[data-key*="Stone"]').count()) === 1, "the new stone floor flashes");
+  assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
+  await shot("cost-panel");
+  await page.click('.popover .choices.swatches button[title="Tiles"]');
+  // Close it with its ×; the sidebar button opens it again.
+  await panel.locator(".close").click();
+  assert.equal(await panel.isHidden(), true);
+  await click(14.2, 14.5); // back to the bathroom's menu
 
   // Furniture in the room's menu: remove a piece, add another.
-  await click(14.2, 14.5);
   const bathroom = () => furniture().then((fs) => fs.filter((f) => f.x > 13 && f.x < 15.5 && f.y > 12.5 && f.y < 16.5).map((f) => f.kind).sort());
   const before = await bathroom();
   await page.click('.popover .furniture-list li:has-text("Washbasin") button[title="Remove"]');
