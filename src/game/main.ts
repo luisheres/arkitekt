@@ -11,17 +11,47 @@ import * as core from "../core";
 import { allSamples, defaultPrices, presentDesign } from "../core";
 import { lang, m, translatePage } from "./i18n";
 import type { CapturedView } from "./capture";
-import { type DesignListItem, confirmTurnDown, isModalOpen, showClient, showDesigns, showSaveDialog, showVerdict, toast } from "./dialogs";
+import {
+  type DesignListItem,
+  type Offer,
+  isModalOpen,
+  onLearn,
+  showClient,
+  showDesigns,
+  showOffers,
+  showSaveDialog,
+  showVerdict,
+  showWelcome,
+  showWorkshop,
+  toast,
+} from "./dialogs";
 import { deleteDesign, listDesigns, newDesignId, putDesign } from "./designs";
 import { CostPanel } from "./costChart";
 import { Panel } from "./panel";
 import { Popover } from "./popover";
 import { PlanView } from "./plan";
-import { Store, type Tool } from "./store";
+import { type Mode, Store, type Tool } from "./store";
 import { View3D } from "./view3d";
 
 translatePage();
-const store = new Store(defaultPrices());
+
+/** The mode chosen in this tab, so reloading (e.g. to change language) skips the welcome. */
+const MODE_KEY = "architect.session.mode";
+const sessionMode = (() => {
+  try {
+    return sessionStorage.getItem(MODE_KEY) as Mode | null;
+  } catch {
+    return null;
+  }
+})();
+const rememberMode = (mode: Mode) => {
+  try {
+    sessionStorage.setItem(MODE_KEY, mode);
+  } catch {
+    // Only a convenience.
+  }
+};
+const store = new Store(defaultPrices(), sessionMode ?? "campaign");
 
 // --- Views --------------------------------------------------------------------------
 
@@ -53,14 +83,111 @@ view3d.onPick = (pick, x, y) => {
   openMenu(x, y);
 };
 
-const meetClient = () => showClient(store.client, store.working, () => store.working || store.startCommission());
-const present = () => {
-  const verdict = presentDesign(store.house, store.client, store.prices, m);
-  showVerdict(store.client, verdict, () => {
-    store.completeCommission(verdict.fee, verdict.stars);
-    meetClient();
+// --- Campaign: clients, the Workshop, selling designs ---------------------------------
+
+/** The brief of the current client, or the clients to choose from between commissions. */
+const meetClient = () => (store.working ? showClient(store.client, true, () => {}) : showClients());
+
+function showClients(): void {
+  if (store.mode !== "campaign") return;
+  const can = store.abilities;
+  const offers: Offer[] = store.offers().map((client) => {
+    return {
+      client,
+      tier: core.clientTier(client),
+      story: client.id in core.STORY_TIER,
+      needs: core.clientNeeds(client, can),
+      maxFee: Math.round(client.budget * (core.BASE_FEE_SHARE + can.feePoints / 100) * 1.5),
+    };
   });
+  const next = core.starsToNextTier(store.career);
+  showOffers(offers, next ? { tier: next.tier, stars: next.needed } : null, {
+    pick: (client) =>
+      showClient(client, false, () => takeClient(client), {
+        onBack: showClients,
+        needs: core.clientNeeds(client, store.abilities),
+      }),
+    refresh: () => {
+      store.refreshOffers();
+      showClients();
+    },
+    close: store.working ? () => {} : null,
+  });
+}
+
+/** Take a client on; a design in progress for another client is saved first. */
+function takeClient(client: core.Client): void {
+  if (store.working && store.client.id !== client.id && store.house.walls.length) {
+    const name = store.design?.name ?? defaultDesignName();
+    if (saveDesign(name, false, true)) toast(m.progress.designSetAside(name));
+  }
+  store.takeClient(client);
+}
+
+function openWorkshop(focus?: core.TechniqueId): void {
+  if (store.mode !== "campaign") return;
+  showWorkshop(
+    store.career,
+    (id) => {
+      if (!store.buyTechnique(id)) return;
+      toast(m.progress.boughtToast(m.technique[id].name));
+      openWorkshop(id);
+    },
+    focus,
+  );
+}
+store.onLocked = (id) => openWorkshop(id);
+onLearn(openWorkshop);
+
+/** How many techniques the career could buy now. */
+const affordable = (c: core.Career) => core.TECHNIQUES.filter((t) => core.cannotBuy(c, t.id) === null).length;
+
+const present = () => {
+  const campaign = store.mode === "campaign";
+  const verdict = presentDesign(store.house, store.client, store.prices, m, campaign ? store.abilities : undefined);
+  const before = store.career;
+  const after = verdict.accepted ? core.completeCommission(before, store.client.id, verdict.fee, verdict.stars) : before;
+  const news: string[] = [];
+  if (verdict.accepted) {
+    news.push(m.progress.starsEarned(verdict.stars, core.careerStars(after)));
+    const tier = core.careerTier(after);
+    if (tier > core.careerTier(before)) news.push(m.progress.tierUp(tier, m.tierName[tier]));
+    if (affordable(after) > affordable(before)) news.push(m.progress.canAfford(affordable(after)));
+  }
+  showVerdict(
+    store.client,
+    verdict,
+    () => {
+      store.completeCommission(verdict.fee, verdict.stars);
+      showClients();
+    },
+    news,
+  );
 };
+
+// --- Welcome ------------------------------------------------------------------------
+
+function showMenu(): void {
+  const career = store.campaignCareer();
+  const started = career.completed.length > 0 || (career.techniques?.length ?? 0) > 0 || (store.mode === "campaign" && store.working);
+  showWelcome(started ? { houses: career.completed.length, stars: core.careerStars(career), money: core.careerMoney(career) } : null, {
+    campaign: () => {
+      rememberMode("campaign");
+      store.setMode("campaign");
+      if (!store.working) showClients();
+    },
+    startOver: () => {
+      rememberMode("campaign");
+      store.startOver();
+      showClients();
+    },
+    free: (setting) => {
+      rememberMode("free");
+      store.setMode("free");
+      store.setFreePlot(setting);
+    },
+  });
+}
 // --- Saved designs ------------------------------------------------------------------
 
 const defaultDesignName = () => `${store.client.text[lang].name} – ${new Intl.DateTimeFormat(m.locale, { dateStyle: "medium" }).format(Date.now())}`;
@@ -135,11 +262,9 @@ new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   capture: () => showCaptures(view3d.capture()),
   openMenu,
   beforeReload: () => store.save(),
-  newClient: () =>
-    confirmTurnDown(store.client, () => {
-      store.declineClient();
-      meetClient();
-    }),
+  showClients,
+  showWorkshop: () => openWorkshop(),
+  showMenu,
   present,
   showBrief: meetClient,
 });
@@ -265,8 +390,10 @@ const sampleParam = Number(new URLSearchParams(location.search).get("sample"));
 if (sampleParam >= 1) {
   const samples = allSamples(store.plot);
   store.startCommission(samples[Math.min(sampleParam, samples.length) - 1].house);
-} else if (!store.working) {
-  meetClient();
+} else if (!sessionMode) {
+  showMenu();
+} else if (store.mode === "campaign" && !store.working) {
+  showClients();
 }
 
 declare global {

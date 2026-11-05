@@ -68,12 +68,45 @@ try {
     await page.keyboard.press("Escape");
   };
 
-  // The first client introduces themselves.
+  // The welcome screen: campaign or free play.
   await page.locator("#modal .dialog").waitFor();
+  assert.equal(await page.locator("#modal h2").textContent(), "Welcome to Architect!");
+  await shot("welcome");
+  await page.click('#modal [data-action="campaign"]');
+
+  // Clients to choose from: the story's first client, two more, and the next tier, locked.
+  assert.equal(await page.locator("#modal .offer-card:not(.teaser)").count(), 3);
+  assert.match(await page.locator("#modal .offer-card.teaser").innerText(), /Family homes call when you have 5 more/);
+  assert.match(await page.locator("#modal .offer-card >> nth=0").innerText(), /Lindgren/);
+  await shot("offers");
+  await page.click('#modal [data-action="pick-0"]');
   assert.match(await page.locator("#modal h2").textContent(), /Lindgren/);
-  await shot("client");
-  await page.click("#modal button.primary");
+  await page.click('#modal [data-action="back"]');
+  await page.click('#modal [data-action="pick-0"]');
+  await page.click('#modal [data-action="accept"]');
   assert.equal(await page.locator("#modal").isHidden(), true);
+  assert.equal((await model()).client, "lindgren");
+  assert.match(await page.locator(".studio").innerText(), /Tier 1 · Starter homes/);
+
+  // Open plan is not learned yet: its tool is locked and shows it in the Workshop.
+  assert.equal(await page.locator('.tools button.locked:has-text("Open")').count(), 1);
+  await page.keyboard.press("b");
+  assert.equal(await page.locator('#modal .tech-card.focus[data-tech="openPlan"]').count(), 1);
+  assert.match(await page.locator('#modal .tech-card.focus').innerText(), /Save 4,000 more/);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.evaluate(() => window.architect.store.tool), "select");
+  // With money (as if earned), buy what this house needs in the Workshop.
+  await page.evaluate(() => {
+    const { store } = window.architect;
+    store.career = { ...store.career, earnings: 50_000 };
+  });
+  await page.click('.studio [data-action="workshop"]');
+  for (const id of ["openPlan", "hipRoof", "brick", "stone"]) await page.click(`#modal button[data-buy="${id}"]`);
+  assert.equal(await page.locator("#modal .tech-card.owned").count(), 4);
+  await shot("workshop");
+  await page.keyboard.press("Escape");
+  assert.match(await page.locator(".studio").innerText(), /5,000/);
+  assert.equal(await page.locator('.tools button.locked:has-text("Open")').count(), 0);
 
   // The outer walls: a 10 x 8.5 m rectangle.
   await page.keyboard.press("r");
@@ -125,15 +158,21 @@ try {
   const kinds = (await furniture()).map((f) => f.kind);
   for (const k of ["Bed", "Bathtub", "Toilet", "Sofa", "Counter"]) assert.ok(kinds.includes(k), `a ${k}`);
 
-  // Floors, in the room's menu (clicking the room's name): a wooden bathroom floor is a
-  // building problem; tiles are fine.
+  // Floors, in the room's menu (clicking the room's name): a laminate bathroom floor is a
+  // building problem; tiles are fine. Wood is not learned yet.
   await click(14.2, 14.5);
   assert.equal(await page.locator(".popover h2").textContent(), "Bathroom");
   assert.equal(await page.locator(".popover .choices.swatches button.active").getAttribute("title"), "Tiles");
-  await page.click('.popover .choices.swatches button[title="Wood"]');
-  assert.match(await status(), /wood is not a suitable floor here; choose tiles, stone or concrete/);
+  await page.click('.popover .choices.swatches button[title="Laminate"]');
+  assert.match(await status(), /laminate is not a suitable floor here; choose tiles, stone or concrete/);
   await page.click('.popover .choices.swatches button[title="Tiles"]');
   assert.match(await status(), /No building problems/);
+  assert.equal(await page.locator('.popover .choices.swatches button.locked[title*="Wooden floors"]').count(), 1);
+  await page.click('.popover .choices.swatches button.locked[title*="Wooden floors"]');
+  assert.equal(await page.locator('#modal .tech-card.focus[data-tech="woodFloor"]').count(), 1);
+  await page.keyboard.press("Escape");
+  // A living room gets laminate, the floor it can have, instead of wood.
+  assert.equal(await page.evaluate(() => window.architect.core.analyzeHouse(window.architect.store.house).rooms.find((r) => r.type === "Living").floor), "Laminate");
 
   // Where the money goes: a live panel with a box per group that follows every edit.
   await page.click(".cost-chart-open");
@@ -144,13 +183,13 @@ try {
   assert.ok((await panel.locator(".cost-line").count()) >= 7, "a box per material, finish and kind of opening");
   const panelTotal = async () => (await panel.locator(".cost-summary b").first().textContent()).trim();
   assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
-  // Changing the bathroom floor to stone changes the chart at once, and flashes the box.
+  // Changing the bathroom floor to concrete changes the chart at once, and flashes the box.
   const totalBefore = await panelTotal();
   await click(14.2, 14.5);
-  await page.click('.popover .choices.swatches button[title="Stone"]');
+  await page.click('.popover .choices.swatches button[title="Concrete"]');
   await frame();
   assert.notEqual(await panelTotal(), totalBefore, "the total follows the edit");
-  assert.ok((await panel.locator('.cost-line.changed[data-key*="Stone"]').count()) === 1, "the new stone floor flashes");
+  assert.ok((await panel.locator('.cost-line.changed[data-key*="Concrete"]').count()) === 1, "the new concrete floor flashes");
   assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
   await shot("cost-panel");
   await page.click('.popover .choices.swatches button[title="Tiles"]');
@@ -244,17 +283,21 @@ try {
   await page.click("text=Present to client");
   await page.locator("#modal .dialog").waitFor();
   assert.match(await page.locator("#modal h2").textContent(), /Sold!/);
+  assert.match(await page.locator("#modal .progress-news").innerText(), /\+\d ⭐ · your reputation is now \d ⭐/);
   await shot("sold");
   await page.click("#modal button.primary"); // Next client
 
-  // The next client has their own plot and brief.
-  await page.locator("#modal .dialog").waitFor();
+  // The next clients to choose from: the story goes on with the Haddads.
+  await page.locator("#modal .offers").waitFor();
+  assert.equal(await page.locator('#modal [data-action="close"]').count(), 0, "a client must be chosen");
+  await page.click('#modal [data-action="pick-0"]');
   assert.match(await page.locator("#modal h2").textContent(), /Noor/);
-  await page.click("#modal button.primary");
+  await page.click('#modal [data-action="accept"]');
   const next = await model();
   assert.equal(next.client, "haddad");
   assert.equal(next.walls, 0);
-  assert.match(await page.locator("#sidebar header").innerText(), /1 house sold/);
+  const stars = await page.evaluate(() => window.architect.core.careerStars(window.architect.store.career));
+  assert.match(await page.locator(".studio-stats").innerText(), new RegExp(`⭐ ${stars}`));
 
   // A design that misses must-haves is turned down, with reasons.
   await page.keyboard.press("r");
@@ -282,7 +325,7 @@ try {
   assert.equal(await page.locator("html").getAttribute("lang"), "sv");
   assert.equal((await model()).walls, 4, "the design survives the switch");
   assert.equal(await page.locator(".client-section button.primary").textContent(), "Presentera för kunden");
-  assert.match(await page.locator("#sidebar header").innerText(), /Intjänat 7\s200 · 1 hus sålt/);
+  assert.match(await page.locator(".studio").innerText(), /Nivå 1 · Små hus/);
   assert.match(await page.locator(".brief").first().innerText(), /Ett arbetsrum på minst 8 m²/);
   assert.match(await page.locator(".plan-hint").textContent(), /Klicka på något för att ändra det/);
   assert.equal(await page.locator("#view3d .pane-hint kbd").count(), 3);
@@ -296,20 +339,33 @@ try {
   await page.waitForFunction(() => window.architect);
   assert.equal(await page.locator(".client-section button.primary").textContent(), "Present to client");
 
-  // Turning a client down: confirm, and the next client calls.
-  await page.click(".client-section button.new-client");
-  assert.match(await page.locator("#modal h2").textContent(), /Turn down this job/);
-  await page.keyboard.press("Enter"); // the safe choice has the focus
+  // Other clients can be looked at while working; closing keeps the current job.
+  await page.click('.studio [data-action="clients"]');
+  assert.equal(await page.locator("#modal .offer-card:not(.teaser)").count(), 3);
+  await page.click('#modal [data-action="refresh"]');
+  await page.locator("#modal .offers").waitFor();
+  await page.click('#modal [data-action="close"]');
   assert.equal((await model()).client, "haddad");
-  await page.click(".client-section button.new-client");
-  await page.click("#modal button[data-action=confirm]");
-  assert.match(await page.locator("#modal h2").textContent(), /Andersson/);
-  await page.click("#modal button.primary");
-  assert.equal((await model()).client, "andersson");
-  assert.equal((await model()).walls, 0);
 
-  // Two storeys: the Anderssons' bedrooms upstairs.
-  await page.click("text=Clear plot");
+  // Another storey is not learned yet: the button shows the Workshop.
+  assert.equal(await page.locator(".level-switch button[data-action=add].locked").count(), 1);
+  await page.click(".level-switch button[data-action=add]");
+  assert.equal(await page.locator('#modal .tech-card.focus[data-tech="twoStoreys"]').count(), 1);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.evaluate(() => window.architect.store.house.levels), 1);
+
+  // Free play, from the menu: any plot, every technique, no budget.
+  await page.click('.studio [data-action="menu"]');
+  assert.match(await page.locator("#modal .mode-card.campaign").innerText(), /Continue: 1 house sold/);
+  await page.click('#modal [data-action="free"]');
+  await page.click('#modal [data-action="plot-suburban"]');
+  assert.equal((await model()).client, "free-suburban");
+  assert.equal((await model()).walls, 0);
+  assert.equal(await page.locator(".client-section").isHidden(), true);
+  assert.match(await page.locator(".studio").innerText(), /Free play/);
+  assert.equal(await page.locator("#sidebar button.locked").count(), 0, "nothing is locked");
+
+  // Two storeys: bedrooms upstairs.
   await page.keyboard.press("r");
   await drag([5, 5], [15, 13]);
   await page.keyboard.press("w");
@@ -349,10 +405,7 @@ try {
   await page.keyboard.press("s");
   await click(7, 11);
   await fromMenu("Roof", "Gable");
-  const problems = await page.locator(".issues li").allTextContents();
-  assert.deepEqual(problems.filter((p) => !/over the budget/.test(p)), [], "only the budget is a problem");
-  assert.deepEqual(await unmetMusts(), [], "every must-have met across both floors");
-  assert.match((await page.locator(".brief.wishes li.met").allInnerTexts()).join("\n"), /3 bedrooms of at least 9 m² upstairs/);
+  assert.deepEqual(await page.locator(".issues li").allTextContents(), [], "no building problems, and no budget");
   await shot("two-storeys");
 
   // The 3D view can leave out the roof and any floor, and shows furniture.
@@ -397,6 +450,12 @@ try {
   assert.match(await page.locator("#modal .notice").textContent(), /not an Architect design/);
   await shot("saved-designs");
   await page.keyboard.press("Escape");
+
+  // Back to the campaign: the Haddads' design is where it was left.
+  await page.click('.studio [data-action="menu"]');
+  await page.click('#modal [data-action="campaign"]');
+  assert.equal((await model()).client, "haddad");
+  assert.equal((await model()).walls, 4);
 
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");

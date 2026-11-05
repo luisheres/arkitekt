@@ -1,11 +1,14 @@
 /**
- * The game's state: the career, the current client, the house being designed, the
- * active tool, the selection and the undo history. Views subscribe to changes; every
- * change to the house goes through `edit` or a gesture so it can be undone.
+ * The game's state: the mode (campaign or free play), the career, the current client,
+ * the house being designed, the active tool, the selection and the undo history. Views
+ * subscribe to changes; every change to the house goes through `edit` or a gesture so it
+ * can be undone. The campaign and free play are saved separately, so switching between
+ * them loses nothing.
  */
 
 import { newDesignId, putDesign } from "./designs";
 import {
+  type Abilities,
   type Career,
   type Client,
   History,
@@ -13,12 +16,22 @@ import {
   type HouseJson,
   type PriceList,
   type SavedDesign,
+  type Setting,
+  type TechniqueId,
+  type Unlock,
   type Vec2,
+  abilities,
+  canBuild,
+  techniqueFor,
+  buyTechnique,
+  careerAbilities,
   clientById,
+  clientOffers,
   completeCommission,
-  declineClient,
+  freePlayClient,
+  isFreePlay,
   newCareer,
-  nextClient,
+  pricesWith,
   MAX_LEVELS,
   addStoreyAbove,
   clearRoomFurnitureAt,
@@ -48,7 +61,9 @@ export type Selection =
 /** What changed: the house, editor state such as the tool or selection, or the client. */
 export type Change = "house" | "ui" | "client";
 
-const SAVE_KEY = "architect.game.v2";
+export type Mode = "campaign" | "free";
+
+const SAVE_KEYS: Record<Mode, string> = { campaign: "architect.game.v2", free: "architect.free.v1" };
 
 interface Saved {
   career: Career;
@@ -56,10 +71,19 @@ interface Saved {
   current: { clientId: string; house: HouseJson; design?: { id: string; name: string } } | null;
 }
 
+interface SavedFree {
+  setting: Setting;
+  house: HouseJson;
+  design?: { id: string; name: string };
+}
+
+const ALL = abilities("all");
+
 export class Store {
+  mode: Mode = "campaign";
   house = new House();
-  client: Client;
-  career: Career;
+  client!: Client;
+  career: Career = newCareer();
   /** False until the player has taken on the current client's brief. */
   working = false;
   /** The saved design being worked on, so saving again updates it. */
@@ -82,20 +106,21 @@ export class Store {
   private gestureRecorded = false;
   private saveTimer: number | undefined;
 
-  constructor(readonly prices: PriceList) {
-    const saved = Store.restore();
-    this.career = saved?.career ?? newCareer();
-    const current = saved?.current && clientById(saved.current.clientId);
-    if (saved?.current && current) {
-      this.client = current;
-      this.house = House.fromJSON(saved.current.house);
-      // Saves from before furniture was stored: furnish the rooms once.
-      if (!saved.current.house.furniture) furnishAll(this.house);
-      this.design = saved.current.design ?? null;
-      this.working = true;
-    } else {
-      this.client = nextClient(this.career);
-    }
+  constructor(
+    readonly basePrices: PriceList,
+    mode: Mode = "campaign",
+  ) {
+    this.loadMode(mode);
+  }
+
+  /** What can be built: everything in free play, what has been learned in the campaign. */
+  get abilities(): Abilities {
+    return this.mode === "free" ? ALL : careerAbilities(this.career);
+  }
+
+  /** Unit prices, with the business techniques' discounts. */
+  get prices(): PriceList {
+    return pricesWith(this.basePrices, this.abilities);
   }
 
   get plot() {
@@ -119,6 +144,125 @@ export class Store {
     for (const fn of this.listeners) fn(change);
   }
 
+  // --- Modes -------------------------------------------------------------------------
+
+  /** Switch between the campaign and free play, each picking up where it was left. */
+  setMode(mode: Mode): void {
+    if (mode === this.mode) return;
+    this.save();
+    this.loadMode(mode);
+    this.emit("client");
+  }
+
+  private loadMode(mode: Mode): void {
+    this.mode = mode;
+    this.history = new History();
+    this.selection = null;
+    this.level = 0;
+    this.tool = "select";
+    this.design = null;
+    if (mode === "free") {
+      const saved = Store.restore<SavedFree>("free");
+      this.client = freePlayClient(saved?.setting ?? "suburban");
+      this.house = saved ? House.fromJSON(saved.house) : new House();
+      this.design = saved?.design ?? null;
+      this.working = true;
+      return;
+    }
+    const saved = Store.restore<Saved>("campaign");
+    this.career = saved?.career ?? newCareer();
+    const current = saved?.current && clientById(saved.current.clientId);
+    if (saved?.current && current && !isFreePlay(current)) {
+      this.client = current;
+      this.house = House.fromJSON(saved.current.house);
+      // Saves from before furniture was stored: furnish the rooms once.
+      if (!saved.current.house.furniture) furnishAll(this.house);
+      this.design = saved.current.design ?? null;
+      this.working = true;
+    } else {
+      this.client = clientOffers(this.career)[0];
+      this.house = new House();
+      this.working = false;
+    }
+  }
+
+  /** The campaign's career, also while in free play (for the welcome screen). */
+  campaignCareer(): Career {
+    return this.mode === "campaign" ? this.career : (Store.restore<Saved>("campaign")?.career ?? newCareer());
+  }
+
+  /** Start the campaign over from nothing; saved designs stay. */
+  startOver(): void {
+    this.career = newCareer();
+    this.mode = "campaign";
+    this.client = clientOffers(this.career)[0];
+    this.working = false;
+    this.design = null;
+    this.house = new House();
+    this.history = new History();
+    this.selection = null;
+    this.level = 0;
+    this.save();
+    this.emit("client");
+  }
+
+  /** Free play: build on another plot (the house stays as it is). */
+  setFreePlot(setting: Setting): void {
+    if (this.mode !== "free") return;
+    this.client = freePlayClient(setting);
+    this.emit("client");
+  }
+
+  // --- Campaign ----------------------------------------------------------------------
+
+  /** Called when the player reaches for something not learned yet (to show the Workshop). */
+  onLocked: (id: TechniqueId) => void = () => {};
+
+  /** The technique something needs, or null when it can be built. */
+  lockOf(u: Unlock): TechniqueId | null {
+    return canBuild(this.abilities, u) ? null : techniqueFor(u);
+  }
+
+  /** The technique a tool needs, or null. */
+  toolLock(tool: Tool): TechniqueId | null {
+    if (tool === "boundary") return this.lockOf({ kind: "openPlan" });
+    if (tool === "stairs") return this.lockOf({ kind: "storeys", count: 2 });
+    return null;
+  }
+
+  /** The technique another storey needs, or null. */
+  floorLock(): TechniqueId | null {
+    return this.house.levels >= MAX_LEVELS ? null : this.lockOf({ kind: "storeys", count: this.house.levels + 1 });
+  }
+
+  /** The clients to choose from now. */
+  offers(): Client[] {
+    return clientOffers(this.career);
+  }
+
+  /** Ask for other clients. */
+  refreshOffers(): void {
+    this.career = { ...this.career, refreshes: (this.career.refreshes ?? 0) + 1 };
+    this.scheduleSave();
+    this.emit("ui");
+  }
+
+  /** Take on a client: their brief becomes the commission, on an empty plot. */
+  takeClient(client: Client): void {
+    this.client = client;
+    this.startCommission();
+  }
+
+  /** Buy a technique in the Workshop; false when it cannot be bought. */
+  buyTechnique(id: TechniqueId): boolean {
+    const next = buyTechnique(this.career, id);
+    if (next === this.career) return false;
+    this.career = next;
+    // Prices and what counts as a building problem may have changed.
+    this.emit("house");
+    return true;
+  }
+
   // --- Commissions -------------------------------------------------------------------
 
   /** Take on the current client's brief, starting from an empty plot. */
@@ -135,24 +279,9 @@ export class Store {
 
   /** The client accepted the design: get paid and line up the next client. */
   completeCommission(fee: number, stars: number): void {
-    const done = this.client.id;
-    this.career = completeCommission(this.career, done, fee, stars);
+    this.career = completeCommission(this.career, this.client.id, fee, stars);
     this.design = null;
-    this.client = nextClient(this.career, done);
-    this.working = false;
-    this.house = new House();
-    this.history = new History();
-    this.selection = null;
-    this.level = 0;
-    this.emit("client");
-  }
-
-  /** Turn the current client down and line up the next one; the design is discarded. */
-  declineClient(): void {
-    const declined = this.client.id;
-    this.career = declineClient(this.career, declined);
-    this.design = null;
-    this.client = nextClient(this.career, declined);
+    this.client = clientOffers(this.career)[0];
     this.working = false;
     this.house = new House();
     this.history = new History();
@@ -182,10 +311,22 @@ export class Store {
     return design;
   }
 
-  /** Pick a saved design up again: its client becomes the current commission. */
+  /**
+   * Pick a saved design up again: its client becomes the current commission (a free
+   * play design opens in free play, any other in the campaign).
+   */
   openDesign(d: SavedDesign): boolean {
     const client = clientById(d.clientId);
-    if (!client || this.isSold(d.clientId)) return false;
+    if (!client) return false;
+    const mode: Mode = isFreePlay(client) ? "free" : "campaign";
+    if (mode !== this.mode) {
+      this.save();
+      this.loadMode(mode);
+    }
+    if (mode === "campaign" && this.isSold(d.clientId)) {
+      this.emit("client");
+      return false;
+    }
     this.client = client;
     this.house = House.fromJSON(d.house);
     if (!d.house.furniture) furnishAll(this.house);
@@ -278,6 +419,8 @@ export class Store {
 
   /** Add a storey on top (starting from the outline below) and switch to it. */
   addFloor(): void {
+    const lock = this.floorLock();
+    if (lock) return this.onLocked(lock);
     if (this.house.levels >= MAX_LEVELS) return;
     let level = 0;
     this.edit((h) => (level = addStoreyAbove(h)));
@@ -292,6 +435,8 @@ export class Store {
   }
 
   setTool(tool: Tool): void {
+    const lock = this.toolLock(tool);
+    if (lock) return this.onLocked(lock);
     this.tool = tool;
     this.emit("ui");
   }
@@ -362,20 +507,21 @@ export class Store {
 
   save(): void {
     try {
-      const saved: Saved = {
-        career: this.career,
-        current: this.working ? { clientId: this.client.id, house: this.house.toJSON(), ...(this.design ? { design: this.design } : {}) } : null,
-      };
-      localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+      const design = this.design ? { design: this.design } : {};
+      const saved: Saved | SavedFree =
+        this.mode === "free"
+          ? { setting: this.client.plot.setting, house: this.house.toJSON(), ...design }
+          : { career: this.career, current: this.working ? { clientId: this.client.id, house: this.house.toJSON(), ...design } : null };
+      localStorage.setItem(SAVE_KEYS[this.mode], JSON.stringify(saved));
     } catch {
       // Storage can be unavailable (private windows); saving is a convenience only.
     }
   }
 
-  private static restore(): Saved | null {
+  private static restore<T>(mode: Mode): T | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      return raw ? (JSON.parse(raw) as Saved) : null;
+      const raw = localStorage.getItem(SAVE_KEYS[mode]);
+      return raw ? (JSON.parse(raw) as T) : null;
     } catch {
       return null;
     }

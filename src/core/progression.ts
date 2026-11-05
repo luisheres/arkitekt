@@ -267,7 +267,11 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
 
 /** Whether the abilities include what technique `id` unlocks. */
 function learnedVia(a: Abilities, id: TechniqueId): boolean {
-  const u = technique(id).unlocks;
+  return canBuild(a, technique(id).unlocks);
+}
+
+/** Whether something can be built with these abilities. */
+export function canBuild(a: Abilities, u: Unlock): boolean {
   switch (u.kind) {
     case "wall":
       return a.walls.has(u.material);

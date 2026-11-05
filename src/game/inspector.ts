@@ -44,17 +44,35 @@ import {
   roomName,
   setRoomFloor,
   setRoomType,
+  type Unlock,
+  buildableFloor,
 } from "../core";
 import { m } from "./i18n";
 import type { Selection, Store } from "./store";
 import { floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
-import { type Field, button, choices, el, numberField, readout, slider } from "./ui";
+import { type Field, button, choices, el, numberField, readout, setLocked, slider } from "./ui";
 
 const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
 
 export interface Inspector {
   el: HTMLElement;
   fields: Field[];
+}
+
+/**
+ * A button for something that may need a technique first: clicking it while locked opens
+ * the Workshop instead. The returned field keeps the padlock up to date.
+ */
+function lockable(store: Store, label: string, u: Unlock, onClick: () => void, props: Record<string, unknown> = {}): { button: HTMLButtonElement; field: Field } {
+  const b = button(label, () => {
+    const lock = store.lockOf(u);
+    if (lock) store.onLocked(lock);
+    else onClick();
+  }, props);
+  const title = (props.title as string | undefined) ?? "";
+  const field = { el: b, update: () => setLocked(b, store.lockOf(u), title) };
+  field.update();
+  return { button: b, field };
 }
 
 /** Identifies what the menu is showing, so it is rebuilt only when that changes. */
@@ -107,7 +125,8 @@ function deleteButton(store: Store): HTMLButtonElement {
   return button(m.ui.delete, () => store.deleteSelection(), { className: "danger", title: m.ui.deleteTitle });
 }
 
-const wallSwatches = () => WALL_MATERIALS.map((w) => ({ value: w, label: m.wallMaterial[w], image: swatchUrl(wallTexture(w)) }));
+const wallSwatches = (store: Store) =>
+  WALL_MATERIALS.map((w) => ({ value: w, label: m.wallMaterial[w], image: swatchUrl(wallTexture(w)), lock: () => store.lockOf({ kind: "wall", material: w }) }));
 
 // --- Rooms ------------------------------------------------------------------------
 
@@ -130,6 +149,8 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
         const type = v === "none" ? null : v;
         if (current()?.type === type) return;
         setRoomType(h, at, type, level);
+        // Its usual floor, or one that can be built with what has been learned.
+        if (type && !store.abilities.floors.has(ROOM_INFO[type].floor)) setRoomFloor(h, at, buildableFloor(ROOM_INFO[type].floor, ROOM_INFO[type].floors, store.abilities), level);
         // A room put to a new use gets that use's furniture; one without a use is emptied.
         if (type) refurnishRoomAt(h, at, level);
         else clearRoomFurnitureAt(h, at, level);
@@ -138,10 +159,11 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
   );
   const floor = choices(
     m.ui.floor,
-    FLOOR_FINISHES.map((f) => ({ value: f, label: m.floorFinish[f], image: swatchUrl(floorTexture(f)) })),
+    FLOOR_FINISHES.map((f) => ({ value: f, label: m.floorFinish[f], image: swatchUrl(floorTexture(f)), lock: () => store.lockOf({ kind: "floor", finish: f }) })),
     () => (current()?.labels.length ? current()!.floor : null),
     (v) => store.edit((h) => void setRoomFloor(h, at, v, level)),
     "swatches",
+    store.onLocked,
   );
   const facts = readout(m.ui.area, () => {
     const r = current();
@@ -228,10 +250,11 @@ function wallInspector(store: Store, id: number): Inspector | null {
     );
     const facade = choices(
       "",
-      wallSwatches(),
+      wallSwatches(store),
       () => wall()?.material ?? null,
       (v) => store.edit((h) => setFacade(h, v, facadeScope === "all" ? null : id)),
       "swatches",
+      store.onLocked,
     );
     fields.push(scope, facade);
     parts.push(scope.el, facade.el);
@@ -246,14 +269,19 @@ function wallInspector(store: Store, id: number): Inspector | null {
   );
   fields.push(height);
 
-  const add = (kind: OpeningKind) =>
-    button(m.ui.add(kind), () => {
-      let opening: number | null = null;
-      const cur = wall();
-      if (cur) store.edit((h) => (opening = placeOpening(h, cur.id, kind, cur.length() / 2)));
-      if (opening !== null) store.select({ kind: "opening", id: opening });
-    });
-  const makeOpen = button(m.ui.makeBoundary, () =>
+  const addOpening = (kind: OpeningKind) => () => {
+    let opening: number | null = null;
+    const cur = wall();
+    if (cur) store.edit((h) => (opening = placeOpening(h, cur.id, kind, cur.length() / 2)));
+    if (opening !== null) store.select({ kind: "opening", id: opening });
+  };
+  const add = (kind: OpeningKind) => {
+    if (kind !== "GarageDoor") return button(m.ui.add(kind), addOpening(kind));
+    const { button: b, field } = lockable(store, m.ui.add(kind), { kind: "garageDoors" }, addOpening(kind));
+    fields.push(field);
+    return b;
+  };
+  const { button: makeOpen, field: makeOpenField } = lockable(store, m.ui.makeBoundary, { kind: "openPlan" }, () =>
     store.edit((h) => {
       const cur = h.wall(id);
       if (!cur) return;
@@ -261,6 +289,7 @@ function wallInspector(store: Store, id: number): Inspector | null {
       h.openingsIn(cur.id).forEach((o) => h.removeOpening(o.id));
     }),
   );
+  if (!exterior) fields.push(makeOpenField);
   const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor")] : [add("Door"), makeOpen];
   return {
     el: el("div", {}, el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), fields[0].el, ...parts, height.el, el("div", { className: "row" }, ...buttons, deleteButton(store))),
@@ -286,7 +315,7 @@ function facadeInspector(store: Store): Inspector {
     const layout = analyzeLayout(store.house, 0);
     return store.house.wallsOn(0).find((w) => !w.boundary && (!layout.ok || layout.value.exterior.has(w.id)));
   };
-  const facade = choices(m.ui.allOuterWalls, wallSwatches(), () => firstOuter()?.material ?? null, (v) => store.edit((h) => setFacade(h, v, null)), "swatches");
+  const facade = choices(m.ui.allOuterWalls, wallSwatches(store), () => firstOuter()?.material ?? null, (v) => store.edit((h) => setFacade(h, v, null)), "swatches", store.onLocked);
   return { el: el("div", {}, el("h2", {}, m.ui.facade), facade.el), fields: [facade] };
 }
 
@@ -304,7 +333,7 @@ function openingInspector(store: Store, id: number): Inspector | null {
   const fields: Field[] = [
     choices(
       m.ui.type,
-      OPENING_KINDS.map((k) => ({ value: k, label: m.opening[k] })),
+      OPENING_KINDS.map((k) => ({ value: k, label: m.opening[k], lock: k === "GarageDoor" ? () => store.lockOf({ kind: "garageDoors" }) : undefined })),
       () => op()?.kind ?? null,
       (v) =>
         editOp((cur, h) => {
@@ -314,6 +343,7 @@ function openingInspector(store: Store, id: number): Inspector | null {
           if (w) cur.offset = clampOffset(w, cur.width, cur.offset);
         }, "kind"),
       "segmented",
+      store.onLocked,
     ),
     numberField(m.ui.width, { min: MIN_OPENING_SIZE, max: 6, step: 0.1 }, () => op()?.width ?? 0, (v) =>
       editOp((cur, h) => {
@@ -383,7 +413,7 @@ function roofInspector(store: Store): Inspector {
   const fields: Field[] = [
     choices(
       m.ui.roof,
-      [{ value: "none" as const, label: m.ui.noRoof }, ...ROOF_STYLES.map((s) => ({ value: s, label: m.roofStyle[s] }))],
+      [{ value: "none" as const, label: m.ui.noRoof }, ...ROOF_STYLES.map((s) => ({ value: s, label: m.roofStyle[s], lock: () => store.lockOf({ kind: "roofStyle", style: s }) }))],
       () => roof()?.style ?? "none",
       (v) =>
         store.edit((h) => {
@@ -394,15 +424,17 @@ function roofInspector(store: Store): Inspector {
           }
         }),
       "segmented",
+      store.onLocked,
     ),
     slider(m.ui.pitch, { min: PITCH_RANGE[0], max: PITCH_RANGE[1], step: 1, unit: "°", digits: 0 }, () => (pitched() ? roof()!.pitchDeg : null), (v) => editRoof((r) => (r.pitchDeg = v), "pitch")),
     slider(m.ui.overhang, { min: 0, max: MAX_OVERHANG, step: 0.1, unit: " m", digits: 1 }, () => (pitched() ? roof()!.overhang : null), (v) => editRoof((r) => (r.overhang = v), "overhang")),
     choices(
       m.ui.covering,
-      ROOF_MATERIALS.map((r) => ({ value: r, label: m.roofMaterial[r], image: swatchUrl(roofTexture(r)) })),
+      ROOF_MATERIALS.map((r) => ({ value: r, label: m.roofMaterial[r], image: swatchUrl(roofTexture(r)), lock: () => store.lockOf({ kind: "roofMaterial", material: r }) })),
       () => roof()?.material ?? null,
       (v) => editRoof((r) => (r.material = v), "roof-material"),
       "swatches",
+      store.onLocked,
     ),
   ];
   return { el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.map((f) => f.el)), fields };

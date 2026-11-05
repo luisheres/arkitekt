@@ -253,7 +253,9 @@ export class CostPanel {
     const total = groups.reduce((s, g) => s + g.amount, 0);
     const left = budget - total;
     const rows = m.ui.costRows;
-    this.summary.innerHTML = `${esc(rows.total)} <b>${money(total)}</b> · <span class="${left >= 0 ? "" : "over"}">${esc(left >= 0 ? rows.budgetLeft : rows.overBudget)} <b>${money(Math.abs(left))}</b></span>`;
+    this.summary.innerHTML = `${esc(rows.total)} <b>${money(total)}</b>${
+      Number.isFinite(budget) ? ` · <span class="${left >= 0 ? "" : "over"}">${esc(left >= 0 ? rows.budgetLeft : rows.overBudget)} <b>${money(Math.abs(left))}</b></span>` : ""
+    }`;
 
     const changed = new Set<string>();
     const now = new Map(lines.map((l) => [lineKey(l), l.amount]));

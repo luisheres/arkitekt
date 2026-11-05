@@ -31,6 +31,8 @@ function issueLevel(i: Issue, store: Store): number | null {
 }
 
 function targetAttrs(i: Issue, store: Store): string {
+  // Something not learned yet: clicking it opens the Workshop.
+  if (i.kind === "NotLearned") return ` data-technique="${i.technique}" tabindex="0"`;
   const t = issueTarget(i);
   const level = issueLevel(i, store);
   const levelAttr = level !== null ? ` data-level="${level}"` : "";
@@ -57,7 +59,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
   const { house, plot, budget, prices } = store;
   const cost = estimate(house, prices);
   const total = totalCost(cost);
-  const issues = validate(house, plot, budget, prices);
+  const issues = validate(house, plot, budget, prices, store.mode === "campaign" ? store.abilities : undefined);
   const rows = m.ui.costRows;
 
   const row = (label: string, v: number, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="amount">${money(v)}</td></tr>`;
@@ -75,7 +77,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${cost.finishes ? row(rows.finishes, cost.finishes) : ""}
       ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
       ${row(rows.total, total, "total")}
-      ${row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over")}
+      ${Number.isFinite(budget) ? row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over") : ""}
     </table>
     <button type="button" class="cost-chart-open${store.showCosts ? " active" : ""}" aria-pressed="${store.showCosts}">📊 ${esc(m.ui.costChart.open)}</button>
     ${

@@ -1,7 +1,16 @@
 /** Small DOM helpers and form controls shared by the sidebar and the pop-up menus. */
 
-import { fixed } from "../core";
+import { type TechniqueId, fixed, money, technique } from "../core";
 import { m } from "./i18n";
+
+/**
+ * Mark a button as locked behind a technique (or unlock it): it stays clickable, shows a
+ * padlock, and its tooltip says where to learn it.
+ */
+export function setLocked(b: HTMLElement, id: TechniqueId | null, title: string): void {
+  b.classList.toggle("locked", id !== null);
+  b.title = id ? m.progress.locked(m.technique[id].name, money(m, technique(id).price)) : title;
+}
 
 /** A control and how to refresh it from the model. */
 export interface Field {
@@ -79,19 +88,32 @@ export interface Choice<T extends string> {
   /** A color dot, or an image (data URL) for a material swatch. */
   color?: string;
   image?: string;
+  /** The technique this choice needs, when it is not learned yet. */
+  lock?: () => TechniqueId | null;
 }
 
 /**
  * A grid of buttons to pick one value: quicker than a dropdown, and room for a swatch.
  * `get` returning null disables the grid.
  */
-export function choices<T extends string>(label: string, items: readonly Choice<T>[], get: () => T | null, set: (v: T) => void, cls = ""): Field {
+export function choices<T extends string>(
+  label: string,
+  items: readonly Choice<T>[],
+  get: () => T | null,
+  set: (v: T) => void,
+  cls = "",
+  onLocked: (id: TechniqueId) => void = () => {},
+): Field {
   const buttons = items.map((c) => {
     const b = el("button", { type: "button", className: `choice ${cls}`, title: c.label });
     if (c.image) b.append(el("span", { className: "swatch", style: `background-image:url(${c.image})` }));
     else if (c.color) b.append(el("span", { className: "dot", style: `background:${c.color}` }));
     b.append(el("span", { className: "choice-label" }, c.label));
-    b.addEventListener("click", () => set(c.value));
+    b.addEventListener("click", () => {
+      const lock = c.lock?.();
+      if (lock) onLocked(lock);
+      else set(c.value);
+    });
     return b;
   });
   return {
@@ -101,6 +123,7 @@ export function choices<T extends string>(label: string, items: readonly Choice<
       buttons.forEach((b, i) => {
         b.disabled = v === null;
         b.classList.toggle("active", items[i].value === v);
+        if (items[i].lock) setLocked(b, items[i].lock!(), items[i].label);
       });
     },
   };

@@ -4,7 +4,22 @@ You are an architect. Clients come to you with a plot, a budget and a brief: a r
 couple who want everything on one level, a family that needs a bedroom for each kid, a
 carpenter who wants a workshop. Design a house that meets their must-haves, grant as many
 of their wishes as you can, and present it. If they accept, you earn a fee (more for each
-wish granted) and the next client calls.
+wish granted), stars for your reputation, and the next clients call.
+
+Start with the **campaign** or **free play** (the welcome screen; **🏠 Menu** in the
+sidebar brings it back):
+
+- **Campaign.** You start with a basic kit: wood and plaster facades, gable roofs with
+  shingles, laminate, tiles, carpet and concrete floors, one storey. The money you earn
+  buys new techniques in the **🔨 Workshop**: more facades (Falu red, brick, stone), roofs
+  (hip, flat, metal, tiles), floors (wood, stone), open plan, garages, second and third
+  storeys, and business techniques that make building cheaper or raise your fee. Some
+  build on others. Anything not learned yet shows a 🔒 and opens the Workshop when
+  clicked. The stars clients give you are your reputation, and it opens four tiers of
+  clients: starter homes, family homes (5 ⭐), villas (14 ⭐) and signature houses
+  (28 ⭐), each with bigger households, finer plots and larger budgets. Playing well
+  (about two stars a house) reaches the top tier around the fifteenth house.
+- **Free play.** Any plot, every technique, no client and no budget: just build.
 
 A TypeScript web game built with Vite and Three.js. (The first prototype was Rust/Bevy; it
 is in the first git commit.)
@@ -13,7 +28,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -59,8 +74,13 @@ darker underneath, and the plan shows the same trees from above.
 
 ## Playing
 
-1. **Meet the client.** Read their story, budget, must-haves and wishes. **Brief** in the
-   sidebar shows it again; the sidebar checklist updates live as you design.
+1. **Choose a client.** **📋 Clients** lists who would like a house: the story's next
+   written client, and generated clients at your tier (sometimes a smaller job from the
+   tier below), with their plot, budget, the fee you could earn, and any technique their
+   must-haves need that you have not learned. **↻ Other clients** asks for others. Read a
+   brief and take the job; switching to another client while working saves your design
+   first. **Brief** in the sidebar shows it again; the checklist updates live as you
+   design.
 2. **Draw the house.** Outer walls first (Room tool), then interior walls from wall to
    wall to divide it into rooms.
 3. **Say what each room is.** Click a room and pick its use in the menu that opens:
@@ -82,8 +102,9 @@ darker underneath, and the plan shows the same trees from above.
    area and price per m²; drag the panel by its title, resize it from its corner. It
    remembers where you put it.
 6. **Present to client.** They accept when every must-have is met, the house has no
-   building problems and it is within budget. Your fee is 8% of their budget, plus up to
-   half again for wishes granted.
+   building problems (using a technique not learned yet is one) and it is within budget.
+   Your fee is 8% of their budget (more with Marketing), plus up to half again for wishes
+   granted, and 1–3 stars for your reputation.
 
 **Saving.** The design you are working on is kept automatically. To keep designs and come
 back to them, **Save** (`Ctrl+S`) stores the design under a name in the browser, with a
@@ -93,10 +114,11 @@ were on is saved first). Designs can be exported to a `.json` file and imported 
 to keep a backup or move them to another computer. Sold designs stay in the list but
 cannot be sold twice.
 
-Not keen on a job? **New client** turns the request down (the design is discarded) and
-the next client calls. Once the five written clients are served or turned down, new
-clients are generated: families, couples, retirees and people working from home, each
-with their own household, brief, plot and budget, in both languages.
+Besides the five written clients, clients are generated for each tier: couples, retirees
+and people working from home for starter homes; families too for family homes; large
+families and well-off households wanting brick or stone villas; artists wanting a house
+to remember. Each has their own household, brief, plot and budget, in both languages.
+The campaign and free play are saved separately, so switching loses nothing.
 
 ## Editing
 

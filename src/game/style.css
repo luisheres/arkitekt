@@ -1720,3 +1720,357 @@ svg.plan {
   stroke: var(--ink);
   stroke-width: 2;
 }
+
+/* --- Progression: studio, locks, welcome, clients, Workshop ------------------------ */
+
+.studio {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 8px;
+}
+
+.studio-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-tier,
+.studio-mode {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.studio-plot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.tier-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.tier-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffc93c, #ff9a3c);
+  transition: width 0.6s ease;
+}
+
+.studio .row button {
+  flex: 1;
+  padding-left: 6px;
+  padding-right: 6px;
+  white-space: nowrap;
+}
+
+/* Something to learn in the Workshop first: still clickable, but clearly locked. */
+button.locked,
+.choice.locked {
+  position: relative;
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+button.locked::after,
+.choice.locked::after {
+  content: "🔒";
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  font-size: 12px;
+  filter: none;
+}
+
+.issues li[data-technique] {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.dialog.wide {
+  width: min(880px, 100%);
+}
+
+.welcome {
+  text-align: center;
+}
+
+.welcome-art {
+  font-size: 56px;
+  line-height: 1;
+}
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 18px 0 6px;
+  text-align: left;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  height: auto;
+  padding: 18px;
+  border-radius: 16px;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.mode-card strong {
+  font-size: 20px;
+}
+
+.mode-card .mode-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.mode-card.campaign {
+  background: #fff4d6;
+}
+
+.mode-card.free {
+  background: #e3f4ff;
+}
+
+.mode-card .continue {
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.mode-card.plot-card {
+  align-items: center;
+  text-align: center;
+}
+
+.dialog .actions.start-over {
+  justify-content: center;
+}
+
+.offers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.offer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf8;
+}
+
+.offer-card h3 {
+  margin: 2px 0 0;
+  font-size: 17px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.offer-card .sub {
+  margin: 0;
+}
+
+.offer-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.offer-card dl div {
+  display: contents;
+}
+
+.offer-card dt {
+  color: var(--muted);
+}
+
+.offer-card dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.offer-card .fee {
+  margin: 0;
+  font-weight: 700;
+}
+
+.offer-card button {
+  margin-top: auto;
+}
+
+.offer-card.needs-tech {
+  background: #f7f5f0;
+}
+
+.offer-card.teaser {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.teaser-lock {
+  font-size: 30px;
+}
+
+.offer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tier-tag,
+.story-tag,
+.lock-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tier-tag.tier1 {
+  background: #d9f2d0;
+}
+
+.tier-tag.tier2 {
+  background: #d6ecff;
+}
+
+.tier-tag.tier3 {
+  background: #ffe2c2;
+}
+
+.tier-tag.tier4 {
+  background: #f1d9ff;
+}
+
+.story-tag {
+  background: #fff1b8;
+}
+
+.lock-tag {
+  background: #eee9df;
+}
+
+.needs {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.workshop-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wallet {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.workshop .branch {
+  margin: 12px 0;
+}
+
+.workshop .branch h3 {
+  font-size: 13px;
+}
+
+.tech-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.tech-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf8;
+}
+
+.tech-card h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.tech-card p {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tech-card .tech-state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tech-card.owned {
+  background: #eaf7e3;
+  border-color: #b7e0a5;
+}
+
+.tech-card.can-buy {
+  border-color: #ffc93c;
+}
+
+.tech-card.needs {
+  opacity: 0.6;
+}
+
+.tech-card.focus {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.tech-card .learned {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.progress-news {
+  margin: 4px 0 12px;
+  padding: 10px 14px 10px 30px;
+  border-radius: 12px;
+  background: #fff4d6;
+  font-weight: 600;
+}
+
+.progress-news li {
+  margin: 3px 0;
+}

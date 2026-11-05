@@ -1,11 +1,28 @@
-/** The sidebar: the client's brief, tools, a way to the roof and facade, costs. Everything else is edited by clicking it. */
+/**
+ * The sidebar: the studio (money, reputation, tier) or the free-play plot, the client's
+ * brief, tools, a way to the roof and facade, costs. Everything else is edited by
+ * clicking it.
+ */
 
-import { House as HouseClass, LANGS, Vec2, messages } from "../core";
+import {
+  House as HouseClass,
+  LANGS,
+  TIER_STARS,
+  Vec2,
+  careerMoney,
+  careerStars,
+  careerTier,
+  messages,
+  starsToNextTier,
+  starterPlots,
+  type Setting,
+  type TechniqueId,
+} from "../core";
 import { plotSize } from "./dialogs";
-import { money, renderBrief, renderStatus } from "./hud";
+import { esc, money, renderBrief, renderStatus } from "./hud";
 import { lang, m, setLang } from "./i18n";
 import type { Store, Tool } from "./store";
-import { el } from "./ui";
+import { el, setLocked } from "./ui";
 
 const TOOLS: { tool: Tool; key: string; icon: string }[] = [
   { tool: "select", key: "V", icon: "👆" },
@@ -25,8 +42,12 @@ export interface PanelActions {
   openDesigns(): void;
   /** Open the pop-up menu for the current selection near (x, y). */
   openMenu(x: number, y: number): void;
-  /** Turn the current client down and meet another. */
-  newClient(): void;
+  /** Show the clients to choose from. */
+  showClients(): void;
+  /** Show the Workshop. */
+  showWorkshop(): void;
+  /** Back to the welcome screen. */
+  showMenu(): void;
   /** Save state before the page reloads in another language. */
   beforeReload(): void;
   present(): void;
@@ -37,7 +58,8 @@ export class Panel {
   private readonly toolButtons = new Map<Tool, HTMLButtonElement>();
   private readonly undoBtn: HTMLButtonElement;
   private readonly redoBtn: HTMLButtonElement;
-  private readonly career: HTMLElement;
+  private readonly studio: HTMLElement;
+  private readonly clientSection: HTMLElement;
   private readonly clientBox: HTMLElement;
   private readonly brief: HTMLElement;
   private readonly status: HTMLElement;
@@ -50,8 +72,18 @@ export class Panel {
     private readonly actions: PanelActions,
   ) {
 
-    // Header and career.
-    this.career = el("div", { className: "sub" });
+    // Header and the studio.
+    this.studio = el("div", { className: "studio" });
+    this.studio.addEventListener("click", (e) => {
+      const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
+      if (action === "workshop") actions.showWorkshop();
+      else if (action === "clients") actions.showClients();
+      else if (action === "menu") actions.showMenu();
+    });
+    this.studio.addEventListener("change", (e) => {
+      const select = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-plot]");
+      if (select) store.setFreePlot(select.value as Setting);
+    });
     const langSelect = el("select", { title: m.ui.language, ariaLabel: m.ui.language }, ...LANGS.map((l) => el("option", { value: l, selected: l === lang }, messages(l).languageName)));
     langSelect.addEventListener("change", () => setLang(langSelect.value as (typeof LANGS)[number], actions.beforeReload));
     this.saveBtn = el("button", { type: "button", title: m.ui.saveTitle }, m.ui.save);
@@ -60,7 +92,7 @@ export class Panel {
     openBtn.addEventListener("click", actions.openDesigns);
     this.designName = el("span", { className: "sub design-name" });
     root.append(
-      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.career, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName)),
+      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.studio, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName)),
     );
 
     // The client and their brief.
@@ -70,9 +102,8 @@ export class Panel {
     briefBtn.addEventListener("click", actions.showBrief);
     const presentBtn = el("button", { type: "button", className: "primary", title: m.ui.presentTitle }, m.ui.present);
     presentBtn.addEventListener("click", actions.present);
-    const newClientBtn = el("button", { type: "button", className: "new-client", title: m.ui.newClientTitle }, `↻ ${m.ui.newClientButton}`);
-    newClientBtn.addEventListener("click", actions.newClient);
-    root.append(el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn, newClientBtn)));
+    this.clientSection = el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn));
+    root.append(this.clientSection);
 
     // Tools.
     const tools = el("div", { className: "tools", role: "toolbar" });
@@ -80,6 +111,7 @@ export class Panel {
       const label = m.ui.tools[t.tool];
       const b = el("button", { type: "button", title: `${label} (${t.key})` }, el("span", { className: "tool-icon", ariaHidden: "true" }, t.icon), label, el("kbd", {}, t.key));
       b.addEventListener("click", () => store.setTool(t.tool));
+      b.dataset.title = `${label} (${t.key})`;
       this.toolButtons.set(t.tool, b);
       tools.append(b);
     }
@@ -119,6 +151,8 @@ export class Panel {
   }
 
   private selectIssue(e: Event): void {
+    const learn = (e.target as HTMLElement).closest<HTMLElement>("li[data-technique]");
+    if (learn) return this.store.onLocked(learn.dataset.technique as TechniqueId);
     if ((e.target as HTMLElement).closest(".cost-chart-open")) {
       if (e.type === "click") this.store.toggleCosts();
       return;
@@ -139,15 +173,19 @@ export class Panel {
 
   private update(houseChanged: boolean): void {
     const { store } = this;
-    const { career, client } = store;
-    this.career.textContent = m.ui.career(money(career.earnings), career.completed.length);
+    const { client } = store;
+    this.renderStudio();
+    this.clientSection.hidden = store.mode === "free";
     this.clientBox.innerHTML = "";
     this.clientBox.append(
       el("h2", {}, m.ui.client),
       el("div", { className: "client-name" }, client.text[lang].name),
       el("div", { className: "sub" }, m.ui.clientPlot(client.plot.name[lang], plotSize(client), money(client.budget))),
     );
-    for (const [tool, b] of this.toolButtons) b.classList.toggle("active", tool === store.tool);
+    for (const [tool, b] of this.toolButtons) {
+      b.classList.toggle("active", tool === store.tool);
+      setLocked(b, store.toolLock(tool), b.dataset.title ?? "");
+    }
     this.saveBtn.disabled = !store.working;
     this.designName.textContent = store.design?.name ?? "";
     this.undoBtn.disabled = !store.canUndo();
@@ -157,5 +195,37 @@ export class Panel {
       renderBrief(this.brief, store);
       renderStatus(this.status, store);
     }
+  }
+
+  /** Money, reputation and the way to the next tier; or, in free play, the plot. */
+  private renderStudio(): void {
+    const { store } = this;
+    const button = (action: string, label: string, title: string) => `<button type="button" data-action="${action}" title="${esc(title)}">${label}</button>`;
+    const menu = button("menu", `🏠 ${esc(m.progress.menu)}`, m.progress.menuTitle);
+    let html: string;
+    if (store.mode === "free") {
+      const options = starterPlots()
+        .map((p) => `<option value="${p.setting}"${p.setting === store.plot.setting ? " selected" : ""}>${esc(p.name[lang])}</option>`)
+        .join("");
+      html = `<div class="studio-mode">🎨 ${esc(m.progress.freePlay)}</div>
+        <label class="studio-plot">${esc(m.progress.plot)} <select data-plot>${options}</select></label>
+        <div class="row">${menu}</div>`;
+    } else {
+      const { career } = store;
+      const stars = careerStars(career);
+      const tier = careerTier(career);
+      const next = starsToNextTier(career);
+      const from = TIER_STARS[tier];
+      const progress = next ? (stars - from) / (TIER_STARS[next.tier] - from) : 1;
+      html = `<div class="studio-stats">
+          <span title="${esc(m.progress.money)}">💰 <b>${money(careerMoney(career))}</b></span>
+          <span title="${esc(m.progress.reputation)}">⭐ <b>${stars}</b></span>
+        </div>
+        <div class="studio-tier">${esc(m.progress.tier(tier, m.tierName[tier]))}</div>
+        <div class="tier-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}"><span style="width:${Math.round(progress * 100)}%"></span></div>
+        <div class="sub">${esc(next ? m.progress.toNextTier(next.needed, m.tierName[next.tier]) : m.progress.topTier)}</div>
+        <div class="row">${button("clients", `📋 ${esc(m.progress.clients)}`, m.progress.clientsTitle)}${button("workshop", `🔨 ${esc(m.progress.workshop)}`, m.progress.workshopTitle)}${menu}</div>`;
+    }
+    if (this.studio.innerHTML !== html) this.studio.innerHTML = html;
   }
 }

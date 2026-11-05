@@ -196,6 +196,12 @@ export function newCareer(): Career {
   return { earnings: 0, completed: [], spent: 0, techniques: [], refreshes: 0 };
 }
 
+/** The tier a client belongs to. */
+export function clientTier(client: Client): Tier {
+  const tiered = /^gen([1-4])-/.exec(client.id);
+  return tiered ? (Number(tiered[1]) as Tier) : (STORY_TIER[client.id] ?? 1);
+}
+
 /** Money to spend: everything earned less what the Workshop cost. */
 export const careerMoney = (c: Career): number => c.earnings - (c.spent ?? 0);
 

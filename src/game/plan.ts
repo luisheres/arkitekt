@@ -52,6 +52,8 @@ import {
   roundTo,
   sceneryFor,
   treeLook,
+  money,
+  technique,
   snapPoint,
   validate,
   wallThickness,
@@ -838,7 +840,12 @@ export class PlanView {
     const buttons = Array.from({ length: house.levels }, (_, k) => house.levels - 1 - k).map(
       (k) => `<button type="button" data-level="${k}" class="${k === level ? "active" : ""}">${esc(m.levelName(k))}</button>`,
     );
-    const add = house.levels < MAX_LEVELS ? `<button type="button" data-action="add" title="${esc(m.ui.addFloorTitle)}">+ ${esc(m.ui.addFloor)}</button>` : "";
+    const lock = this.store.floorLock();
+    const addTitle = lock ? m.progress.locked(m.technique[lock].name, money(m, technique(lock).price)) : m.ui.addFloorTitle;
+    const add =
+      house.levels < MAX_LEVELS
+        ? `<button type="button" data-action="add" class="${lock ? "locked" : ""}" title="${esc(addTitle)}">+ ${esc(m.ui.addFloor)}</button>`
+        : "";
     const remove = house.levels > 1 ? `<button type="button" data-action="remove" title="${esc(m.ui.removeFloorTitle)}">− ${esc(m.ui.removeFloor)}</button>` : "";
     const html = `<div class="label">${esc(m.ui.floors)}</div>${add}${buttons.join("")}${remove}`;
     if (this.levels.innerHTML !== html) this.levels.innerHTML = html;
