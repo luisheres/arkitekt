@@ -1,6 +1,7 @@
 /** Modal dialogs: meeting a client, and their verdict on a design. */
 
-import { type Client, type SavedDesign, type Verdict, num } from "../core";
+import { type Client, type CostLine, type SavedDesign, type Verdict, num } from "../core";
+import { GROUP_COLORS, groupTotals, treemapSvg } from "./costChart";
 import { esc, money } from "./hud";
 import { lang, m } from "./i18n";
 
@@ -98,6 +99,39 @@ export function showVerdict(client: Client, v: Verdict, onNext: () => void): voi
     { next: onNext },
     false,
   );
+}
+
+/** Where the money goes: a treemap of the costs, with the totals per group. */
+export function showCostChart(lines: readonly CostLine[], budget: number): void {
+  const groups = groupTotals(lines);
+  const total = groups.reduce((s, g) => s + g.amount, 0);
+  const rows = m.ui.costRows;
+  const left = budget - total;
+  const legend = groups
+    .map(
+      (g) =>
+        `<li><span class="swatch" style="background:${GROUP_COLORS[g.group]}"></span><span>${esc(m.ui.costChart.groups[g.group])}</span><span class="amount">${money(g.amount)}</span><span class="share">${Math.round((g.amount / total) * 100)} %</span></li>`,
+    )
+    .join("");
+  open(
+    `<h2>${esc(m.ui.costChart.title)}</h2>
+     ${
+       groups.length
+         ? `<p class="sub">${esc(m.ui.costChart.hint)}</p>
+            ${treemapSvg(groups)}
+            <ul class="cost-legend">${legend}</ul>
+            <dl class="facts">
+              <div><dt>${esc(rows.total)}</dt><dd>${money(total)}</dd></div>
+              <div><dt>${esc(m.ui.budget)}</dt><dd>${money(budget)}</dd></div>
+              <div class="${left >= 0 ? "" : "over"}"><dt>${esc(left >= 0 ? rows.budgetLeft : rows.overBudget)}</dt><dd>${money(Math.abs(left))}</dd></div>
+            </dl>`
+         : `<p>${esc(m.ui.costChart.empty)}</p>`
+     }
+     <div class="actions"><button type="button" class="primary" data-action="close">${esc(m.ui.close)}</button></div>`,
+    {},
+    true,
+  );
+  modal().querySelector(".dialog")?.classList.add("wide");
 }
 
 /** Ask before turning a client down: the design so far is thrown away. */

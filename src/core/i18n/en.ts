@@ -340,6 +340,15 @@ export const en: Messages = {
       budgetLeft: "Budget left",
       overBudget: "Over budget",
     },
+    costChart: {
+      open: "Where does the money go?",
+      title: "Where the money goes",
+      hint: "The bigger the box, the more it costs. Point at a box for the details.",
+      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs" },
+      terrace: "Terrace roof",
+      empty: "Nothing is built yet, so nothing costs anything.",
+      count: (n) => `${n} ×`,
+    },
     buildingProblems: "Building problems",
     noBuildingProblems: "No building problems",
 

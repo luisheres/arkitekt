@@ -135,7 +135,20 @@ try {
   await page.click('.popover .choices.swatches button[title="Tiles"]');
   assert.match(await status(), /No building problems/);
 
+  // Where the money goes: a box per group, and the boxes add up to the total.
+  await page.click(".cost-chart-open");
+  assert.equal(await page.locator("#modal h2").textContent(), "Where the money goes");
+  const groups = await page.locator("#modal .cost-legend li").allInnerTexts();
+  for (const g of ["Facade", "Roof", "Floors", "Windows and doors", "Interior walls"]) assert.ok(groups.some((t) => t.startsWith(g)), `a ${g} group`);
+  const chartTotal = await page.locator("#modal .facts dd").first().textContent();
+  assert.match(await status(), new RegExp(`Total\\s*${chartTotal}`));
+  assert.ok((await page.locator("#modal .cost-line").count()) >= 7, "a box per material, finish and kind of opening");
+  await shot("cost-chart");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("#modal").isHidden(), true);
+
   // Furniture in the room's menu: remove a piece, add another.
+  await click(14.2, 14.5);
   const bathroom = () => furniture().then((fs) => fs.filter((f) => f.x > 13 && f.x < 15.5 && f.y > 12.5 && f.y < 16.5).map((f) => f.kind).sort());
   const before = await bathroom();
   await page.click('.popover .furniture-list li:has-text("Washbasin") button[title="Remove"]');

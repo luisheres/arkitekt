@@ -1578,3 +1578,87 @@ svg.plan {
   stroke: #7a5634;
   stroke-width: 1;
 }
+
+/* Where the money goes: the cost treemap. */
+.status .cost-chart-open {
+  width: 100%;
+  margin: 8px 0 4px;
+}
+
+.dialog.wide {
+  width: min(800px, 100%);
+}
+
+.cost-treemap {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 10px 0 12px;
+  font-family: inherit;
+}
+
+.cost-treemap .group-name {
+  fill: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cost-treemap .line-name {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+.cost-treemap .line-amount {
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-treemap .line-detail {
+  fill: var(--ink);
+  opacity: 0.7;
+}
+
+.cost-treemap .cost-line:hover .hit {
+  fill: rgba(255, 255, 255, 0.25);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.dialog .cost-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.cost-legend li {
+  display: flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cost-legend .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.cost-legend .amount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cost-legend .share {
+  width: 3.2em;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dialog .facts .over dd {
+  color: var(--error);
+}

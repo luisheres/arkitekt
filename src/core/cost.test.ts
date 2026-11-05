@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultPrices, estimate } from "./cost";
+import { costLines, defaultPrices, estimate, totalCost } from "./cost";
 import { Vec2 } from "./geometry";
 import { House } from "./model";
 
@@ -30,5 +30,29 @@ describe("costs", () => {
     const dear = estimate(h, p).roof;
     expect(cheap).toBeGreaterThan(0);
     expect(dear).toBeGreaterThan(cheap);
+  });
+
+  it("itemises every cost by material, kind of opening and finish, adding up to the total", () => {
+    const h = new House();
+    const ids = h.addWallLoop([v(0, 0), v(10, 0), v(10, 5), v(0, 5)], 2.5, "Brick");
+    h.walls.find((w) => w.id === ids[1])!.material = "Wood";
+    h.addWindow(ids[0], 3, 1.2, 1, 1);
+    h.addWindow(ids[0], 7, 1.2, 1, 1);
+    h.roof = { style: "Gable", pitchDeg: 30, overhang: 0.3, material: "Tiles" };
+    const p = defaultPrices();
+    const lines = costLines(h, p);
+    const sum = lines.reduce((s, l) => s + l.amount, 0);
+    expect(sum).toBeCloseTo(totalCost(estimate(h, p)), 6);
+
+    const facade = lines.filter((l) => l.group === "facade").map((l) => l.what);
+    expect(facade).toEqual([
+      { kind: "facade", material: "Brick" },
+      { kind: "facade", material: "Wood" },
+    ]);
+    const windows = lines.find((l) => l.what.kind === "opening")!;
+    expect(windows).toMatchObject({ group: "openings", quantity: 2, unit: "pieces" });
+    expect(windows.amount).toBeCloseTo(2 * (300 + 1.2 * 450), 6);
+    expect(lines.find((l) => l.what.kind === "roofCovering")?.group).toBe("roof");
+    expect(lines.every((l) => l.amount > 0)).toBe(true);
   });
 });

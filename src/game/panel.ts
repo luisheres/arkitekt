@@ -1,7 +1,7 @@
 /** The sidebar: the client's brief, tools, a way to the roof and facade, costs. Everything else is edited by clicking it. */
 
-import { House as HouseClass, LANGS, Vec2, messages } from "../core";
-import { plotSize } from "./dialogs";
+import { House as HouseClass, LANGS, Vec2, costLines, messages } from "../core";
+import { plotSize, showCostChart } from "./dialogs";
 import { money, renderBrief, renderStatus } from "./hud";
 import { lang, m, setLang } from "./i18n";
 import type { Store, Tool } from "./store";
@@ -119,6 +119,10 @@ export class Panel {
   }
 
   private selectIssue(e: Event): void {
+    if ((e.target as HTMLElement).closest(".cost-chart-open")) {
+      if (e.type === "click") showCostChart(costLines(this.store.house, this.store.prices), this.store.budget);
+      return;
+    }
     const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-kind], li[data-level]");
     if (!li) return;
     const d = li.dataset;

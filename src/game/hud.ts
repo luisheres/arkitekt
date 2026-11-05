@@ -72,10 +72,12 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${row(rows.roof, cost.roof)}
       ${row(rows.foundation, cost.foundation)}
       ${cost.floors ? row(rows.floors, cost.floors) : ""}
+      ${cost.finishes ? row(rows.finishes, cost.finishes) : ""}
       ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
       ${row(rows.total, total, "total")}
       ${row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over")}
     </table>
+    <button type="button" class="cost-chart-open">📊 ${esc(m.ui.costChart.open)}</button>
     ${
       issues.length
         ? `<div class="bad">${esc(m.ui.buildingProblems)}</div><ul class="issues">${issues

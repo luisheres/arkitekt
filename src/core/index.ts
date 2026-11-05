@@ -25,3 +25,4 @@ export * from "./rooms";
 export * from "./samples";
 export * from "./scenery";
 export * from "./validate";
+export * from "./treemap";

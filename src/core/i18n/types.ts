@@ -4,6 +4,7 @@
  */
 
 import type { Requirement } from "../brief";
+import type { CostGroup } from "../cost";
 import type { FurnitureKind } from "../furniture";
 import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
 import type { Issue } from "../validate";
@@ -185,6 +186,19 @@ export interface Messages {
       total: string;
       budgetLeft: string;
       overBudget: string;
+    };
+    /** The chart of where the money goes. */
+    costChart: {
+      /** The button that opens it. */
+      open: string;
+      title: string;
+      hint: string;
+      groups: Record<CostGroup, string>;
+      /** A flat roof over the part of a storey that has no storey above. */
+      terrace: string;
+      empty: string;
+      /** "3 ×" in front of a count of windows or doors. */
+      count(n: number): string;
     };
     buildingProblems: string;
     noBuildingProblems: string;

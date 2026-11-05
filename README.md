@@ -13,7 +13,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts`; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients and the career; `generate.ts` generated clients; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -74,7 +74,11 @@ darker underneath, and the plan shows the same trees from above.
    facade: wood boards, Falu red panel, brick, plaster or stone, for one wall or all.
    Click the roof in 3D (or **Roof**) for its style, pitch, overhang and covering. Each
    room's floor (wood, laminate, tiles, stone, carpet or concrete) is in its menu. Everything has a
-   price, and wet rooms and garages need hard, waterproof floors.
+   price, and wet rooms and garages need hard, waterproof floors. **Where does the money
+   go?** under the costs shows a treemap of the house's costs: a box per group (facade,
+   roof, floors, windows and doors, interior walls, stairs), split into a box per
+   material, floor finish or kind of opening, each sized by what it costs. Point at a box
+   for its area and price per m².
 6. **Present to client.** They accept when every must-have is met, the house has no
    building problems and it is within budget. Your fee is 8% of their budget, plus up to
    half again for wishes granted.

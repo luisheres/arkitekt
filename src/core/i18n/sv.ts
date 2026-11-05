@@ -347,6 +347,15 @@ export const sv: Messages = {
       budgetLeft: "Kvar av budgeten",
       overBudget: "Över budget",
     },
+    costChart: {
+      open: "Vart går pengarna?",
+      title: "Vart pengarna går",
+      hint: "Ju större ruta, desto mer kostar det. Peka på en ruta för att se detaljerna.",
+      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor" },
+      terrace: "Terrasstak",
+      empty: "Inget är byggt än, så inget kostar något.",
+      count: (n) => `${n} st`,
+    },
     buildingProblems: "Byggproblem",
     noBuildingProblems: "Inga byggproblem",
 
