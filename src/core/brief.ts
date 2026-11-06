@@ -4,7 +4,8 @@
  */
 
 import { type PriceList, estimate, totalCost } from "./cost";
-import { type FloorFinish, type House, type RoofMaterial, type RoofStyle, type RoomType, WALL_FAMILY, type WallMaterial } from "./model";
+import { GARDEN_PLANTS, INDOOR_PLANTS } from "./furniture";
+import { type FloorFinish, type House, type PaintColor, type RoofMaterial, type RoofStyle, type RoomType, WALL_FAMILY, type WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { area, percent } from "./i18n/format";
 import { en } from "./i18n/en";
@@ -33,7 +34,15 @@ export type Requirement =
   /** This floor finish in every room of a type, or in every dry room when no type is given. */
   | { kind: "floorFinish"; finish: FloorFinish; room?: RoomType }
   /** Construction cost at most this share of the budget. */
-  | { kind: "underBudget"; share: number };
+  | { kind: "underBudget"; share: number }
+  /** At least one balcony. */
+  | { kind: "balcony" }
+  /** At least this many trees, shrubs, flower beds or hedges in the garden. */
+  | { kind: "gardenPlants"; min: number }
+  /** At least this many plants in pots indoors. */
+  | { kind: "indoorPlants"; min: number }
+  /** A room of this type painted this colour. */
+  | { kind: "paint"; room: RoomType; color: PaintColor };
 
 export interface BriefItem {
   req: Requirement;
@@ -135,6 +144,20 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       }
       case "underBudget":
         return [house.floorArea() > 0 && cost <= r.share * client.budget, percent(m, cost / client.budget)];
+      case "balcony":
+        return [house.balconies.length > 0, String(house.balconies.length)];
+      case "gardenPlants": {
+        const n = house.furniture.filter((f) => GARDEN_PLANTS.includes(f.kind)).length;
+        return [n >= r.min, m.brief.countOf(Math.min(n, r.min), r.min)];
+      }
+      case "indoorPlants": {
+        const n = house.furniture.filter((f) => INDOOR_PLANTS.includes(f.kind)).length;
+        return [n >= r.min, m.brief.countOf(Math.min(n, r.min), r.min)];
+      }
+      case "paint": {
+        const these = ofType(r.room);
+        return [these.some((x) => x.paint === r.color), these.length ? m.paintColor[these[0].paint].toLowerCase() : m.brief.no];
+      }
     }
   };
 

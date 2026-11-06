@@ -177,6 +177,16 @@ try {
   await page.click('.popover .choices.swatches button.locked[title*="Wooden floors"]');
   assert.equal(await page.locator('#modal .tech-card.focus[data-tech="woodFloor"]').count(), 1);
   await page.keyboard.press("Escape");
+  // Paint and the garden are not learned yet either.
+  await click(14.2, 14.5);
+  assert.equal(await page.locator(".popover .choices.paints button.locked").count(), 7, "every colour but white");
+  await page.keyboard.press("Escape");
+  await page.click('#sidebar .house button:has-text("Garden")');
+  assert.equal(await page.locator(".popover button.locked").count(), 4);
+  await page.click(".popover button.locked >> nth=0");
+  assert.equal(await page.locator('#modal .tech-card.focus[data-tech="landscaping"]').count(), 1);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
   // A living room gets laminate, the floor it can have, instead of wood.
   assert.equal(await page.evaluate(() => window.architect.core.analyzeHouse(window.architect.store.house).rooms.find((r) => r.type === "Living").floor), "Laminate");
 
@@ -437,6 +447,34 @@ try {
   await click(7, 11);
   await fromMenu("Roof", "Gable");
   assert.deepEqual(await page.locator(".issues li").allTextContents(), [], "no building problems, and no budget");
+
+  // The extras free play has from the start: a garden, wall paint and a balcony.
+  const pieces = () => page.evaluate(() => window.architect.store.house.furniture.length);
+  const piecesBefore = await pieces();
+  await page.click('#sidebar .house button:has-text("Garden")');
+  await page.click('.popover button:has-text("+ Shrub")');
+  assert.equal(await pieces(), piecesBefore + 1, "a shrub in the garden");
+  assert.equal(await page.evaluate(() => window.architect.store.selection.kind), "furniture");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("v");
+  await page.click(".level-switch button[data-level='1']");
+  await page.click("#view-toggles input[data-toggle='furniture']"); // so the click finds the room, not its bed
+  await click(6.2, 8.4);
+  await page.click('.popover .choices.paints button[title="Sky blue"]');
+  assert.equal(await page.evaluate(() => window.architect.store.house.labels.find((l) => l.level === 1 && l.paint)?.paint), "Sky");
+  await page.keyboard.press("Escape");
+  await page.click("#view-toggles input[data-toggle='furniture']");
+  await click(14.2, 5);
+  await page.click('.popover button:has-text("+ Balcony")');
+  assert.equal(await page.evaluate(() => window.architect.store.house.balconies.length), 1);
+  assert.match(await status(), /A balcony has no door out to it/);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("d");
+  await click(11, 5); // behind the balcony, in the middle of the wall
+  await page.keyboard.press("v");
+  assert.doesNotMatch(await status(), /balcony/);
+  await shot("extras");
+  await page.click(".level-switch button[data-level='0']");
   await shot("two-storeys");
 
   // The 3D view can leave out the roof and any floor, and shows furniture.

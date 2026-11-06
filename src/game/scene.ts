@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
-import { floorTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { PAINT_HEX, floorTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   type TriMesh,
@@ -12,12 +12,18 @@ import {
   FLOOR_SLAB_HEIGHT,
   ROOF_MATERIALS,
   WALL_MATERIALS,
+  PAINT_COLORS,
+  isGardenPlant,
   FLOOR_STRUCTURE,
+  roomAt,
   STAIR_LENGTH,
   STAIR_WIDTH,
   type Vec2,
   interiorNormal,
   leftNormal,
+  balconyOutline,
+  outwardNormal,
+  Vec2 as Vec2Class,
   pointInPolygon,
   slabOutline,
   stairDirection,
@@ -46,7 +52,7 @@ function each<K extends string>(keys: readonly K[], make: (k: K) => THREE.Materi
 /** Shared materials, one per building material, textured in world space. */
 const palette = {
   wall: each(WALL_MATERIALS, (m) => worldMaterial(wallTexture(m), { roughness: m === "Stone" ? 0.95 : 0.85 })),
-  interior: worldMaterial(interiorTexture(), { roughness: 0.9 }),
+  interior: each(PAINT_COLORS, (c) => worldMaterial(interiorTexture(), { roughness: 0.9, color: PAINT_HEX[c] })),
   // Gables and fascia use the facade material but must render from both sides.
   gable: each(WALL_MATERIALS, (m) => worldMaterial(wallTexture(m), { roughness: 0.85, side: THREE.DoubleSide })),
   roof: each(ROOF_MATERIALS, (m) =>
@@ -120,6 +126,7 @@ export type Pick =
   | { kind: "opening"; id: number }
   | { kind: "stair"; id: number }
   | { kind: "furniture"; id: number }
+  | { kind: "balcony"; id: number }
   | { kind: "room"; level: number; at: Vec2 }
   | { kind: "roof" };
 
@@ -172,17 +179,25 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     const size = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
     // Box faces: +x, -x, +y, -y, +z, -z. Local +z is the wall's left side; an exterior
-    // wall shows its facade outside and plaster on the inside.
+    // wall shows its facade outside, and each side facing a room shows that room's paint.
     const facade = palette.wall[wall.material];
-    const inside = palette.interior;
-    let faces: THREE.Material | THREE.Material[] = inside;
-    if (exterior) {
-      const leftIsInside = interiorNormal(house, wall).dot(leftNormal(wall)) > 0;
-      faces = [facade, facade, facade, facade, leftIsInside ? inside : facade, leftIsInside ? facade : inside];
-    }
+    const analysis = analyses[wall.level];
+    const rooms = analysis?.ok ? analysis.value.rooms : [];
+    const left = leftNormal(wall);
+    const leftIsInside = exterior && interiorNormal(house, wall).dot(left) > 0;
+    const paintAt = (u: number, side: 1 | -1) => {
+      const p = wall.start.add(d.scale(u)).add(left.scale(side * (t / 2 + 0.05)));
+      return palette.interior[roomAt(rooms, p)?.paint ?? "White"];
+    };
+    const facesAt = (u: number): THREE.Material[] => {
+      const [l, r] = [paintAt(u, 1), paintAt(u, -1)];
+      if (!exterior) return [l, l, l, l, l, r];
+      return [facade, facade, facade, facade, leftIsInside ? l : facade, leftIsInside ? facade : r];
+    };
+    const faces = facesAt(wall.length() / 2);
     pick = { kind: "wall", id: wall.id };
     for (const p of wallPieces(wall, openings, t)) {
-      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, faces);
+      box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, facesAt((p.u0 + p.u1) * 0.5));
     }
     // With a storey above, the outer walls carry on in front of the floor structure,
     // so the facade is continuous.
@@ -281,13 +296,57 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
   }
 
+  // Balconies: a slab sticking out from the wall at the storey's floor, with a railing
+  // of posts, a handrail and glass panels.
+  for (const b of house.balconies) {
+    const wall = house.wall(b.wall);
+    if (!wall || !visible(wall.level)) continue;
+    const outline = balconyOutline(house, b);
+    if (!outline) continue;
+    const d = wall.direction();
+    const g = new THREE.Group();
+    const centre = outline.reduce((s, p) => s.add(p), new Vec2Class(0, 0)).scale(1 / 4);
+    g.position.set(centre.x, base(wall.level), centre.y);
+    g.rotation.y = Math.atan2(-d.y, d.x);
+    // Local x runs along the wall; local z points away from it when `out` is 1.
+    const out = outwardNormal(house, wall).dot(leftNormal(wall)) > 0 ? 1 : -1;
+    const part = (mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+      const mesh = solid(unitBox, mat);
+      mesh.position.set(x, y, z * out);
+      mesh.scale.set(sx, sy, sz);
+      mesh.userData.pick = { kind: "balcony", id: b.id } satisfies Pick;
+      g.add(mesh);
+    };
+    const [hw, hd] = [b.width / 2, b.depth / 2];
+    part(palette.slab, 0, -0.1, 0, b.width, 0.2, b.depth);
+    const railH = 1.05;
+    const posts: [number, number][] = [];
+    const along = Math.max(1, Math.round(b.width / 1.2));
+    for (let i = 0; i <= along; i++) posts.push([-hw + (b.width * i) / along, hd - 0.04]);
+    const across = Math.max(1, Math.round(b.depth / 1.2));
+    for (let i = 0; i < across; i++) {
+      const z = -hd + 0.04 + ((b.depth - 0.08) * i) / across;
+      posts.push([-hw + 0.04, z], [hw - 0.04, z]);
+    }
+    for (const [x, z] of posts) part(palette.frame, x, railH / 2, z, 0.06, railH, 0.06);
+    // Handrail and glass, along the front and both ends.
+    part(palette.frame, 0, railH, hd - 0.04, b.width, 0.06, 0.08);
+    part(palette.frame, -hw + 0.04, railH, 0, 0.08, 0.06, b.depth);
+    part(palette.frame, hw - 0.04, railH, 0, 0.08, 0.06, b.depth);
+    part(palette.glass, 0, railH * 0.5, hd - 0.04, b.width - 0.1, railH * 0.75, 0.02);
+    part(palette.glass, -hw + 0.04, railH * 0.5, 0, 0.02, railH * 0.75, b.depth - 0.1);
+    part(palette.glass, hw - 0.04, railH * 0.5, 0, 0.02, railH * 0.75, b.depth - 0.1);
+    group.add(g);
+  }
+
   const roof = buildRoof(house);
   if (options.furniture) {
     for (const f of house.furniture) {
       if (!visible(f.level)) continue;
       const piece = buildFurniture(f);
       piece.traverse((o) => (o.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick));
-      piece.position.y = f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
+      // Garden plants stand on the ground; everything else on the floor.
+      piece.position.y = isGardenPlant(f.kind) ? 0 : f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
       group.add(piece);
     }
   }

@@ -8,7 +8,7 @@ import type { CostGroup } from "../cost";
 import type { Difficulty } from "../difficulty";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
-import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
+import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
 import type { Issue } from "../validate";
 
 export const LANGS = ["en", "sv"] as const;
@@ -46,6 +46,7 @@ export interface Messages {
   roofMaterial: Record<RoofMaterial, string>;
   opening: Record<OpeningKind, string>;
   floorFinish: Record<FloorFinish, string>;
+  paintColor: Record<PaintColor, string>;
   furnitureName: Record<FurnitureKind, string>;
   /** A finish as a kind of floor: "a wooden floor" / "wooden floors". */
   floorPhrase: Record<FloorFinish, { one: string; many: string }>;
@@ -293,6 +294,7 @@ export interface Messages {
       floors: string;
       finishes: string;
       stairs: string;
+      extras: string;
       total: string;
       budgetLeft: string;
       overBudget: string;
@@ -306,10 +308,21 @@ export interface Messages {
       groups: Record<CostGroup, string>;
       /** A flat roof over the part of a storey that has no storey above. */
       terrace: string;
+      balcony: string;
+      paint(color: string): string;
       empty: string;
       /** "3 ×" in front of a count of windows or doors. */
       count(n: number): string;
     };
+    /** The room menu's paint swatches, the Garden menu, balconies. */
+    wallColour: string;
+    garden: string;
+    gardenTitle: string;
+    gardenNote: string;
+    addPlant(name: string): string;
+    balcony: string;
+    addBalcony: string;
+    balconyNote: string;
     buildingProblems: string;
     noBuildingProblems: string;
 

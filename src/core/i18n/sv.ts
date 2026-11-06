@@ -28,7 +28,8 @@ export const sv: Messages = {
     Garage: { name: "Garage", short: "Garage", one: "ett garage", many: "garage", the: "garaget" },
     Storage: { name: "Förråd", short: "Förråd", one: "ett förråd", many: "förråd", the: "förrådet" },
   },
-  wallMaterial: { Wood: "Trä", FaluRed: "Faluröd", Brick: "Tegel", Plaster: "Puts", Stone: "Natursten" },
+  wallMaterial: { Wood: "Trä", FaluRed: "Faluröd", Brick: "Tegel", Plaster: "Puts", Stone: "Natursten", Concrete: "Betong" },
+  paintColor: { White: "Vit", Cream: "Gräddvit", Sky: "Himmelsblå", Mint: "Mintgrön", Blush: "Rosa", Sunny: "Solgul", Lavender: "Lavendel", Sage: "Salviagrön" },
   floorFinish: { Wood: "Trä", Laminate: "Laminat", Tiles: "Klinker", Stone: "Sten", Carpet: "Matta", Concrete: "Betong" },
   furnitureName: {
     Bed: "Dubbelsäng",
@@ -55,6 +56,12 @@ export const sv: Messages = {
     Car: "Bil",
     Workbench: "Arbetsbänk",
     Shelf: "Hyllor",
+    Plant: "Krukväxt",
+    TallPlant: "Hög krukväxt",
+    GardenTree: "Träd",
+    Shrub: "Buske",
+    FlowerBed: "Rabatt",
+    Hedge: "Häck",
   },
   floorPhrase: {
     Wood: { one: "trägolv", many: "trägolv" },
@@ -76,6 +83,11 @@ export const sv: Messages = {
     metalRoof: { name: "Plåttak", text: "Falsade plåttak." },
     flatRoof: { name: "Platta tak", text: "Platta tak för moderna hus i alla former." },
     tileRoof: { name: "Takpannor", text: "Tak av lertegelpannor." },
+    concrete: { name: "Betong", text: "Släta, moderna betongfasader." },
+    paint: { name: "Målarfärger", text: "Måla rummen i åtta färger i stället för vitt." },
+    houseplants: { name: "Krukväxter", text: "Växter i kruka som gör rummen mysiga." },
+    landscaping: { name: "Trädgårdsdesign", text: "Plantera träd, buskar, rabatter och häckar i trädgården." },
+    balconies: { name: "Balkonger", text: "Balkonger på övervåningarna, med en dörr ut." },
     woodFloor: { name: "Trägolv", text: "Varma golv av trä." },
     stoneFloor: { name: "Stengolv", text: "Golv av polerad sten." },
     openPlan: { name: "Öppen planlösning", text: "Rum utan väggar emellan: verktyget ✂️ Öppen och öppna väggar." },
@@ -87,7 +99,7 @@ export const sv: Messages = {
     marketing: { name: "Marknadsföring", text: "Folk känner till dig: 2 % mer av varje budget i arvode." },
     bulkBuying: { name: "Storinköp", text: "Köp material i lastbilsvis: 5 % billigare allt." },
   },
-  branch: { facades: "Fasader", roofs: "Tak", floors: "Golv", structure: "Stomme", business: "Företaget" },
+  branch: { facades: "Fasader", roofs: "Tak", floors: "Golv", interiors: "Inredning", garden: "Trädgård", structure: "Stomme", business: "Företaget" },
   tierName: { 1: "Små hus", 2: "Familjehus", 3: "Villor", 4: "Drömhus" },
   difficulty: {
     easy: { name: "Lätt", text: "Rymliga budgetar, med gott om pengar över till fina saker." },
@@ -280,6 +292,14 @@ export const sv: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
+      case "BalconyOnGroundFloor":
+        return "En balkong sitter på bottenvåningen; balkonger hör hemma på övervåningarna (använd väggens meny där uppe)";
+      case "BalconyNotOnOuterWall":
+        return "En balkong sitter på en innervägg; sätt den på en yttervägg";
+      case "BalconyNeedsDoor":
+        return "En balkong saknar dörr ut; lägg till en dörr i väggen bakom den";
+      case "BalconyOutsidePlot":
+        return "En balkong sticker ut utanför tomten";
       case "NotLearned":
         return `${this.technique[i.technique].name} är inte inlärt än: köp det i verkstaden, eller ändra ritningen`;
       case "LabelOutsideRooms":
@@ -319,6 +339,7 @@ export const sv: Messages = {
           Brick: "Ytterväggar av tegel",
           Plaster: "Putsade ytterväggar",
           Stone: "Ytterväggar av natursten",
+          Concrete: "Ytterväggar av betong",
         }[r.material];
       case "roofStyle":
         return cap(r.styles.map((st) => ROOF_NOUN[st]).join(" eller "));
@@ -334,6 +355,14 @@ export const sv: Messages = {
         return r.room ? `${cap(this.floorPhrase[r.finish].one)} i ${this.rooms[r.room].the}` : `${cap(this.floorPhrase[r.finish].many)} i alla rum`;
       case "underBudget":
         return `Kostar högst ${percent(this, r.share)} av budgeten`;
+      case "balcony":
+        return "En balkong";
+      case "gardenPlants":
+        return `Minst ${r.min} träd, buskar eller rabatter i trädgården`;
+      case "indoorPlants":
+        return `Minst ${r.min} krukväxter inomhus`;
+      case "paint":
+        return `${cap(this.rooms[r.room].one)} målat i ${this.paintColor[r.color].toLowerCase()}`;
     }
   },
 
@@ -461,6 +490,7 @@ export const sv: Messages = {
       floors: "Bjälklag",
       finishes: "Golvbeläggning",
       stairs: "Trappor",
+      extras: "Balkonger och växter",
       total: "Totalt",
       budgetLeft: "Kvar av budgeten",
       overBudget: "Över budget",
@@ -469,11 +499,21 @@ export const sv: Messages = {
       open: "Vart går pengarna?",
       title: "Vart pengarna går",
       hint: "Ju större ruta, desto mer kostar det. Peka på en ruta för att se detaljerna.",
-      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor" },
+      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor", extras: "Balkonger och växter" },
       terrace: "Terrasstak",
+      balcony: "Balkong",
+      paint: (color) => `Färg: ${color.toLowerCase()}`,
       empty: "Inget är byggt än, så inget kostar något.",
       count: (n) => `${n} st`,
     },
+    wallColour: "Väggfärg",
+    garden: "Trädgård",
+    gardenTitle: "Plantera träd, buskar, rabatter och häckar",
+    gardenNote: "Nya växter hamnar på en ledig plats i trädgården; dra dem dit du vill, eller klicka på en för att vrida eller ta bort den.",
+    addPlant: (name) => `+ ${name}`,
+    balcony: "Balkong",
+    addBalcony: "+ Balkong",
+    balconyNote: "En balkong behöver en dörr ut i väggen bakom.",
     buildingProblems: "Byggproblem",
     noBuildingProblems: "Inga byggproblem",
 

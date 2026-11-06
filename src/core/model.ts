@@ -19,17 +19,22 @@ export const DEFAULT_WALL_THICKNESS = 0.25;
 export type WallId = number;
 export type OpeningId = number;
 
-export const WALL_MATERIALS = ["Wood", "FaluRed", "Brick", "Plaster", "Stone"] as const;
+export const WALL_MATERIALS = ["Wood", "FaluRed", "Brick", "Plaster", "Stone", "Concrete"] as const;
 export type WallMaterial = (typeof WALL_MATERIALS)[number];
 
 /** What a facade is made of, for briefs that ask for "wood" without minding the paint. */
-export const WALL_FAMILY: Record<WallMaterial, "wood" | "brick" | "plaster" | "stone"> = {
+export const WALL_FAMILY: Record<WallMaterial, "wood" | "brick" | "plaster" | "stone" | "concrete"> = {
   Wood: "wood",
   FaluRed: "wood",
   Brick: "brick",
   Plaster: "plaster",
   Stone: "stone",
+  Concrete: "concrete",
 };
+
+/** Colours the inside walls of a room can be painted. */
+export const PAINT_COLORS = ["White", "Cream", "Sky", "Mint", "Blush", "Sunny", "Lavender", "Sage"] as const;
+export type PaintColor = (typeof PAINT_COLORS)[number];
 
 export const FLOOR_FINISHES = ["Wood", "Laminate", "Tiles", "Stone", "Carpet", "Concrete"] as const;
 export type FloorFinish = (typeof FLOOR_FINISHES)[number];
@@ -56,9 +61,26 @@ export interface RoomLabel {
   level: number;
   /** The room's floor finish; unset means the default for its type. */
   floor?: FloorFinish;
+  /** The colour its walls are painted inside; unset means white. */
+  paint?: PaintColor;
 }
 
 export type StairId = number;
+
+export type BalconyId = number;
+
+/** A balcony on the outside of an upper storey's outer wall. */
+export interface Balcony {
+  id: BalconyId;
+  wall: WallId;
+  /** Distance along the wall from its start to the balcony's middle. */
+  offset: number;
+  /** Along the wall, and how far it sticks out. */
+  width: number;
+  depth: number;
+}
+
+export const BALCONY_LIMITS = { width: [1.2, 8] as const, depth: [0.8, 2.5] as const };
 
 /**
  * A straight flight of stairs from `level` up to the level above. `at` is the center of
@@ -183,9 +205,10 @@ export interface HouseJson {
   }[];
   openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
   roof: Roof | null;
-  labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish }[];
+  labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish; paint?: PaintColor }[];
   levels?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
+  balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
   /** Missing in saves from before furniture could be edited. */
   furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
@@ -197,6 +220,7 @@ export class House {
   roof: Roof | null = null;
   labels: RoomLabel[] = [];
   stairs: Stair[] = [];
+  balconies: Balcony[] = [];
   /** Furniture placed in the house (every piece has an id). */
   furniture: Furniture[] = [];
   /** Number of storeys, including empty ones being started. */
@@ -248,6 +272,20 @@ export class House {
     this.stairs = this.stairs.filter((s) => s.id !== id);
   }
 
+  addBalcony(wall: WallId, offset: number, width: number, depth: number): BalconyId {
+    const id = this.freshId();
+    this.balconies.push({ id, wall, offset, width, depth });
+    return id;
+  }
+
+  balcony(id: BalconyId): Balcony | undefined {
+    return this.balconies.find((b) => b.id === id);
+  }
+
+  removeBalcony(id: BalconyId): void {
+    this.balconies = this.balconies.filter((b) => b.id !== id);
+  }
+
   addFurniture(f: Furniture): number {
     const id = this.freshId();
     // "+ 0" turns -0 into 0, so a piece compares equal after a save (JSON drops the sign).
@@ -280,10 +318,11 @@ export class House {
     this.levels -= 1;
   }
 
-  /** Remove a wall together with all openings in it. */
+  /** Remove a wall together with all openings and balconies on it. */
   removeWall(id: WallId): void {
     this.walls = this.walls.filter((w) => w.id !== id);
     this.openings = this.openings.filter((o) => o.wall !== id);
+    this.balconies = this.balconies.filter((b) => b.wall !== id);
   }
 
   addWindow(wall: WallId, offset: number, width: number, height: number, sill: number): OpeningId {
@@ -395,9 +434,10 @@ export class House {
       })),
       openings: this.openings.map((o) => ({ ...o })),
       roof: this.roof ? { ...this.roof } : null,
-      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}) })),
+      labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) })),
       levels: this.levels,
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
+      ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
       nextId: this.nextId,
     };
@@ -408,9 +448,10 @@ export class House {
     h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false, w.level ?? 0));
     h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
     h.roof = j.roof ? { ...j.roof } : null;
-    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}) }));
+    h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) }));
     h.levels = j.levels ?? 1;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
+    h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));
     h.nextId = j.nextId;
     return h;

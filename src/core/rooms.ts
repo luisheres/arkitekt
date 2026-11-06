@@ -7,7 +7,7 @@ import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { Vec2, interiorPoint, pointInPolygon, signedArea } from "./geometry";
 import { type Layout, OUTSIDE, analyzeLayout } from "./layout";
-import { FLOOR_FINISHES, type FloorFinish, type FootprintError, type House, type Opening, type RoomLabel, type RoomType, type Stair } from "./model";
+import { FLOOR_FINISHES, type FloorFinish, type FootprintError, type PaintColor, type House, type Opening, type RoomLabel, type RoomType, type Stair } from "./model";
 import { type Result, ok } from "./result";
 
 export interface RoomInfo {
@@ -61,6 +61,8 @@ export interface Room {
   type: RoomType | null;
   /** The floor finish: the label's choice or the default for the room type. */
   floor: FloorFinish;
+  /** The colour of its walls inside (white unless painted). */
+  paint: PaintColor;
   /** Doors and garage doors in the room's walls. */
   doors: DoorLink[];
   /** Windows in the room's exterior walls. */
@@ -105,6 +107,7 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
   const rooms: Room[] = layout.rooms.map((polygon, index) => ({
     index,
     level,
+    paint: "White" as const,
     polygon,
     area: signedArea(polygon),
     anchor: interiorPoint(polygon),
@@ -131,6 +134,7 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
       room.type = first.type;
       room.anchor = first.at;
       room.floor = first.floor ?? ROOM_INFO[first.type].floor;
+      room.paint = first.paint ?? "White";
     }
   }
 

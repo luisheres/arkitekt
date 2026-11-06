@@ -43,13 +43,23 @@ import {
   roomAt,
   roomName,
   setRoomFloor,
+  setRoomPaint,
+  GARDEN_PLANTS,
+  addGardenPlant,
+  BALCONY_LIMITS,
+  type Balcony,
+  type Wall,
+  clampBalcony,
+  placeBalcony,
   setRoomType,
+  PAINT_COLORS,
+  INDOOR_PLANTS,
   type Unlock,
   buildableFloor,
 } from "../core";
 import { m } from "./i18n";
 import type { Selection, Store } from "./store";
-import { floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
+import { PAINT_HEX, floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
 import { type Field, button, choices, el, numberField, readout, setLocked, slider } from "./ui";
 
 const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
@@ -95,6 +105,7 @@ export function inspectorKey(store: Store): string {
   if (sel.kind === "opening") return `opening:${sel.id}:${house.opening(sel.id)?.kind}`;
   if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
   if (sel.kind === "facade") return "facade";
+  if (sel.kind === "garden") return "garden";
   return `${sel.kind}:${sel.id}`;
 }
 
@@ -102,6 +113,10 @@ const section = (title: string, ...children: (Node | string)[]) => el("div", { c
 
 export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspector | null {
   switch (sel.kind) {
+    case "garden":
+      return gardenInspector(store);
+    case "balcony":
+      return balconyInspector(store, sel.id);
     case "room":
       return roomInspector(store, sel.at);
     case "wall":
@@ -165,6 +180,14 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
     "swatches",
     store.onLocked,
   );
+  const paint = choices(
+    m.ui.wallColour,
+    PAINT_COLORS.map((c) => ({ value: c, label: m.paintColor[c], color: PAINT_HEX[c], lock: c === "White" ? undefined : () => store.lockOf({ kind: "paint" }) })),
+    () => (current()?.labels.length ? current()!.paint : null),
+    (v) => store.edit((h) => void setRoomPaint(h, at, v, level)),
+    "paints",
+    store.onLocked,
+  );
   const facts = readout(m.ui.area, () => {
     const r = current();
     return r ? `${area(m, r.area)} · ${m.ui.openingsSummary(r.doors.length, r.doors.some((d) => d.to === OUTSIDE), r.windows.length)}` : "";
@@ -180,15 +203,23 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
   if (!list.children.length) list.append(el("li", { className: "sub" }, m.ui.noFurniture));
   const suggested = room.type ? SUGGESTED_FURNITURE[room.type] : [];
   const others = FURNITURE_KINDS.filter((k) => !suggested.includes(k));
+  const plantLock = () => store.lockOf({ kind: "houseplants" });
   const add = el(
     "select",
     { className: "add-furniture" },
     el("option", { value: "" }, m.ui.addFurniture),
-    ...[...suggested, ...others].map((k, i) => el("option", { value: k, className: i < suggested.length ? "suggested" : "" }, m.furnitureName[k])),
+    ...[...suggested, ...others].map((k, i) =>
+      el("option", { value: k, className: i < suggested.length ? "suggested" : "" }, `${INDOOR_PLANTS.includes(k) && plantLock() ? "🔒 " : ""}${m.furnitureName[k]}`),
+    ),
   );
   add.addEventListener("change", () => {
     const kind = add.value as FurnitureKind;
     if (!kind) return;
+    const lock = INDOOR_PLANTS.includes(kind) ? plantLock() : null;
+    if (lock) {
+      add.value = "";
+      return store.onLocked(lock);
+    }
     let id = 0;
     store.edit((h) => (id = addFurnitureAt(h, kind, current()?.anchor ?? at, level)));
     store.select({ kind: "furniture", id });
@@ -207,11 +238,12 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
       use.el,
       note,
       floor.el,
+      paint.el,
       facts.el,
       section(m.ui.furniture, list, actions),
       el("div", { className: "row" }, deleteButton(store)),
     ),
-    fields: [use, floor, facts],
+    fields: [use, floor, paint, facts],
   };
 }
 
@@ -291,6 +323,16 @@ function wallInspector(store: Store, id: number): Inspector | null {
   );
   if (!exterior) fields.push(makeOpenField);
   const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor")] : [add("Door"), makeOpen];
+  // Balconies hang off the outer walls of upper storeys.
+  if (exterior && w.level > 0) {
+    const { button: b, field } = lockable(store, m.ui.addBalcony, { kind: "balconies" }, () => {
+      let balcony: number | null = null;
+      store.edit((h) => (balcony = placeBalcony(h, id)));
+      if (balcony !== null) store.select({ kind: "balcony", id: balcony });
+    });
+    fields.push(field);
+    buttons.push(b);
+  }
   return {
     el: el("div", {}, el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), fields[0].el, ...parts, height.el, el("div", { className: "row" }, ...buttons, deleteButton(store))),
     fields,
@@ -438,4 +480,59 @@ function roofInspector(store: Store): Inspector {
     ),
   ];
   return { el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.map((f) => f.el)), fields };
+}
+
+// --- Garden --------------------------------------------------------------------------
+
+function gardenInspector(store: Store): Inspector {
+  const fields: Field[] = [];
+  const buttons = GARDEN_PLANTS.map((kind) => {
+    const { button: b, field } = lockable(store, m.ui.addPlant(m.furnitureName[kind]), { kind: "garden" }, () => {
+      let id: number | null = null;
+      store.edit((h) => (id = addGardenPlant(h, store.plot, kind)));
+      if (id !== null) store.select({ kind: "furniture", id });
+    });
+    fields.push(field);
+    return b;
+  });
+  return {
+    el: el("div", {}, el("h2", {}, m.ui.garden), el("p", { className: "sub" }, m.ui.gardenTitle), el("div", { className: "row" }, ...buttons), el("p", { className: "sub" }, m.ui.gardenNote)),
+    fields,
+  };
+}
+
+// --- Balconies -----------------------------------------------------------------------
+
+function balconyInspector(store: Store, id: number): Inspector | null {
+  const balcony = (h: House = store.house) => h.balcony(id);
+  if (!balcony()) return null;
+  const editBalcony = (fn: (b: Balcony, wall: Wall) => void, key: string) =>
+    store.edit((h) => {
+      const b = balcony(h);
+      const wall = b && h.wall(b.wall);
+      if (b && wall) {
+        fn(b, wall);
+        b.offset = clampBalcony(wall, b);
+      }
+    }, `${key}:${id}`);
+  const wallLength = () => {
+    const b = balcony();
+    return (b && store.house.wall(b.wall)?.length()) ?? 1;
+  };
+  const fields: Field[] = [
+    slider(m.ui.width, { min: BALCONY_LIMITS.width[0], max: BALCONY_LIMITS.width[1], step: 0.1, unit: " m", digits: 1 }, () => balcony()?.width ?? null, (v) =>
+      editBalcony((b, wall) => (b.width = Math.min(v, wall.length())), "balcony-width"),
+    ),
+    slider(m.ui.depth, { min: BALCONY_LIMITS.depth[0], max: BALCONY_LIMITS.depth[1], step: 0.1, unit: " m", digits: 1 }, () => balcony()?.depth ?? null, (v) =>
+      editBalcony((b) => (b.depth = v), "balcony-depth"),
+    ),
+    slider(m.ui.position, { min: 0, max: 100, step: 1, unit: " %", digits: 0 }, () => {
+      const b = balcony();
+      return b ? Math.round((b.offset / wallLength()) * 100) : null;
+    }, (v) => editBalcony((b, wall) => (b.offset = (v / 100) * wall.length()), "balcony-offset")),
+  ];
+  return {
+    el: el("div", {}, el("h2", {}, m.ui.balcony), ...fields.map((f) => f.el), el("p", { className: "sub" }, m.ui.balconyNote), el("div", { className: "row" }, deleteButton(store))),
+    fields,
+  };
 }

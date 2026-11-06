@@ -27,7 +27,20 @@ export type FurnitureKind =
   | "Washer"
   | "Car"
   | "Workbench"
-  | "Shelf";
+  | "Shelf"
+  | "Plant"
+  | "TallPlant"
+  | "GardenTree"
+  | "Shrub"
+  | "FlowerBed"
+  | "Hedge";
+
+/** Plants in pots, for indoors. */
+export const INDOOR_PLANTS: readonly FurnitureKind[] = ["Plant", "TallPlant"];
+/** Things that grow in the garden, outside the house. */
+export const GARDEN_PLANTS: readonly FurnitureKind[] = ["GardenTree", "Shrub", "FlowerBed", "Hedge"];
+export const isGardenPlant = (k: FurnitureKind): boolean => GARDEN_PLANTS.includes(k);
+export const isPlant = (k: FurnitureKind): boolean => INDOOR_PLANTS.includes(k) || GARDEN_PLANTS.includes(k);
 
 /** A piece of furniture in the house. `id` is set once it is part of a house. */
 export interface Furniture {
@@ -69,6 +82,8 @@ export const FURNITURE_KINDS: readonly FurnitureKind[] = [
   "Car",
   "Workbench",
   "Shelf",
+  "Plant",
+  "TallPlant",
 ];
 
 /** Size of a new piece: across the front, front to back, and height (m). */
@@ -97,17 +112,26 @@ export const FURNITURE_SIZE: Record<FurnitureKind, { width: number; depth: numbe
   Car: { width: 1.8, depth: 4.4, height: 1.45 },
   Workbench: { width: 1.6, depth: 0.6, height: 0.9 },
   Shelf: { width: 1.2, depth: 0.4, height: 1.9 },
+  Plant: { width: 0.45, depth: 0.45, height: 0.9 },
+  TallPlant: { width: 0.6, depth: 0.6, height: 1.7 },
+  GardenTree: { width: 3, depth: 3, height: 5 },
+  Shrub: { width: 1.2, depth: 1.2, height: 1 },
+  FlowerBed: { width: 2, depth: 1, height: 0.4 },
+  Hedge: { width: 3, depth: 0.7, height: 1.3 },
 };
+
+/** What a plant costs to buy and plant. */
+export const PLANT_PRICE: Partial<Record<FurnitureKind, number>> = { Plant: 60, TallPlant: 140, GardenTree: 450, Shrub: 90, FlowerBed: 160, Hedge: 220 };
 
 /** Pieces offered first when adding furniture to a room of each type. */
 export const SUGGESTED_FURNITURE: Record<RoomType, readonly FurnitureKind[]> = {
-  Living: ["Sofa", "Armchair", "CoffeeTable", "TvUnit", "Bookshelf", "DiningTable", "Chair"],
+  Living: ["Sofa", "Armchair", "CoffeeTable", "TvUnit", "Bookshelf", "DiningTable", "Chair", "Plant", "TallPlant"],
   Kitchen: ["Counter", "Fridge", "DiningTable", "Chair"],
   Bedroom: ["Bed", "SingleBed", "Nightstand", "Wardrobe", "Desk", "OfficeChair"],
   Bathroom: ["Bathtub", "Shower", "Toilet", "Sink", "Washer"],
   WC: ["Toilet", "Sink"],
-  Hall: ["Bench", "Wardrobe", "Shelf"],
-  Office: ["Desk", "OfficeChair", "Bookshelf", "Armchair"],
+  Hall: ["Bench", "Wardrobe", "Shelf", "Plant"],
+  Office: ["Desk", "OfficeChair", "Bookshelf", "Armchair", "Plant"],
   Utility: ["Washer", "Sink", "Shelf"],
   Garage: ["Car", "Workbench", "Shelf"],
   Storage: ["Shelf"],

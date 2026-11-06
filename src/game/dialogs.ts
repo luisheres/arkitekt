@@ -375,7 +375,7 @@ export function showOffers(offers: readonly Offer[], teaser: { tier: Tier; stars
   modal().querySelector(".dialog")?.classList.add("wide");
 }
 
-const BRANCH_ICON = { facades: "🧱", roofs: "🏠", floors: "🪵", structure: "🏗️", business: "💼" } as const;
+const BRANCH_ICON = { facades: "🧱", roofs: "🏠", floors: "🪵", interiors: "🎨", garden: "🌳", structure: "🏗️", business: "💼" } as const;
 
 /** The Workshop: buy techniques with the money earned. */
 export function showWorkshop(career: Career, buy: (id: TechniqueId) => void, focus?: TechniqueId): void {

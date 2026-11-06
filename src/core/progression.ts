@@ -20,6 +20,7 @@ import {
   WALL_MATERIALS,
   type WallMaterial,
 } from "./model";
+import { GARDEN_PLANTS, INDOOR_PLANTS } from "./furniture";
 import { analyzeHouse } from "./rooms";
 
 export const TECHNIQUE_IDS = [
@@ -32,10 +33,15 @@ export const TECHNIQUE_IDS = [
   "tileRoof",
   "woodFloor",
   "stoneFloor",
+  "concrete",
+  "paint",
+  "houseplants",
+  "landscaping",
   "openPlan",
   "garage",
   "twoStoreys",
   "threeStoreys",
+  "balconies",
   "prefab",
   "carpenters",
   "marketing",
@@ -43,8 +49,8 @@ export const TECHNIQUE_IDS = [
 ] as const;
 export type TechniqueId = (typeof TECHNIQUE_IDS)[number];
 
-export type Branch = "facades" | "roofs" | "floors" | "structure" | "business";
-export const BRANCHES: readonly Branch[] = ["facades", "roofs", "floors", "structure", "business"];
+export type Branch = "facades" | "roofs" | "floors" | "interiors" | "garden" | "structure" | "business";
+export const BRANCHES: readonly Branch[] = ["facades", "roofs", "floors", "interiors", "garden", "structure", "business"];
 
 /** What a technique makes possible. */
 export type Unlock =
@@ -55,6 +61,13 @@ export type Unlock =
   | { kind: "storeys"; count: number }
   | { kind: "garageDoors" }
   | { kind: "openPlan" }
+  /** Painting rooms other colours than white. */
+  | { kind: "paint" }
+  /** Plants in pots indoors. */
+  | { kind: "houseplants" }
+  /** Trees, shrubs, flower beds and hedges in the garden. */
+  | { kind: "garden" }
+  | { kind: "balconies" }
   /** Cheaper parts: a share off what they cost. */
   | { kind: "discount"; on: "walls" | "floors" | "all"; share: number }
   /** A larger fee: this many percentage points of the budget on top. */
@@ -72,6 +85,10 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "faluRed", branch: "facades", price: 3_000, unlocks: { kind: "wall", material: "FaluRed" } },
   { id: "brick", branch: "facades", price: 8_000, unlocks: { kind: "wall", material: "Brick" } },
   { id: "stone", branch: "facades", price: 30_000, requires: "brick", unlocks: { kind: "wall", material: "Stone" } },
+  { id: "concrete", branch: "facades", price: 10_000, unlocks: { kind: "wall", material: "Concrete" } },
+  { id: "paint", branch: "interiors", price: 2_500, unlocks: { kind: "paint" } },
+  { id: "houseplants", branch: "interiors", price: 2_000, unlocks: { kind: "houseplants" } },
+  { id: "landscaping", branch: "garden", price: 5_000, unlocks: { kind: "garden" } },
   { id: "hipRoof", branch: "roofs", price: 3_000, unlocks: { kind: "roofStyle", style: "Hip" } },
   { id: "metalRoof", branch: "roofs", price: 4_000, unlocks: { kind: "roofMaterial", material: "Metal" } },
   { id: "flatRoof", branch: "roofs", price: 8_000, requires: "metalRoof", unlocks: { kind: "roofStyle", style: "Flat" } },
@@ -82,6 +99,7 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "garage", branch: "structure", price: 6_000, unlocks: { kind: "garageDoors" } },
   { id: "twoStoreys", branch: "structure", price: 9_000, unlocks: { kind: "storeys", count: 2 } },
   { id: "threeStoreys", branch: "structure", price: 40_000, requires: "twoStoreys", unlocks: { kind: "storeys", count: 3 } },
+  { id: "balconies", branch: "structure", price: 12_000, requires: "twoStoreys", unlocks: { kind: "balconies" } },
   { id: "prefab", branch: "business", price: 12_000, unlocks: { kind: "discount", on: "walls", share: 0.1 } },
   { id: "carpenters", branch: "business", price: 14_000, unlocks: { kind: "discount", on: "floors", share: 0.1 } },
   { id: "marketing", branch: "business", price: 25_000, unlocks: { kind: "fee", points: 2 } },
@@ -99,6 +117,10 @@ export interface Abilities {
   maxStoreys: number;
   garageDoors: boolean;
   openPlan: boolean;
+  paint: boolean;
+  houseplants: boolean;
+  garden: boolean;
+  balconies: boolean;
   /** Price factors (1 = full price). */
   wallFactor: number;
   floorFactor: number;
@@ -127,6 +149,10 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       maxStoreys: 3,
       garageDoors: true,
       openPlan: true,
+      paint: true,
+      houseplants: true,
+      garden: true,
+      balconies: true,
       wallFactor: 1,
       floorFactor: 1,
       allFactor: 1,
@@ -138,7 +164,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
   const roofStyles = new Set(STARTER.roofStyles);
   const roofMaterials = new Set(STARTER.roofMaterials);
   const floors = new Set(STARTER.floors);
-  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
+  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
   for (const id of owned) {
     const u = technique(id)?.unlocks;
     if (!u) continue;
@@ -163,6 +189,12 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
         break;
       case "openPlan":
         a.openPlan = true;
+        break;
+      case "paint":
+      case "houseplants":
+      case "garden":
+      case "balconies":
+        a[u.kind] = true;
         break;
       case "discount":
         if (u.on === "walls") a.wallFactor *= 1 - u.share;
@@ -203,6 +235,9 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     foundationM2: base.foundationM2 * f,
     upperFloorM2: base.upperFloorM2 * f,
     stairs: base.stairs * all,
+    balconyM2: base.balconyM2 * all,
+    paintM2: base.paintM2 * all,
+    plants: scale(base.plants as Record<string, number>, all),
   };
 }
 
@@ -223,7 +258,15 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
     want(a.roofMaterials.has(house.roof.material), { kind: "roofMaterial", material: house.roof.material });
   }
   for (const o of house.openings) if (o.kind === "GarageDoor") want(a.garageDoors, { kind: "garageDoors" });
-  for (const r of analyzeHouse(house).rooms) want(a.floors.has(r.floor), { kind: "floor", finish: r.floor });
+  for (const r of analyzeHouse(house).rooms) {
+    want(a.floors.has(r.floor), { kind: "floor", finish: r.floor });
+    if (r.paint !== "White") want(a.paint, { kind: "paint" });
+  }
+  for (const f of house.furniture) {
+    if (INDOOR_PLANTS.includes(f.kind)) want(a.houseplants, { kind: "houseplants" });
+    if (GARDEN_PLANTS.includes(f.kind)) want(a.garden, { kind: "garden" });
+  }
+  if (house.balconies.length) want(a.balconies, { kind: "balconies" });
   for (let n = 2; n <= Math.min(house.levels, 3); n++) want(a.maxStoreys >= n, { kind: "storeys", count: n });
   return TECHNIQUE_IDS.filter((t) => need.has(t));
 }
@@ -251,18 +294,30 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
       if (r.room === "Garage" && !a.garageDoors) needs.push({ kind: "garageDoors" });
       if (r.floor === "upper" && a.maxStoreys < 2) needs.push({ kind: "storeys", count: 2 });
       break;
-    case "everyFloor":
+    case "balcony":
+      if (!a.balconies) needs.push({ kind: "balconies" });
+      if (a.maxStoreys < 2) needs.push({ kind: "storeys", count: 2 });
+      break;
+    case "gardenPlants":
+      if (!a.garden) needs.push({ kind: "garden" });
+      break;
+    case "indoorPlants":
+      if (!a.houseplants) needs.push({ kind: "houseplants" });
+      break;
+    case "paint":
+      if (r.color !== "White" && !a.paint) needs.push({ kind: "paint" });
       break;
     default:
       break;
   }
-  const ids = needs.map(techniqueFor).filter((t): t is TechniqueId => t !== null);
+  const ids = [...new Set(needs.map(techniqueFor).filter((t): t is TechniqueId => t !== null))];
   // A technique that builds on another needs that one too.
   for (const id of [...ids]) {
     const req = technique(id).requires;
     if (req && !ids.includes(req) && !learnedVia(a, req)) ids.unshift(req);
   }
-  return ids;
+  // In the order they can be bought: what another builds on first.
+  return ids.sort((x, y) => TECHNIQUE_IDS.indexOf(x) - TECHNIQUE_IDS.indexOf(y));
 }
 
 /** Whether the abilities include what technique `id` unlocks. */
@@ -287,6 +342,11 @@ export function canBuild(a: Abilities, u: Unlock): boolean {
       return a.garageDoors;
     case "openPlan":
       return a.openPlan;
+    case "paint":
+    case "houseplants":
+    case "garden":
+    case "balconies":
+      return a[u.kind];
     default:
       return a.all;
   }

@@ -54,6 +54,9 @@ import {
   treeLook,
   money,
   technique,
+  INDOOR_PLANTS,
+  balconyOutline,
+  clampBalcony,
   snapPoint,
   validate,
   wallThickness,
@@ -62,7 +65,7 @@ import { m } from "./i18n";
 import { backdropFor } from "./backdrop";
 import { type Selection, type Store, type Tool, drawsWalls } from "./store";
 
-const PLAN_WALL_COLORS = { Wood: "#7a5134", FaluRed: "#8a2a1e", Brick: "#8c3d2e", Plaster: "#6f6b63", Stone: "#77736a" } as const;
+const PLAN_WALL_COLORS = { Wood: "#7a5134", FaluRed: "#8a2a1e", Brick: "#8c3d2e", Plaster: "#6f6b63", Stone: "#77736a", Concrete: "#6c7079" } as const;
 const INTERIOR_WALL_COLOR = "#a19b90";
 /** Pointer distances, in screen pixels. */
 const SNAP_PX = 10;
@@ -76,6 +79,7 @@ type Drag =
   | { kind: "label"; id: number; grab: Vec2 }
   | { kind: "stair"; id: number; grab: Vec2 }
   | { kind: "furniture"; id: number; grab: Vec2 }
+  | { kind: "balcony"; id: number; grab: number }
   | { kind: "room"; start: Vec2 };
 
 type Hit =
@@ -85,6 +89,7 @@ type Hit =
   | { kind: "label"; id: number; at: Vec2 }
   | { kind: "stair"; id: number }
   | { kind: "furniture"; id: number }
+  | { kind: "balcony"; id: number }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -318,6 +323,11 @@ export class PlanView {
     }
     const hit = nearestWall(this.house, p, 1, this.level);
     if (hit && hit.distance <= this.thickness(hit.wall) / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
+    for (const b of this.house.balconies) {
+      if (this.house.wall(b.wall)?.level !== this.level) continue;
+      const outline = balconyOutline(this.house, b);
+      if (outline && pointInPolygon(p, outline)) return { kind: "balcony", id: b.id };
+    }
     // Furniture before room names: a new piece lands in the middle of the room, on its name.
     if (this.store.showFurniture) {
       const piece = furnitureAt(this.house, p, this.level);
@@ -431,6 +441,11 @@ export class PlanView {
         } else if (hit.kind === "furniture") {
           store.select(hit);
           this.drag = { kind: "furniture", id: hit.id, grab: p.sub(this.house.furniturePiece(hit.id)!.at) };
+        } else if (hit.kind === "balcony") {
+          store.select(hit);
+          const b = this.house.balcony(hit.id)!;
+          const wall = this.house.wall(b.wall)!;
+          this.drag = { kind: "balcony", id: b.id, grab: p.sub(wall.start).dot(wall.direction()) - b.offset };
         } else if (hit.kind === "wall") {
           store.select(hit);
           const wall = this.house.wall(hit.id)!;
@@ -502,6 +517,14 @@ export class PlanView {
       if (distance !== drag.distance) {
         store.gestureEdit((h) => moveWall(h, drag.id, original, distance));
         drag.distance = distance;
+      }
+    } else if (drag.kind === "balcony") {
+      // Slide the balcony along its wall.
+      const b = this.house.balcony(drag.id);
+      const wall = b && this.house.wall(b.wall);
+      if (b && wall) {
+        const offset = roundTo(clampBalcony(wall, { offset: p.sub(wall.start).dot(wall.direction()) - drag.grab, width: b.width }), 0.1);
+        if (Math.abs(offset - b.offset) > 1e-9) store.gestureEdit((h) => (h.balcony(drag.id)!.offset = offset));
       }
     } else if (drag.kind === "opening") {
       const o = this.house.opening(drag.id);
@@ -681,8 +704,10 @@ export class PlanView {
     const badWalls = new Set<number>();
     const badOpenings = new Set<number>();
     const badRooms = new Set<Room>();
+    const badBalconies = new Set<number>();
     for (const i of this.issues) {
       if ("wall" in i) badWalls.add(i.wall);
+      if ("balcony" in i) badBalconies.add(i.balcony);
       if ("opening" in i) badOpenings.add(i.opening);
       if (i.kind === "OpeningsOverlap") [i.a, i.b].forEach((id) => badOpenings.add(id));
       if ("room" in i && i.room.level === this.level) {
@@ -711,6 +736,15 @@ export class PlanView {
         return `<g class="piece ${state}">${this.furnitureSymbol(f)}</g>`;
       });
       out.push(`<g class="furniture">${pieces.join("")}</g>`);
+    }
+
+    // Balconies, outside the walls of their storey.
+    for (const b of house.balconies) {
+      if (house.wall(b.wall)?.level !== this.level) continue;
+      const outline = balconyOutline(house, b);
+      if (!outline) continue;
+      const cls = ["balcony", badBalconies.has(b.id) && "bad", hoverId("balcony") === b.id && "hover", selId("balcony") === b.id && "selected"].filter(Boolean).join(" ");
+      out.push(`<polygon class="${cls}" points="${this.pts(outline)}"/>`);
     }
 
     // Walls, then openings cut into them.
@@ -867,6 +901,26 @@ export class PlanView {
       case "Shelf":
         parts.push(line(0, 0.5, 1, 0.5));
         break;
+      case "Plant":
+      case "TallPlant":
+      case "GardenTree":
+      case "Shrub": {
+        // Seen from above: a round clump of leaves (and a pot indoors).
+        const [cx, cy] = this.toScreen(f.at);
+        const r = (Math.min(f.width, f.depth) / 2) * this.scale;
+        const pot = INDOOR_PLANTS.includes(f.kind) ? `<circle class="pot" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r * 0.7).toFixed(1)}"/>` : "";
+        return `${pot}<circle class="leaves" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r * (pot ? 0.9 : 0.95)).toFixed(1)}"/><circle class="leaves-light" cx="${(cx - r * 0.25).toFixed(1)}" cy="${(cy - r * 0.25).toFixed(1)}" r="${(r * 0.4).toFixed(1)}"/>`;
+      }
+      case "FlowerBed": {
+        const dots = [];
+        for (let x = 0.15; x < 0.95; x += 0.17) for (const z of [0.3, 0.7]) dots.push(at(x, z));
+        return `<g class="flower-bed">${rect(0, 1, 0, 1)}${dots.map((p, i) => {
+          const [cx, cy] = this.toScreen(p);
+          return `<circle class="flower f${i % 4}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${Math.max(1.5, 0.07 * this.scale).toFixed(1)}"/>`;
+        }).join("")}</g>`;
+      }
+      case "Hedge":
+        return `<g class="hedge-piece">${rect(0, 1, 0, 1)}</g>`;
     }
     return parts.join("");
   }

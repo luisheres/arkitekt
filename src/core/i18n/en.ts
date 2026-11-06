@@ -25,7 +25,8 @@ export const en: Messages = {
     Garage: { name: "Garage", short: "Garage", one: "a garage", many: "garages", the: "the garage" },
     Storage: { name: "Storage", short: "Store", one: "a storage room", many: "storage rooms", the: "the storage room" },
   },
-  wallMaterial: { Wood: "Wood", FaluRed: "Falu red", Brick: "Brick", Plaster: "Plaster", Stone: "Stone" },
+  wallMaterial: { Wood: "Wood", FaluRed: "Falu red", Brick: "Brick", Plaster: "Plaster", Stone: "Stone", Concrete: "Concrete" },
+  paintColor: { White: "White", Cream: "Cream", Sky: "Sky blue", Mint: "Mint green", Blush: "Pink", Sunny: "Sunny yellow", Lavender: "Lavender", Sage: "Sage green" },
   floorFinish: { Wood: "Wood", Laminate: "Laminate", Tiles: "Tiles", Stone: "Stone", Carpet: "Carpet", Concrete: "Concrete" },
   furnitureName: {
     Bed: "Double bed",
@@ -52,6 +53,12 @@ export const en: Messages = {
     Car: "Car",
     Workbench: "Workbench",
     Shelf: "Shelves",
+    Plant: "Potted plant",
+    TallPlant: "Tall plant",
+    GardenTree: "Tree",
+    Shrub: "Shrub",
+    FlowerBed: "Flower bed",
+    Hedge: "Hedge",
   },
   floorPhrase: {
     Wood: { one: "a wooden floor", many: "wooden floors" },
@@ -73,6 +80,11 @@ export const en: Messages = {
     metalRoof: { name: "Metal roofing", text: "Standing-seam metal roofs." },
     flatRoof: { name: "Flat roofs", text: "Flat roofs for modern houses of any shape." },
     tileRoof: { name: "Roof tiles", text: "Clay tile roofs." },
+    concrete: { name: "Concrete", text: "Smooth, modern concrete facades." },
+    paint: { name: "Paint colours", text: "Paint rooms in any of eight colours instead of white." },
+    houseplants: { name: "Houseplants", text: "Plants in pots to make rooms cosy." },
+    landscaping: { name: "Garden design", text: "Plant trees, shrubs, flower beds and hedges in the garden." },
+    balconies: { name: "Balconies", text: "Balconies on the upper floors, with a door out." },
     woodFloor: { name: "Wooden floors", text: "Warm wooden floorboards." },
     stoneFloor: { name: "Stone floors", text: "Floors of polished stone." },
     openPlan: { name: "Open plan", text: "Rooms without walls between them: the ✂️ Open tool and open walls." },
@@ -84,7 +96,7 @@ export const en: Messages = {
     marketing: { name: "Marketing", text: "People know your name: 2% more of every budget as your fee." },
     bulkBuying: { name: "Bulk buying", text: "Buy materials by the truckload: 5% off everything." },
   },
-  branch: { facades: "Facades", roofs: "Roofs", floors: "Floors", structure: "Structure", business: "Business" },
+  branch: { facades: "Facades", roofs: "Roofs", floors: "Floors", interiors: "Interiors", garden: "Garden", structure: "Structure", business: "Business" },
   tierName: { 1: "Starter homes", 2: "Family homes", 3: "Villas", 4: "Signature houses" },
   difficulty: {
     easy: { name: "Easy", text: "Roomy budgets, with plenty to spare for nice things." },
@@ -277,6 +289,14 @@ export const en: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
+      case "BalconyOnGroundFloor":
+        return "A balcony is on the ground floor; balconies belong on upper floors (use the wall menu upstairs)";
+      case "BalconyNotOnOuterWall":
+        return "A balcony is on an inside wall; put it on an outer wall";
+      case "BalconyNeedsDoor":
+        return "A balcony has no door out to it; add a door in the wall behind it";
+      case "BalconyOutsidePlot":
+        return "A balcony sticks out past the edge of the plot";
       case "NotLearned":
         return `${this.technique[i.technique].name} is not learned yet: buy it in the Workshop, or change the design`;
       case "LabelOutsideRooms":
@@ -327,6 +347,14 @@ export const en: Messages = {
         return r.room ? `${cap(this.floorPhrase[r.finish].one)} in ${this.rooms[r.room].the}` : `${cap(this.floorPhrase[r.finish].many)} throughout`;
       case "underBudget":
         return `Costs at most ${percent(this, r.share)} of the budget`;
+      case "balcony":
+        return "A balcony";
+      case "gardenPlants":
+        return `At least ${r.min} trees, shrubs or flower beds in the garden`;
+      case "indoorPlants":
+        return `At least ${r.min} plants indoors`;
+      case "paint":
+        return `${cap(this.rooms[r.room].one)} painted ${this.paintColor[r.color].toLowerCase()}`;
     }
   },
 
@@ -454,6 +482,7 @@ export const en: Messages = {
       floors: "Upper floors",
       finishes: "Floor finishes",
       stairs: "Stairs",
+      extras: "Balconies and plants",
       total: "Total",
       budgetLeft: "Budget left",
       overBudget: "Over budget",
@@ -462,11 +491,21 @@ export const en: Messages = {
       open: "Where does the money go?",
       title: "Where the money goes",
       hint: "The bigger the box, the more it costs. Point at a box for the details.",
-      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs" },
+      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs", extras: "Balconies and plants" },
       terrace: "Terrace roof",
+      balcony: "Balcony",
+      paint: (color) => `${color} paint`,
       empty: "Nothing is built yet, so nothing costs anything.",
       count: (n) => `${n} ×`,
     },
+    wallColour: "Wall colour",
+    garden: "Garden",
+    gardenTitle: "Plant trees, shrubs, flower beds and hedges",
+    gardenNote: "New plants go in a free spot in the garden; drag them where you like, or click one to turn or remove it.",
+    addPlant: (name) => `+ ${name}`,
+    balcony: "Balcony",
+    addBalcony: "+ Balcony",
+    balconyNote: "A balcony needs a door out to it in the wall behind.",
     buildingProblems: "Building problems",
     noBuildingProblems: "No building problems",
 

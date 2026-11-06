@@ -2422,3 +2422,78 @@ button.locked::after,
   text-align: center;
   color: var(--muted);
 }
+
+/* Plants in the plan */
+.plan .piece .pot {
+  fill: #d9784f;
+  stroke: #8a4a2c;
+  stroke-width: 1;
+}
+
+.plan .piece .leaves {
+  fill: #5cbf3f;
+  stroke: #2f6b2a;
+  stroke-width: 1;
+}
+
+.plan .piece .leaves-light {
+  fill: rgba(255, 255, 255, 0.25);
+  stroke: none;
+}
+
+.plan .piece .flower-bed polygon {
+  fill: #7a5236;
+  stroke: #4d3220;
+}
+
+.plan .piece .flower {
+  stroke: none;
+}
+
+.plan .piece .flower.f0 {
+  fill: #ff6f91;
+}
+
+.plan .piece .flower.f1 {
+  fill: #ffd23f;
+}
+
+.plan .piece .flower.f2 {
+  fill: #ffffff;
+}
+
+.plan .piece .flower.f3 {
+  fill: #b388ff;
+}
+
+.plan .piece .hedge-piece polygon {
+  fill: #3f8f45;
+  stroke: #24572a;
+}
+
+.choices.paints .dot {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.plan .balcony {
+  fill: #e9dcc6;
+  stroke: #7a6a55;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  cursor: grab;
+}
+
+.plan .balcony.hover {
+  fill: #f3e7d2;
+}
+
+.plan .balcony.selected {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.plan .balcony.bad {
+  stroke: var(--error);
+}

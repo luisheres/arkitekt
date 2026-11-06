@@ -6,7 +6,7 @@
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
 import { analyzeLayout } from "./layout";
-import { type FloorFinish, House, type LabelId, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
+import { BALCONY_LIMITS, type Balcony, type BalconyId, type FloorFinish, House, type LabelId, type PaintColor, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { analyzeRooms, roomAt } from "./rooms";
 import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./rules";
 
@@ -329,6 +329,17 @@ export function placeStair(house: House, level: number, at: Vec2, facing = 0): S
 }
 
 /** Choose the floor finish of the (labelled) room containing `at`. Returns false for unlabelled rooms. */
+/** Paint the inside walls of the room at `at` (white takes the paint off). */
+export function setRoomPaint(house: House, at: Vec2, paint: PaintColor, level = 0): boolean {
+  const analysis = analyzeRooms(house, level);
+  if (!analysis.ok) return false;
+  const label = roomAt(analysis.value.rooms, at)?.labels[0];
+  if (!label) return false;
+  if (paint === "White") delete label.paint;
+  else label.paint = paint;
+  return true;
+}
+
 export function setRoomFloor(house: House, at: Vec2, floor: FloorFinish, level = 0): boolean {
   const analysis = analyzeRooms(house, level);
   if (!analysis.ok) return false;
@@ -336,4 +347,37 @@ export function setRoomFloor(house: House, at: Vec2, floor: FloorFinish, level =
   if (!label) return false;
   label.floor = floor;
   return true;
+}
+
+// --- Balconies -----------------------------------------------------------------------
+
+/** The direction a wall's outside faces (away from the house). */
+export function outwardNormal(house: House, wall: Wall): Vec2 {
+  return interiorNormal(house, wall).neg();
+}
+
+/** A balcony's floor outline: along its wall, sticking out from the outer face. */
+export function balconyOutline(house: House, b: Balcony): Vec2[] | null {
+  const wall = house.wall(b.wall);
+  if (!wall) return null;
+  const d = wall.direction();
+  const out = outwardNormal(house, wall);
+  const mid = wall.start.add(d.scale(b.offset)).add(out.scale(wall.thickness / 2));
+  const half = d.scale(b.width / 2);
+  const far = out.scale(b.depth);
+  return [mid.sub(half), mid.add(half), mid.add(half).add(far), mid.sub(half).add(far)];
+}
+
+/** Keep a balcony's middle on its wall, with all of it along the wall. */
+export function clampBalcony(wall: Wall, b: { offset: number; width: number }): number {
+  const half = Math.min(b.width, wall.length()) / 2;
+  return Math.min(Math.max(b.offset, half), wall.length() - half);
+}
+
+/** Put a balcony in the middle of an outer wall, as wide as fits (at most 3 m). */
+export function placeBalcony(house: House, wallId: WallId): BalconyId | null {
+  const wall = house.wall(wallId);
+  if (!wall || wall.boundary) return null;
+  const width = Math.min(3, Math.max(BALCONY_LIMITS.width[0], wall.length() - 0.6));
+  return house.addBalcony(wallId, wall.length() / 2, width, 1.4);
 }

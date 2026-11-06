@@ -27,12 +27,28 @@ const M = {
   books: ["#8c3b2e", "#2f5d7c", "#c49a3a", "#4f7a4a", "#6b4a7a"].map((c) => mat(c, 0.8)),
   cars: ["#a32c2c", "#2c4f8c", "#d8d8d8", "#2f2f33", "#3f6b4f"].map((c) => mat(c, 0.35, 0.5)),
   tyre: mat("#1b1b1d", 0.9),
+  pot: mat("#c7643a"),
+  soil: mat("#5a3d2b"),
+  bark: mat("#8a5a3a"),
+  leaves: ["#4caf50", "#5cbf3f", "#3f9f4a"].map((c) => mat(c)),
+  hedge: mat("#3f8f45"),
+  flowers: ["#ff6f91", "#ffd23f", "#ffffff", "#b388ff", "#ff8a3d"].map((c) => mat(c)),
 };
 
 // Shared by every piece; disposing a house leaves them alone.
 const unit = new THREE.BoxGeometry(1, 1, 1);
 const cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 20);
-unit.userData.shared = cylinder.userData.shared = true;
+const sphere = new THREE.IcosahedronGeometry(1, 2);
+unit.userData.shared = cylinder.userData.shared = sphere.userData.shared = true;
+
+/** Add a ball (a clump of leaves), squashed to sx × sy × sz radii. */
+function ball(g: THREE.Group, m: THREE.Material, x: number, y: number, z: number, sx: number, sy = sx, sz = sx): void {
+  const mesh = new THREE.Mesh(sphere, m);
+  mesh.scale.set(sx, sy, sz);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  g.add(mesh);
+}
 
 /** Add a box spanning x0..x1, y0..y1, z0..z1. */
 function box(g: THREE.Group, m: THREE.Material, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): void {
@@ -190,6 +206,56 @@ export function buildFurniture(f: Furniture): THREE.Group {
       legs(g, M.dark, w, d, h - 0.06, 0.06);
       box(g, M.lightWood, x0, x1, h, h + 0.8, z0, z0 + 0.02);
       break;
+    case "Plant":
+    case "TallPlant": {
+      const r = Math.min(w, d) / 2;
+      const potH = f.kind === "Plant" ? 0.3 : 0.45;
+      cyl(g, M.pot, 0, potH / 2, 0, r * 0.7, potH);
+      cyl(g, M.soil, 0, potH, 0, r * 0.62, 0.02);
+      const leaf = M.leaves[Math.abs(Math.round(f.at.x * 5 + f.at.y * 3)) % M.leaves.length];
+      if (f.kind === "Plant") {
+        ball(g, leaf, 0, potH + (h - potH) * 0.45, 0, r, (h - potH) * 0.5, r);
+      } else {
+        cyl(g, M.bark, 0, (potH + h * 0.6) / 2, 0, 0.03, h * 0.6 - potH);
+        ball(g, leaf, 0, h * 0.72, 0, r * 0.9, h * 0.22, r * 0.9);
+        ball(g, leaf, r * 0.35, h * 0.55, 0, r * 0.55, h * 0.14, r * 0.55);
+      }
+      break;
+    }
+    case "GardenTree": {
+      const r = Math.min(w, d) / 2;
+      cyl(g, M.bark, 0, h * 0.25, 0, 0.14, h * 0.5);
+      const leaf = M.leaves[Math.abs(Math.round(f.at.x * 5 + f.at.y * 3)) % M.leaves.length];
+      ball(g, leaf, 0, h * 0.62, 0, r * 0.8, h * 0.24, r * 0.8);
+      ball(g, leaf, r * 0.35, h * 0.78, -r * 0.2, r * 0.55, h * 0.18, r * 0.55);
+      ball(g, leaf, -r * 0.35, h * 0.55, r * 0.25, r * 0.5, h * 0.16, r * 0.5);
+      break;
+    }
+    case "Shrub": {
+      const leaf = M.leaves[Math.abs(Math.round(f.at.x * 5 + f.at.y * 3)) % M.leaves.length];
+      ball(g, leaf, 0, h * 0.5, 0, w * 0.45, h * 0.5, d * 0.45);
+      ball(g, leaf, w * 0.2, h * 0.7, d * 0.1, w * 0.28, h * 0.35, d * 0.28);
+      break;
+    }
+    case "FlowerBed": {
+      box(g, M.soil, x0, x1, 0, 0.12, z0, z1);
+      box(g, M.lightWood, x0, x1, 0, 0.18, z0, z0 + 0.05);
+      box(g, M.lightWood, x0, x1, 0, 0.18, z1 - 0.05, z1);
+      box(g, M.lightWood, x0, x0 + 0.05, 0, 0.18, z0, z1);
+      box(g, M.lightWood, x1 - 0.05, x1, 0, 0.18, z0, z1);
+      let i = 0;
+      for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.3)
+        for (let z = z0 + 0.2; z < z1 - 0.1; z += 0.3) {
+          cyl(g, M.leaves[0], x, 0.2, z, 0.02, 0.18);
+          ball(g, M.flowers[(i++ + Math.round(x * 7)) % M.flowers.length], x, 0.32, z, 0.08);
+        }
+      break;
+    }
+    case "Hedge": {
+      box(g, M.hedge, x0 + 0.1, x1 - 0.1, 0, h - 0.15, z0 + 0.05, z1 - 0.05);
+      for (let x = x0 + 0.3; x < x1 - 0.1; x += 0.5) ball(g, M.hedge, x, h - 0.25, 0, 0.32, 0.25, d * 0.45);
+      break;
+    }
   }
   g.rotation.y = Math.atan2(f.facing.x, f.facing.y);
   g.position.set(f.at.x, 0, f.at.y);

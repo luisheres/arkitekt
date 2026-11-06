@@ -17,6 +17,7 @@ function issueTarget(i: Issue): Selection {
   if ("room" in i) return { kind: "room", at: i.room.at };
   if (i.kind === "LabelOutsideRooms") return { kind: "label", id: i.label };
   if ("stair" in i) return { kind: "stair", id: i.stair };
+  if ("balcony" in i) return { kind: "balcony", id: i.balcony };
   return null;
 }
 
@@ -26,6 +27,7 @@ function issueLevel(i: Issue, store: Store): number | null {
   if ("wall" in i) return store.house.wall(i.wall)?.level ?? null;
   if ("opening" in i) return store.house.levelOf(store.house.opening(i.opening)?.wall ?? -1);
   if ("stair" in i) return store.house.stair(i.stair)?.level ?? null;
+  if ("balcony" in i) return store.house.wall(store.house.balcony(i.balcony)?.wall ?? -1)?.level ?? null;
   if ("level" in i) return i.level;
   return null;
 }
@@ -76,6 +78,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${cost.floors ? row(rows.floors, cost.floors) : ""}
       ${cost.finishes ? row(rows.finishes, cost.finishes) : ""}
       ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
+      ${cost.extras ? row(rows.extras, cost.extras) : ""}
       ${row(rows.total, total, "total")}
       ${Number.isFinite(budget) ? row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over") : ""}
     </table>

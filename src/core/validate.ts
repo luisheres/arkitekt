@@ -5,7 +5,8 @@ import { type PriceList, estimate, totalCost } from "./cost";
 import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from "./geometry";
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
-import { type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
+import { balconyOutline } from "./edit";
+import { type BalconyId, type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
 import { type Plot, isBuildable } from "./plot";
 import { buildRoof } from "./roof";
 import { type HouseAnalysis, ROOM_INFO, type Room, type RoomAnalysis, analyzeHouse } from "./rooms";
@@ -66,6 +67,10 @@ export type Issue =
   | { kind: "RoomUnreachable"; room: RoomRef }
   | { kind: "RoomHasTwoLabels"; room: RoomRef }
   | { kind: "UnsuitableFloor"; room: RoomRef; floor: FloorFinish; allowed: readonly FloorFinish[] }
+  | { kind: "BalconyOnGroundFloor"; balcony: BalconyId }
+  | { kind: "BalconyNotOnOuterWall"; balcony: BalconyId }
+  | { kind: "BalconyNeedsDoor"; balcony: BalconyId }
+  | { kind: "BalconyOutsidePlot"; balcony: BalconyId }
   /** The design uses a technique not learned yet (campaign only). */
   | { kind: "NotLearned"; technique: TechniqueId }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
@@ -115,6 +120,7 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
     }
   });
   checkStairs(house, analysis, issues);
+  checkBalconies(house, plot, analysis, issues);
   if (analysis.levels.every((l) => l.ok)) {
     if (house.floorArea() < MIN_FLOOR_AREA) issues.push({ kind: "TooSmall" });
     checkRoof(house, issues);
@@ -236,5 +242,21 @@ function checkRoof(house: House, issues: Issue[]): void {
   const geom = buildRoof(house);
   if (!geom.ok && geom.error.kind === "NeedsRectangle") {
     issues.push({ kind: "RoofNeedsRectangle", style: geom.error.style });
+  }
+}
+
+/** Balconies hang off the outer walls of upper storeys, with a door out to them. */
+function checkBalconies(house: House, plot: Plot, analysis: HouseAnalysis, issues: Issue[]): void {
+  for (const b of house.balconies) {
+    const wall = house.wall(b.wall);
+    if (!wall) continue;
+    const level = analysis.levels[wall.level];
+    if (wall.level === 0) issues.push({ kind: "BalconyOnGroundFloor", balcony: b.id });
+    else if (level?.ok && !level.value.layout.exterior.has(wall.id)) issues.push({ kind: "BalconyNotOnOuterWall", balcony: b.id });
+    const [from, to] = [b.offset - b.width / 2, b.offset + b.width / 2];
+    const door = house.openings.some((o) => o.wall === wall.id && o.kind === "Door" && o.offset + o.width / 2 > from && o.offset - o.width / 2 < to);
+    if (!door) issues.push({ kind: "BalconyNeedsDoor", balcony: b.id });
+    const outline = balconyOutline(house, b) ?? [];
+    if (outline.some((p) => p.x < -1e-6 || p.y < -1e-6 || p.x > plot.width + 1e-6 || p.y > plot.depth + 1e-6)) issues.push({ kind: "BalconyOutsidePlot", balcony: b.id });
   }
 }

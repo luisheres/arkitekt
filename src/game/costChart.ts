@@ -17,6 +17,7 @@ export const GROUP_COLORS: Record<CostGroup, string> = {
   openings: "#4fb0e6",
   interiorWalls: "#e7b94a",
   stairs: "#a77de0",
+  extras: "#cf6fb5",
 };
 
 const HEADER = 22;
@@ -44,6 +45,12 @@ export function lineName(l: CostLine, short = false): string {
       return short ? m.floorFinish[w.finish] : `${m.ui.costRows.finishes}: ${m.floorFinish[w.finish]}`;
     case "stairs":
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costRows.stairs}`;
+    case "balcony":
+      return m.ui.costChart.balcony;
+    case "plant":
+      return `${m.ui.costChart.count(l.quantity)} ${m.furnitureName[w.plant]}`;
+    case "paint":
+      return m.ui.costChart.paint(m.paintColor[w.color]);
   }
 }
 

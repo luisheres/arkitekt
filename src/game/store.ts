@@ -60,6 +60,9 @@ export type Selection =
   /** The whole roof, or every outer wall's facade. */
   | { kind: "roof" }
   | { kind: "facade" }
+  /** The garden: what can be planted. */
+  | { kind: "garden" }
+  | { kind: "balcony"; id: number }
   | null;
 
 /** What changed: the house, editor state such as the tool or selection, or the client. */
@@ -488,6 +491,7 @@ export class Store {
       else if (sel.kind === "stair") h.removeStair(sel.id);
       else if (sel.kind === "furniture") h.removeFurniture(sel.id);
       else if (sel.kind === "label") h.removeLabel(sel.id);
+      else if (sel.kind === "balcony") h.removeBalcony(sel.id);
       else if (sel.kind === "room") {
         setRoomType(h, sel.at, null, this.level);
         clearRoomFurnitureAt(h, sel.at, this.level);
@@ -506,6 +510,7 @@ export class Store {
     if (sel?.kind === "label" && !this.house.label(sel.id)) this.selection = null;
     if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
     if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
+    if (sel?.kind === "balcony" && !this.house.balcony(sel.id)) this.selection = null;
   }
 
   // --- Saving ------------------------------------------------------------------------

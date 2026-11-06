@@ -138,7 +138,7 @@ export class Panel {
     root.append(el("section", { className: "row" }, this.undoBtn, this.redoBtn, clear, captureBtn));
 
     // Roof and facade (everything else opens by clicking it in the plan or 3D view).
-    const menuFor = (kind: "roof" | "facade") => (e: MouseEvent) => {
+    const menuFor = (kind: "roof" | "facade" | "garden") => (e: MouseEvent) => {
       store.select({ kind });
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       actions.openMenu(r.right, r.top + 12);
@@ -147,7 +147,9 @@ export class Panel {
     roofBtn.addEventListener("click", menuFor("roof"));
     const facadeBtn = el("button", { type: "button", className: "opens-menu" }, `${m.ui.facade} ▸`);
     facadeBtn.addEventListener("click", menuFor("facade"));
-    root.append(el("section", { className: "house" }, el("h2", {}, m.ui.house), el("div", { className: "row" }, roofBtn, facadeBtn), el("p", { className: "sub hint" }, m.ui.clickToEdit)));
+    const gardenBtn = el("button", { type: "button", className: "opens-menu" }, `🌳 ${m.ui.garden} ▸`);
+    gardenBtn.addEventListener("click", menuFor("garden"));
+    root.append(el("section", { className: "house" }, el("h2", {}, m.ui.house), el("div", { className: "row" }, roofBtn, facadeBtn, gardenBtn), el("p", { className: "sub hint" }, m.ui.clickToEdit)));
 
     // Costs and issues.
     this.status = el("section", { className: "status" });
@@ -171,7 +173,7 @@ export class Panel {
     const d = li.dataset;
     if (d.level !== undefined) this.store.setLevel(Number(d.level));
     if (d.kind === "room") this.store.select({ kind: "room", at: new Vec2(Number(d.x), Number(d.y)) });
-    else if (d.kind) this.store.select({ kind: d.kind as "wall" | "opening" | "stair" | "label", id: Number(d.id) });
+    else if (d.kind) this.store.select({ kind: d.kind as "wall" | "opening" | "stair" | "label" | "balcony", id: Number(d.id) });
     this.store.setTool("select");
     if (d.kind) {
       const r = li.getBoundingClientRect();

@@ -11,9 +11,11 @@ sidebar brings it back):
 
 - **Campaign.** You start with a basic kit: wood and plaster facades, gable roofs with
   shingles, laminate, tiles, carpet and concrete floors, one storey. The money you earn
-  buys new techniques in the **🔨 Workshop**: more facades (Falu red, brick, stone), roofs
-  (hip, flat, metal, tiles), floors (wood, stone), open plan, garages, second and third
-  storeys, and business techniques that make building cheaper or raise your fee. Some
+  buys new techniques in the **🔨 Workshop**: more facades (Falu red, brick, stone,
+  concrete), roofs (hip, flat, metal, tiles), floors (wood, stone), wall paint in eight
+  colours, houseplants, garden design (trees, shrubs, flower beds and hedges), open plan,
+  garages, second and third storeys, balconies, and business techniques that make
+  building cheaper or raise your fee. Some
   build on others. Anything not learned yet shows a 🔒 and opens the Workshop when
   clicked. The stars clients give you are your reputation, and it opens four tiers of
   clients: starter homes, family homes (5 ⭐), villas (14 ⭐) and signature houses
@@ -117,6 +119,11 @@ darker underneath, and the plan shows the same trees from above.
    follows every edit, and boxes whose cost just changed flash. Point at a box for its
    area and price per m²; drag the panel by its title, resize it from its corner. It
    remembers where you put it.
+   Rooms can be painted inside (the room's menu), plants in pots added from a room's
+   furniture list, and the garden planted from **🌳 Garden** in the sidebar: each new
+   plant goes in a free spot, ready to drag where you like. On an upper floor, an outer
+   wall's menu adds a **balcony**: slide it along the wall, set its width and depth in its
+   menu, and give it a door out. Balconies, plants and paint have their own costs.
 6. **Present to client.** They accept when every must-have is met, the house has no
    building problems (using a technique not learned yet is one) and it is within budget.
    Your fee is 8% of their budget (more with Marketing), plus up to half again for wishes

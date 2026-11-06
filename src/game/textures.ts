@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import type { FloorFinish, RoofMaterial, WallMaterial } from "../core";
+import type { FloorFinish, PaintColor, RoofMaterial, WallMaterial } from "../core";
 
 const PX = 512;
 
@@ -146,6 +146,26 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
           p.ctx.fillRect(0, 0, PX, PX);
           speckle(p, 1500, () => "rgba(200,170,120,0.12)", 3);
         });
+      case "Concrete": // smooth board-formed concrete with tie holes
+        return paint(2.4, 7, (p) => {
+          const { ctx, rnd, px } = p;
+          ctx.fillStyle = "#b9bcc1";
+          ctx.fillRect(0, 0, PX, PX);
+          speckle(p, 2200, () => (rnd() < 0.5 ? "rgba(90,95,105,0.10)" : "rgba(255,255,255,0.12)"), 3);
+          const panel = PX / 2;
+          for (let i = 0; i <= 2; i++) {
+            ctx.fillStyle = "rgba(70,74,82,0.35)";
+            ctx.fillRect(0, i * panel - 1, PX, 2);
+            ctx.fillRect(i * panel - 1, 0, 2, PX);
+          }
+          for (let r = 0; r < 4; r++)
+            for (let c = 0; c < 4; c++) {
+              ctx.fillStyle = "rgba(60,64,72,0.55)";
+              ctx.beginPath();
+              ctx.arc(panel * 0.25 + (c * panel) / 2, panel * 0.25 + (r * panel) / 2, px(0.012) + 1, 0, Math.PI * 2);
+              ctx.fill();
+            }
+        });
       case "Stone":
         return paint(2.4, 5, (p) => {
           const { ctx, rnd, px } = p;
@@ -169,6 +189,18 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
     }
   });
 }
+
+/** What each wall paint looks like (multiplies the white interior finish). */
+export const PAINT_HEX: Record<PaintColor, string> = {
+  White: "#ffffff",
+  Cream: "#fbe6bd",
+  Sky: "#a9d4f5",
+  Mint: "#b2ead0",
+  Blush: "#f7c2cc",
+  Sunny: "#ffe07f",
+  Lavender: "#d5c6f2",
+  Sage: "#c6d8ae",
+};
 
 /** Interior wall finish: smooth white paint. */
 export function interiorTexture(): THREE.Texture {

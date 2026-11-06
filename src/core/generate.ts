@@ -9,7 +9,7 @@
 
 import type { BriefItem, Client, ClientText } from "./brief";
 import type { Lang } from "./i18n/types";
-import { ROOF_STYLES, type RoofStyle, type RoomType, WALL_MATERIALS, type WallMaterial } from "./model";
+import { ROOF_STYLES, type RoofStyle, type RoomType, type WallMaterial } from "./model";
 import { type Plot, type Setting, starterPlots } from "./plot";
 import { TIER_MIN_BUDGET, type Tier } from "./progression";
 
@@ -59,6 +59,9 @@ const PLOTS: Record<Tier, Setting[]> = { 1: ["suburban"], 2: ["suburban", "lakes
 const WALLS: Record<Tier, WallMaterial[]> = { 1: ["Wood", "Plaster", "FaluRed"], 2: ["FaluRed", "Brick", "Wood"], 3: ["Brick", "Stone", "FaluRed"], 4: ["Stone", "Brick"] };
 const ROOFS: Record<Tier, RoofStyle[]> = { 1: ["Gable", "Hip"], 2: ["Hip", "Flat", "Gable"], 3: ["Flat", "Gable", "Hip"], 4: ["Flat", "Hip"] };
 
+/** The facades clients from before tiers chose from (kept, so they stay the same). */
+const LEGACY_WALLS: readonly WallMaterial[] = ["Wood", "FaluRed", "Brick", "Plaster", "Stone"];
+
 /** Rooms grow with the tier: minimum sizes are scaled by this. */
 const SIZE: Record<Tier, number> = { 1: 1, 2: 1.15, 3: 1.35, 4: 1.6 };
 
@@ -77,7 +80,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
   const a = pick(FIRST);
   const b = pick(FIRST.filter((f) => f !== a));
   const roof = pick(tier ? ROOFS[tier] : ROOF_STYLES);
-  const wall = pick(tier ? WALLS[tier] : WALL_MATERIALS);
+  const wall = pick(tier ? WALLS[tier] : LEGACY_WALLS);
   // (Only tiered clients pick this, so clients from before tiers stay the same.)
   const premium: WallMaterial = tier ? pick<WallMaterial>(["Brick", "Stone"]) : "Brick";
 

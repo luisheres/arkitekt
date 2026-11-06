@@ -1,7 +1,8 @@
 /** Construction costs. */
 
 import { analyzeLayout } from "./layout";
-import type { FloorFinish, House, OpeningKind, RoofMaterial, WallMaterial } from "./model";
+import { type FurnitureKind, PLANT_PRICE } from "./furniture";
+import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import { analyzeHouse } from "./rooms";
 import { buildRoof, coveringArea } from "./roof";
 
@@ -27,11 +28,17 @@ export interface PriceList {
   upperFloorM2: number;
   /** Per flight of stairs. */
   stairs: number;
+  /** Per m² of balcony (floor and railing). */
+  balconyM2: number;
+  /** Per m² of painted wall (any colour but white). */
+  paintM2: number;
+  /** Per plant, by kind. */
+  plants: Partial<Record<FurnitureKind, number>>;
 }
 
 export function defaultPrices(): PriceList {
   return {
-    wallM2: { Wood: 120, FaluRed: 130, Brick: 220, Plaster: 150, Stone: 320 },
+    wallM2: { Wood: 120, FaluRed: 130, Brick: 220, Plaster: 150, Stone: 320, Concrete: 200 },
     interiorWallM2: 70,
     windowBase: 300,
     windowM2: 450,
@@ -44,6 +51,9 @@ export function defaultPrices(): PriceList {
     foundationM2: 180,
     upperFloorM2: 140,
     stairs: 3500,
+    balconyM2: 900,
+    paintM2: 8,
+    plants: { ...PLANT_PRICE },
   };
 }
 
@@ -59,14 +69,16 @@ export interface CostBreakdown {
   /** Floor finishes in every room. */
   finishes: number;
   stairs: number;
+  /** Balconies, plants and paint. */
+  extras: number;
 }
 
 export function totalCost(c: CostBreakdown): number {
-  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.finishes + c.stairs;
+  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.finishes + c.stairs + c.extras;
 }
 
 /** The big groups of a cost breakdown. */
-export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs";
+export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs" | "extras";
 
 /** What a line of the breakdown pays for. */
 export type CostWhat =
@@ -78,7 +90,10 @@ export type CostWhat =
   | { kind: "foundation" }
   | { kind: "upperFloors" }
   | { kind: "finish"; finish: FloorFinish }
-  | { kind: "stairs" };
+  | { kind: "stairs" }
+  | { kind: "balcony" }
+  | { kind: "plant"; plant: FurnitureKind }
+  | { kind: "paint"; color: PaintColor };
 
 /** One line of the breakdown: how much of what, and what it costs. */
 export interface CostLine {
@@ -91,7 +106,7 @@ export interface CostLine {
 }
 
 /** The order the groups are listed in. */
-export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs"];
+export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs", "extras"];
 
 /**
  * Every cost of the house, line by line (each material, finish and kind of opening on its
@@ -145,12 +160,25 @@ export function costLines(house: House, prices: PriceList): CostLine[] {
   for (const room of analyzeHouse(house).rooms) add("floors", { kind: "finish", finish: room.floor }, room.area, "m2", room.area * prices.floorM2[room.floor]);
   if (house.stairs.length) add("stairs", { kind: "stairs" }, house.stairs.length, "pieces", house.stairs.length * prices.stairs);
 
+  // Balconies, plants, and paint on the walls of coloured rooms.
+  for (const b of house.balconies) add("extras", { kind: "balcony" }, b.width * b.depth, "m2", b.width * b.depth * prices.balconyM2);
+  for (const f of house.furniture) {
+    const price = prices.plants[f.kind];
+    if (price) add("extras", { kind: "plant", plant: f.kind }, 1, "pieces", price);
+  }
+  for (const room of analyzeHouse(house).rooms) {
+    if (room.paint === "White") continue;
+    const perimeter = room.polygon.reduce((s, p, i) => s + p.distance(room.polygon[(i + 1) % room.polygon.length]), 0);
+    const m2 = perimeter * house.storeyHeight(room.level);
+    add("extras", { kind: "paint", color: room.paint }, m2, "m2", m2 * prices.paintM2);
+  }
+
   return [...lines.values()].filter((l) => l.amount > 0);
 }
 
 /** Price every component of the house, by kind. */
 export function estimate(house: House, prices: PriceList): CostBreakdown {
-  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, finishes: 0, stairs: 0 };
+  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, finishes: 0, stairs: 0, extras: 0 };
   const field: Record<CostWhat["kind"], keyof CostBreakdown> = {
     facade: "walls",
     interiorWalls: "interiorWalls",
@@ -161,6 +189,9 @@ export function estimate(house: House, prices: PriceList): CostBreakdown {
     upperFloors: "floors",
     finish: "finishes",
     stairs: "stairs",
+    balcony: "extras",
+    plant: "extras",
+    paint: "extras",
   };
   for (const l of costLines(house, prices)) {
     c[l.what.kind === "opening" && l.what.opening === "Window" ? "windows" : field[l.what.kind]] += l.amount;
