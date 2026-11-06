@@ -54,6 +54,17 @@ Progress (career and the commission in progress) autosaves in the browser. `?sam
 puts sample house N on the current plot, for screenshots. `npm run e2e` and
 `npm run capture` need `npx playwright install chromium` once.
 
+### Publishing on GitHub Pages
+
+The build is a static site with relative paths, so it works from any folder, such as
+`https://<user>.github.io/<repo>/`. `.github/workflows/deploy.yml` runs the unit tests,
+builds and publishes the game on every push to `main` (or by hand from the Actions tab).
+Once, after pushing the repository to GitHub: **Settings → Pages → Source: GitHub
+Actions**. Pages is free for public repositories.
+
+Saved games live in each player's browser, per site: everything at `<user>.github.io`
+shares one storage, and the game's keys all start with `architect.`.
+
 ## Look
 
 The 3D view is a bright cartoon: cel shading (three flat bands of light), dark outlines,
