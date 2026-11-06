@@ -78,6 +78,25 @@ export interface Messages {
     version(v: string): string;
     /** Between commissions in the campaign. */
     noClient: string;
+    career: string;
+    careerButtonTitle: string;
+    careerTitle(name: string): string;
+    careerEmpty: string;
+    statHouses: string;
+    statEarned: string;
+    avgStars(stars: string): string;
+    statTier: string;
+    /** "Tier 2" */
+    tierShort(tier: Tier): string;
+    statTechniques: string;
+    ofTotal(total: number): string;
+    chartEarnings: string;
+    chartStars: string;
+    houseN(n: number): string;
+    earnedSoFar: string;
+    housesTitle: string;
+    techniquesTitle: string;
+    noTechniques: string;
     defaultPlayer: string;
     players: string;
     playingAs(name: string): string;

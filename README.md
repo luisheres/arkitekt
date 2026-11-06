@@ -131,6 +131,13 @@ lists your saved designs from both modes and picks one up again (a campaign desi
 its client your commission, a free play design opens in free play; the design you were
 on is saved first). Sold designs stay in the list but cannot be sold twice.
 
+**Career.** **📈 Career** in the sidebar looks back on the campaign: houses sold, money
+earned, reputation (and stars per house on average), tier and techniques learned; a chart
+of the money earned house by house with the tiers marked where they opened, the stars each
+house earned, every house sold with its picture, fee, size, cost and date, and when each
+technique was learned. Pictures are kept for the 24 most recent houses, so a long career
+still fits in the browser's storage.
+
 **Players.** Several people can play in the same browser, each with their own campaign,
 free play house and saved designs: the player chip in the sidebar (or **Change player**
 on the welcome screen) lists them, adds a new player with a name and a picture, renames or

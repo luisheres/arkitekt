@@ -174,7 +174,18 @@ export interface Commission {
   clientId: string;
   fee: number;
   stars: number;
+  /** When it was sold (ms since 1970). Commissions from before careers had a history lack these. */
+  at?: number;
+  tier?: Tier;
+  budget?: number;
+  /** The house: floor area, what it cost to build, and a small picture (data URL). */
+  area?: number;
+  cost?: number;
+  thumbnail?: string;
 }
+
+/** Only the most recent sales keep their picture, so a long career still fits in storage. */
+export const PICTURES_KEPT = 24;
 
 /** The tier of each written client: the campaign's story, from small to grand. */
 export const STORY_TIER: Record<string, Tier> = { lindgren: 1, haddad: 1, andersson: 2, berg: 2, okafor: 3 };
@@ -189,6 +200,8 @@ export interface Career {
   spent?: number;
   /** Techniques learned, in the order they were bought. */
   techniques?: TechniqueId[];
+  /** When each technique was learned (missing for techniques bought before this was kept). */
+  learnedAt?: Partial<Record<TechniqueId, number>>;
   /** How many times the player asked for other clients. */
   refreshes?: number;
   /** How tight budgets are; moderate for careers from before difficulties. */
@@ -229,9 +242,9 @@ export function cannotBuy(c: Career, id: TechniqueId): "owned" | "needs" | "mone
 }
 
 /** Buy a technique; the career unchanged when it cannot be bought. */
-export function buyTechnique(c: Career, id: TechniqueId): Career {
+export function buyTechnique(c: Career, id: TechniqueId, at = Date.now()): Career {
   if (cannotBuy(c, id)) return c;
-  return { ...c, spent: (c.spent ?? 0) + technique(id).price, techniques: [...(c.techniques ?? []), id] };
+  return { ...c, spent: (c.spent ?? 0) + technique(id).price, techniques: [...(c.techniques ?? []), id], learnedAt: { ...c.learnedAt, [id]: at } };
 }
 
 /** The techniques a client's must-haves need that the career has not learned. */
@@ -314,7 +327,39 @@ export function declineClient(career: Career, clientId: string): Career {
   return { ...career, declined: [...(career.declined ?? []), clientId] };
 }
 
-/** Record a sold design. */
-export function completeCommission(career: Career, clientId: string, fee: number, stars: number): Career {
-  return { ...career, earnings: career.earnings + fee, completed: [...career.completed, { clientId, fee, stars }] };
+/** Record a sold design, with what is known about the sale. */
+export function completeCommission(career: Career, clientId: string, fee: number, stars: number, details: Omit<Commission, "clientId" | "fee" | "stars"> = {}): Career {
+  const completed = [...career.completed, { clientId, fee, stars, ...details }];
+  const drop = completed.length - PICTURES_KEPT;
+  for (let i = 0; i < drop; i++) if (completed[i].thumbnail) completed[i] = { ...completed[i], thumbnail: undefined };
+  return { ...career, earnings: career.earnings + fee, completed };
+}
+
+/** One point of the career, after each house sold. */
+export interface CareerPoint {
+  /** 1 for the first house. */
+  house: number;
+  commission: Commission;
+  /** Everything earned so far. */
+  earned: number;
+  /** Reputation so far. */
+  stars: number;
+  tier: Tier;
+  /** The tier this house opened, if it did. */
+  tierUp: Tier | null;
+}
+
+/** The career house by house: what was earned, the reputation and when tiers opened. */
+export function careerHistory(c: Career): CareerPoint[] {
+  let earned = 0;
+  let stars = 0;
+  let tier: Tier = 1;
+  return c.completed.map((commission, i) => {
+    earned += commission.fee;
+    stars += commission.stars;
+    const now = tierFor(stars);
+    const tierUp = now > tier ? now : null;
+    tier = now;
+    return { house: i + 1, commission, earned, stars, tier: now, tierUp };
+  });
 }

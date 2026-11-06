@@ -51,6 +51,8 @@ export interface PanelActions {
   showMenu(): void;
   /** Who is playing. */
   showPlayers(): void;
+  /** The career so far. */
+  showCareer(): void;
   /** Save state before the page reloads in another language. */
   beforeReload(): void;
   present(): void;
@@ -84,6 +86,7 @@ export class Panel {
       else if (action === "clients") actions.showClients();
       else if (action === "menu") actions.showMenu();
       else if (action === "players") actions.showPlayers();
+      else if (action === "career") actions.showCareer();
     });
     this.studio.addEventListener("change", (e) => {
       const select = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-plot]");
@@ -242,7 +245,8 @@ export class Panel {
         <div class="studio-tier">${esc(m.progress.tier(tier, m.tierName[tier]))} <span class="difficulty-tag ${career.difficulty ?? "moderate"}">${esc(m.difficulty[career.difficulty ?? "moderate"].name)}</span></div>
         <div class="tier-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}"><span style="width:${Math.round(progress * 100)}%"></span></div>
         <div class="sub">${esc(next ? m.progress.toNextTier(next.needed, m.tierName[next.tier]) : m.progress.topTier)}</div>
-        <div class="row">${button("clients", `📋 ${esc(m.progress.clients)}`, m.progress.clientsTitle)}${button("workshop", `🔨 ${esc(m.progress.workshop)}`, m.progress.workshopTitle)}${menu}</div>`;
+        <div class="row">${button("clients", `📋 ${esc(m.progress.clients)}`, m.progress.clientsTitle)}${button("workshop", `🔨 ${esc(m.progress.workshop)}`, m.progress.workshopTitle)}</div>
+        <div class="row">${button("career", `📈 ${esc(m.progress.career)}`, m.progress.careerButtonTitle)}${menu}</div>`;
     }
     if (this.studio.innerHTML !== html) this.studio.innerHTML = html;
   }

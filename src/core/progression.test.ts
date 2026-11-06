@@ -203,3 +203,25 @@ describe("a campaign", () => {
     expect(cheap).toBeLessThan(totalCost(estimate(h, base)));
   });
 });
+
+describe("career history", () => {
+  it("tells the career house by house, with tiers opening on the way", async () => {
+    const { careerHistory, PICTURES_KEPT } = await import("./clients");
+    let c = newCareer();
+    for (let i = 0; i < 4; i++) c = completeCommission(c, `gen1-${i}`, 5000, 2, { at: i, budget: 60_000, thumbnail: "data:image/jpeg;base64,x" });
+    const h = careerHistory(c);
+    expect(h.map((p) => p.earned)).toEqual([5000, 10000, 15000, 20000]);
+    expect(h.map((p) => p.stars)).toEqual([2, 4, 6, 8]);
+    expect(h.map((p) => p.tierUp)).toEqual([null, null, 2, null]);
+    expect(h[3].commission.budget).toBe(60_000);
+    // Old pictures are let go, so the save stays small.
+    for (let i = 0; i < PICTURES_KEPT; i++) c = completeCommission(c, `x${i}`, 1, 1, { thumbnail: "data:image/jpeg;base64,x" });
+    expect(c.completed.filter((x) => x.thumbnail).length).toBe(PICTURES_KEPT);
+    expect(c.completed[0].thumbnail).toBeUndefined();
+  });
+
+  it("remembers when techniques were learned", () => {
+    const c = buyTechnique(rich(10_000), "brick", 1234);
+    expect(c.learnedAt).toEqual({ brick: 1234 });
+  });
+});

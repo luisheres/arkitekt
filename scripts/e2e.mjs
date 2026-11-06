@@ -296,6 +296,15 @@ try {
   assert.equal(await page.locator("#modal").isHidden(), true);
   assert.equal(await page.evaluate(() => window.architect.store.career.completed.length), 1, "the sale is booked");
   assert.match(await page.locator(".client-section").innerText(), /No client yet/);
+  // The career so far: one house, with its picture and the techniques learned.
+  await page.click('.studio [data-action="career"]');
+  assert.match(await page.locator("#modal h2").innerText(), /Player 1's career/);
+  assert.equal(await page.locator("#modal .career-house").count(), 1);
+  assert.ok((await page.locator("#modal .career-house img").getAttribute("src")).startsWith("data:image/jpeg"), "a picture of the house sold");
+  assert.equal(await page.locator("#modal .career-chart").count(), 2);
+  assert.equal(await page.locator("#modal .career-techniques li").count(), 4);
+  await shot("career");
+  await page.keyboard.press("Escape");
   await page.click(".client-section .choose-client");
 
   // The next clients to choose from: the story goes on with the Haddads. Closing the list

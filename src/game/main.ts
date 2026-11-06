@@ -22,11 +22,13 @@ import {
   showSaveDialog,
   showVerdict,
   showWelcome,
+  showCareer,
   showPlayers,
   showWorkshop,
   toast,
 } from "./dialogs";
 import { deleteDesign, listDesigns } from "./designs";
+import { careerHtml } from "./careerView";
 import { CostPanel } from "./costChart";
 import { Panel } from "./panel";
 import { AVATARS, addProfile, currentProfile, deleteProfile, initProfiles, listProfiles, readPlayerData, renameProfile, switchProfile } from "./profiles";
@@ -162,7 +164,15 @@ const present = () => {
   showVerdict(
     store.client,
     verdict,
-    () => store.completeCommission(verdict.fee, verdict.stars),
+    () =>
+      store.completeCommission(verdict.fee, verdict.stars, {
+        at: Date.now(),
+        tier: core.clientTier(store.client),
+        budget: store.client.budget,
+        area: store.house.floorArea(),
+        cost: core.totalCost(core.estimate(store.house, store.prices)),
+        thumbnail: view3d.thumbnail(),
+      }),
     showClients,
     news,
   );
@@ -304,6 +314,7 @@ new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   showWorkshop: () => openWorkshop(),
   showMenu,
   showPlayers: showPlayersDialog,
+  showCareer: () => showCareer(careerHtml(store.career, currentProfile().name)),
   present,
   showBrief: meetClient,
 });

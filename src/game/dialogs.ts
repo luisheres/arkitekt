@@ -115,6 +115,16 @@ export function onLearn(fn: (id: TechniqueId) => void): void {
   learnHandler = fn;
 }
 
+/** The career page (built by careerView). */
+export function showCareer(html: string): void {
+  open(`${html}<div class="actions"><button type="button" class="primary" data-action="close">${esc(m.ui.close)}</button></div>`, {});
+  const dialog = modal().querySelector<HTMLElement>(".dialog")!;
+  dialog.classList.add("wide", "career");
+  // Start at the top (the Close button at the bottom would otherwise scroll there).
+  dialog.querySelector<HTMLButtonElement>(".dialog-close")?.focus();
+  dialog.scrollTop = 0;
+}
+
 // --- Players ---------------------------------------------------------------------------
 
 export interface PlayerCard {

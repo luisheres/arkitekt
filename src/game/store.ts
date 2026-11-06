@@ -11,6 +11,7 @@ import { playerKey } from "./profiles";
 import {
   type Abilities,
   type Career,
+  type Commission,
   type Client,
   History,
   House,
@@ -287,8 +288,8 @@ export class Store {
   }
 
   /** The client accepted the design: get paid and line up the next client. */
-  completeCommission(fee: number, stars: number): void {
-    this.career = completeCommission(this.career, this.client.id, fee, stars);
+  completeCommission(fee: number, stars: number, details: Omit<Commission, "clientId" | "fee" | "stars"> = {}): void {
+    this.career = completeCommission(this.career, this.client.id, fee, stars, details);
     this.design = null;
     this.client = clientOffers(this.career)[0];
     this.working = false;
