@@ -153,6 +153,34 @@ export class PlanView {
 
   // --- Public commands ---------------------------------------------------------------
 
+  /**
+   * How far the view may reach: the plot with a generous ring of its surroundings (and
+   * never past the drawn landscape), so zooming out or panning never shows empty space.
+   */
+  private bounds(): { x0: number; x1: number; y0: number; y1: number } {
+    const { plot } = this.store;
+    const bd = backdropFor(plot);
+    const margin = 40;
+    return {
+      x0: Math.max(bd.x0, -margin),
+      x1: Math.min(bd.x1, plot.width + margin),
+      y0: Math.max(bd.y0, -margin),
+      y1: Math.min(bd.y1, plot.depth + margin),
+    };
+  }
+
+  /** Keep the zoom and the view inside the bounds. */
+  private clampView(): void {
+    if (this.width === 0 || this.height === 0) return;
+    const b = this.bounds();
+    const minScale = Math.max(this.width / (b.x1 - b.x0), this.height / (b.y1 - b.y0));
+    this.scale = Math.min(Math.max(this.scale, minScale), 300);
+    const halfW = this.width / 2 / this.scale;
+    const halfH = this.height / 2 / this.scale;
+    const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(Math.max(v, lo), hi));
+    this.center = new Vec2(clamp(this.center.x, b.x0 + halfW, b.x1 - halfW), clamp(this.center.y, b.y0 + halfH, b.y1 - halfH));
+  }
+
   /** Fit the whole plot and the street into view. */
   fit(): void {
     const { plot } = this.store;
@@ -160,6 +188,7 @@ export class PlanView {
     const [x0, x1, y0, y1] = [-8, plot.width + 8, -9, plot.depth + 12];
     this.scale = Math.min(this.width / (x1 - x0), this.height / (y1 - y0)) * 0.92;
     this.center = new Vec2((x0 + x1) / 2, (y0 + y1) / 2);
+    this.clampView();
     this.requestRender();
   }
 
@@ -212,6 +241,7 @@ export class PlanView {
       this.fitted = true;
       this.fit();
     }
+    this.clampView();
     this.requestRender();
   }
 
@@ -352,9 +382,11 @@ export class PlanView {
         const before = this.toPlan(sx, sy);
         const notches = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? -e.deltaY / 3 : -e.deltaY / 100;
         this.scale = Math.min(Math.max(this.scale * Math.pow(1.15, notches), 3), 300);
-        // Keep the point under the cursor fixed.
+        this.clampView();
+        // Keep the point under the cursor fixed (as far as the bounds allow).
         const after = this.toPlan(sx, sy);
         this.center = this.center.add(before.sub(after));
+        this.clampView();
         this.requestRender();
       },
       { passive: false },
@@ -451,6 +483,7 @@ export class PlanView {
       this.hover = store.tool === "select" ? this.hitTest(p) : null;
     } else if (drag.kind === "pan") {
       this.center = this.center.add(new Vec2((e.clientX - drag.x) / this.scale, (e.clientY - drag.y) / this.scale));
+      this.clampView();
       drag.x = e.clientX;
       drag.y = e.clientY;
     } else if (drag.kind === "corner") {
@@ -611,9 +644,13 @@ export class PlanView {
     const br = this.toPlan(this.width, this.height);
     const [vx0, vx1] = [Math.min(tl.x, br.x), Math.max(tl.x, br.x)];
     const [vy0, vy1] = [Math.min(tl.y, br.y), Math.max(tl.y, br.y)];
-    out.push(rect(vx0, -8, vx1, -1, "street"));
+    // The street runs as far as the landscape does.
+    const b = this.bounds();
+    const [sx0, sx1] = [Math.max(vx0, b.x0), Math.min(vx1, b.x1)];
+    out.push(rect(sx0, -8, sx1, -1, "street"));
     const streetY = this.toScreen(new Vec2(0, -4.5))[1];
-    out.push(`<line class="street-line" x1="0" x2="${this.width}" y1="${streetY}" y2="${streetY}"/>`);
+    const [lx0, lx1] = [this.toScreen(new Vec2(sx0, 0))[0], this.toScreen(new Vec2(sx1, 0))[0]].sort((a, c) => a - c);
+    out.push(`<line class="street-line" x1="${lx0.toFixed(1)}" x2="${lx1.toFixed(1)}" y1="${streetY}" y2="${streetY}"/>`);
     out.push(this.label(new Vec2(plot.width / 2, -4.5), m.ui.street, "street-label"));
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
 
