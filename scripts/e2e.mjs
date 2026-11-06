@@ -542,6 +542,13 @@ try {
   };
   const player1Designs = await designsOf();
   assert.ok(player1Designs >= 1);
+  // Player 1 has earned something (as if from sales) that must stay theirs.
+  await page.evaluate(() => {
+    const { store } = window.architect;
+    store.career = { ...store.career, earnings: 12_345, completed: [{ clientId: "lindgren", fee: 12_345, stars: 3 }] };
+    store.save();
+  });
+  const earnings = () => page.evaluate(() => window.architect.store.career.earnings);
   await page.click(".studio .player-chip");
   assert.equal(await page.locator("#modal h2").textContent(), "Who is playing?");
   assert.equal(await page.locator("#modal .player-card.current").count(), 1);
@@ -552,6 +559,11 @@ try {
   await page.waitForFunction(() => window.architect && document.querySelector("#modal .welcome"));
   assert.match(await page.locator("#modal .playing-as").innerText(), /Playing as Emma/);
   assert.equal(await page.locator("#modal .mode-card.campaign .continue").count(), 0, "Emma has not started");
+  assert.equal(await earnings(), 0, "Emma starts with no money");
+  // Even after another reload (which saves on the way out).
+  await page.reload();
+  await page.waitForFunction(() => window.architect && document.querySelector("#modal .welcome"));
+  assert.equal(await earnings(), 0, "Emma still has no money");
   await page.click("#modal .dialog-close");
   assert.match(await page.locator(".studio .player-chip").innerText(), /🐼 Emma/);
   assert.equal(await designsOf(), 0, "Emma has no designs");
@@ -560,6 +572,7 @@ try {
   await page.click('#modal [data-action="play-0"]');
   await page.waitForFunction(() => window.architect && document.querySelector("#modal .welcome"));
   assert.match(await page.locator("#modal .playing-as").innerText(), /Playing as Player 1/);
+  assert.equal(await earnings(), 12_345, "Player 1's money is theirs");
   await page.click("#modal .dialog-close");
   assert.equal(await designsOf(), player1Designs, "Player 1's designs are back");
 

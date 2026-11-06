@@ -2,6 +2,10 @@
  * Players sharing one browser. Each player has their own campaign, free play house and
  * saved designs, stored under their own keys; the language and the cost panel's place
  * are shared. Saves from before there were players become the first player's.
+ *
+ * A page plays as the player it was loaded for, to the end: switching player records the
+ * choice and reloads, and anything saved while the page goes away (such as the save on
+ * closing) still goes to the player who was playing.
  */
 
 export interface Profile {
@@ -70,10 +74,13 @@ function load(defaultName: string): Profiles {
 const dataKey = (id: string, name: PlayerData) => `architect.${id}.${name}`;
 
 let state: Profiles | null = null;
+/** The player this page plays as. */
+let playing: string | null = null;
 
 /** Set up the players (call once, before anything reads a player's data). */
 export function initProfiles(defaultName: string): void {
   state = load(defaultName);
+  playing = state.current;
 }
 
 const profilesState = (): Profiles => (state ??= load("Player 1"));
@@ -82,7 +89,8 @@ export const listProfiles = (): Profile[] => profilesState().list;
 
 export const currentProfile = (): Profile => {
   const s = profilesState();
-  return s.list.find((p) => p.id === s.current) ?? s.list[0];
+  playing ??= s.current;
+  return s.list.find((p) => p.id === playing) ?? s.list[0];
 };
 
 /** The storage key of some of the current player's data. */
@@ -125,7 +133,7 @@ export function renameProfile(id: string, name: string, avatar: string): void {
 /** Remove a player and everything they saved (not the current player). */
 export function deleteProfile(id: string): void {
   const s = profilesState();
-  if (id === s.current || s.list.length < 2) return;
+  if (id === currentProfile().id || s.list.length < 2) return;
   s.list = s.list.filter((p) => p.id !== id);
   write(s);
   try {
