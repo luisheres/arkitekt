@@ -131,6 +131,11 @@ lists your saved designs from both modes and picks one up again (a campaign desi
 its client your commission, a free play design opens in free play; the design you were
 on is saved first). Sold designs stay in the list but cannot be sold twice.
 
+**Players.** Several people can play in the same browser, each with their own campaign,
+free play house and saved designs: the player chip in the sidebar (or **Change player**
+on the welcome screen) lists them, adds a new player with a name and a picture, renames or
+removes one. Saves from before players existed belong to the first player.
+
 Every pop-up closes with the **×** in its corner or `Escape`. Closing the "Sold!" pop-up
 still books the sale; between clients, the sidebar offers to choose the next one. The
 **🏠 Menu** shows what you are playing and the game's version.

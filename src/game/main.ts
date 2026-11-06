@@ -22,18 +22,21 @@ import {
   showSaveDialog,
   showVerdict,
   showWelcome,
+  showPlayers,
   showWorkshop,
   toast,
 } from "./dialogs";
 import { deleteDesign, listDesigns } from "./designs";
 import { CostPanel } from "./costChart";
 import { Panel } from "./panel";
+import { AVATARS, addProfile, currentProfile, deleteProfile, initProfiles, listProfiles, readPlayerData, renameProfile, switchProfile } from "./profiles";
 import { Popover } from "./popover";
 import { PlanView } from "./plan";
 import { type Mode, Store, type Tool } from "./store";
 import { View3D } from "./view3d";
 
 translatePage();
+initProfiles(m.progress.defaultPlayer);
 
 /** The mode chosen in this tab, so reloading (e.g. to change language) skips the welcome. */
 const MODE_KEY = "architect.session.mode";
@@ -195,7 +198,48 @@ function showMenu(): void {
       store.setMode("free");
       store.setFreePlot(setting);
     },
-  }, nowPlaying);
+    players: showPlayersDialog,
+  }, nowPlaying, currentProfile());
+}
+
+// --- Players ------------------------------------------------------------------------
+
+/** Start over as another player: their own game, from the welcome screen. */
+function becomePlayer(id: string): void {
+  store.save();
+  switchProfile(id);
+  try {
+    sessionStorage.removeItem(MODE_KEY);
+  } catch {
+    // Only a convenience.
+  }
+  location.reload();
+}
+
+function showPlayersDialog(): void {
+  const me = currentProfile().id;
+  const cards = listProfiles().map((p) => {
+    const career = p.id === me ? store.campaignCareer() : readPlayerData<{ career?: core.Career }>(p.id, "game.v2")?.career;
+    const houses = career?.completed.length ?? 0;
+    return {
+      ...p,
+      current: p.id === me,
+      summary: career && (houses || career.techniques?.length) ? m.progress.playerSummary(houses, core.careerStars(career)) : m.progress.notStarted,
+    };
+  });
+  showPlayers(cards, AVATARS, {
+    play: becomePlayer,
+    create: (name, avatar) => becomePlayer(addProfile(name, avatar).id),
+    edit: (id, name, avatar) => {
+      renameProfile(id, name, avatar);
+      store.emitUi();
+      showPlayersDialog();
+    },
+    remove: (id) => {
+      deleteProfile(id);
+      showPlayersDialog();
+    },
+  });
 }
 // --- Saved designs ------------------------------------------------------------------
 
@@ -259,6 +303,7 @@ new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   showClients,
   showWorkshop: () => openWorkshop(),
   showMenu,
+  showPlayers: showPlayersDialog,
   present,
   showBrief: meetClient,
 });

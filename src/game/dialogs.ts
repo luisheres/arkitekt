@@ -115,11 +115,99 @@ export function onLearn(fn: (id: TechniqueId) => void): void {
   learnHandler = fn;
 }
 
+// --- Players ---------------------------------------------------------------------------
+
+export interface PlayerCard {
+  id: string;
+  name: string;
+  avatar: string;
+  summary: string;
+  current: boolean;
+}
+
+export interface PlayerActions {
+  play(id: string): void;
+  create(name: string, avatar: string): void;
+  edit(id: string, name: string, avatar: string): void;
+  remove(id: string): void;
+}
+
+/** Who is playing: switch to another player, add one, or edit or remove one. */
+export function showPlayers(players: readonly PlayerCard[], avatars: readonly string[], actions: PlayerActions): void {
+  const p = m.progress;
+  const again = () => showPlayers(players, avatars, actions);
+  const cards = players
+    .map(
+      (pl, i) => `<li class="player-card${pl.current ? " current" : ""}">
+          <span class="player-avatar" aria-hidden="true">${esc(pl.avatar)}</span>
+          <span class="player-info"><strong>${esc(pl.name)}</strong><span class="sub">${esc(pl.summary)}</span></span>
+          <span class="player-actions">
+            ${pl.current ? `<span class="tag">${esc(p.playingNow)}</span>` : `<button type="button" class="primary" data-action="play-${i}">${esc(p.play)}</button>`}
+            <button type="button" data-action="edit-${i}">${esc(p.edit)}</button>
+            ${pl.current ? "" : `<button type="button" class="danger" data-action="remove-${i}">${esc(p.deletePlayer)}</button>`}
+          </span>
+        </li>`,
+    )
+    .join("");
+  const handlers: Record<string, () => void> = {
+    new: () => playerForm(p.newPlayer, "", avatars[players.length % avatars.length], avatars, again, actions.create),
+  };
+  players.forEach((pl, i) => {
+    handlers[`play-${i}`] = () => actions.play(pl.id);
+    handlers[`edit-${i}`] = () => playerForm(p.edit, pl.name, pl.avatar, avatars, again, (name, avatar) => actions.edit(pl.id, name, avatar));
+    handlers[`remove-${i}`] = () =>
+      open(
+        `<h2>${esc(p.deletePlayer)}: ${esc(pl.name)}</h2>
+         <p>${esc(p.deletePlayerText(pl.name))}</p>
+         <div class="actions"><button type="button" data-action="cancel" data-focus>${esc(p.back)}</button><button type="button" class="primary danger-primary" data-action="confirm">${esc(p.deletePlayer)}</button></div>`,
+        { cancel: again, confirm: () => actions.remove(pl.id) },
+      );
+  });
+  open(
+    `<h2>${esc(p.whoIsPlaying)}</h2>
+     <ul class="player-list">${cards}</ul>
+     <div class="actions"><button type="button" class="primary" data-action="new">＋ ${esc(p.newPlayer)}</button></div>`,
+    handlers,
+  );
+}
+
+/** A player's name and picture. */
+function playerForm(title: string, name: string, avatar: string, avatars: readonly string[], back: () => void, done: (name: string, avatar: string) => void): void {
+  const p = m.progress;
+  const options = avatars
+    .map((a, i) => `<label class="avatar-choice"><input type="radio" name="avatar" value="${esc(a)}"${a === avatar ? " checked" : ""} aria-label="${i + 1}"><span>${esc(a)}</span></label>`)
+    .join("");
+  open(
+    `<h2>${esc(title)}</h2>
+     <label class="field-label">${esc(p.playerName)}<input type="text" class="player-name" maxlength="24" value="${esc(name)}" autocomplete="off"></label>
+     <div class="field-label">${esc(p.pickAvatar)}</div>
+     <div class="avatar-choices">${options}</div>
+     <div class="actions"><button type="button" data-action="back">← ${esc(p.back)}</button><button type="button" class="primary" data-action="done" disabled>${esc(name ? m.ui.save : p.create)}</button></div>`,
+    {
+      back,
+      // (The dialog is gone by now: use what was picked while it was open.)
+      done: () => done(input.value.trim(), picked),
+    },
+  );
+  const root = modal();
+  let picked = avatar;
+  for (const r of root.querySelectorAll<HTMLInputElement>("input[name=avatar]")) r.addEventListener("change", () => (picked = r.value));
+  const input = root.querySelector<HTMLInputElement>("input.player-name")!;
+  const ok = root.querySelector<HTMLButtonElement>('button[data-action="done"]')!;
+  const check = () => (ok.disabled = input.value.trim().length === 0);
+  input.addEventListener("input", check);
+  input.addEventListener("keydown", (e) => e.key === "Enter" && !ok.disabled && ok.click());
+  check();
+  input.focus();
+}
+
 // --- Welcome, clients and the Workshop --------------------------------------------------
 
 export interface WelcomeActions {
   /** Closed without choosing: carry on as before. */
   dismiss(): void;
+  /** Change or add players. */
+  players(): void;
   /** Continue the campaign in progress. */
   campaign(): void;
   /** Start a new campaign at a difficulty. */
@@ -159,9 +247,10 @@ export function showWelcome(
   progress: { houses: number; stars: number; money: number; difficulty: Difficulty } | null,
   actions: WelcomeActions,
   /** What is being played now, when coming back from the game ("Campaign · Moderate"). */
-  nowPlaying?: { mode: "campaign" | "free"; text: string },
+  nowPlaying: { mode: "campaign" | "free"; text: string } | undefined,
+  player: { name: string; avatar: string },
 ): void {
-  const again = () => showWelcome(progress, actions, nowPlaying);
+  const again = () => showWelcome(progress, actions, nowPlaying, player);
   const p = m.progress;
   const current = (mode: string) => (nowPlaying?.mode === mode ? ` current" aria-current="true` : "");
   open(
@@ -169,6 +258,7 @@ export function showWelcome(
        <div class="welcome-art" aria-hidden="true">🏡</div>
        <h2>${esc(p.welcomeTitle)}</h2>
        <p class="sub">${esc(p.welcomeText)}</p>
+       <p class="playing-as"><span aria-hidden="true">${esc(player.avatar)}</span> ${esc(p.playingAs(player.name))} · <button type="button" class="link" data-action="players">${esc(p.changePlayer)}</button></p>
        ${nowPlaying ? `<p class="now-playing">▶ ${esc(p.nowPlaying(nowPlaying.text))}</p>` : ""}
        <div class="mode-cards">
          <button type="button" class="mode-card campaign${current("campaign")}" data-action="campaign">
@@ -196,6 +286,7 @@ export function showWelcome(
           { cancel: again, confirm: () => chooseDifficulty(again, actions.startOver) }
         ),
       free: () => choosePlot(again, actions.free),
+      players: actions.players,
     },
     actions.dismiss,
   );

@@ -22,6 +22,7 @@ import { plotSize } from "./dialogs";
 import { esc, money, renderBrief, renderStatus } from "./hud";
 import { lang, m, setLang } from "./i18n";
 import type { Store, Tool } from "./store";
+import { currentProfile } from "./profiles";
 import { el, setLocked } from "./ui";
 
 const TOOLS: { tool: Tool; key: string; icon: string }[] = [
@@ -48,6 +49,8 @@ export interface PanelActions {
   showWorkshop(): void;
   /** Back to the welcome screen. */
   showMenu(): void;
+  /** Who is playing. */
+  showPlayers(): void;
   /** Save state before the page reloads in another language. */
   beforeReload(): void;
   present(): void;
@@ -80,6 +83,7 @@ export class Panel {
       if (action === "workshop") actions.showWorkshop();
       else if (action === "clients") actions.showClients();
       else if (action === "menu") actions.showMenu();
+      else if (action === "players") actions.showPlayers();
     });
     this.studio.addEventListener("change", (e) => {
       const select = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-plot]");
@@ -214,12 +218,14 @@ export class Panel {
     const { store } = this;
     const button = (action: string, label: string, title: string) => `<button type="button" data-action="${action}" title="${esc(title)}">${label}</button>`;
     const menu = button("menu", `🏠 ${esc(m.progress.menu)}`, m.progress.menuTitle);
+    const me = currentProfile();
+    const player = `<button type="button" class="player-chip" data-action="players" title="${esc(m.progress.changePlayer)}"><span aria-hidden="true">${esc(me.avatar)}</span> ${esc(me.name)}</button>`;
     let html: string;
     if (store.mode === "free") {
       const options = starterPlots()
         .map((p) => `<option value="${p.setting}"${p.setting === store.plot.setting ? " selected" : ""}>${esc(p.name[lang])}</option>`)
         .join("");
-      html = `<div class="studio-mode">🎨 ${esc(m.progress.freePlay)}</div>
+      html = `${player}<div class="studio-mode">🎨 ${esc(m.progress.freePlay)}</div>
         <label class="studio-plot">${esc(m.progress.plot)} <select data-plot>${options}</select></label>
         <div class="row">${menu}</div>`;
     } else {
@@ -229,7 +235,7 @@ export class Panel {
       const next = starsToNextTier(career);
       const from = TIER_STARS[tier];
       const progress = next ? (stars - from) / (TIER_STARS[next.tier] - from) : 1;
-      html = `<div class="studio-stats">
+      html = `${player}<div class="studio-stats">
           <span title="${esc(m.progress.money)}">💰 <b>${money(careerMoney(career))}</b></span>
           <span title="${esc(m.progress.reputation)}">⭐ <b>${stars}</b></span>
         </div>

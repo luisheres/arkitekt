@@ -2138,3 +2138,104 @@ button.locked::after,
   margin: 4px 0 0;
   font-size: 11px;
 }
+
+/* Players */
+.player-chip {
+  align-self: flex-start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.playing-as {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+}
+
+.player-card.current {
+  border-color: var(--primary, var(--accent));
+  background: #fff8e8;
+}
+
+.player-avatar {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.player-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 4px;
+  font-weight: 600;
+}
+
+.field-label input[type="text"] {
+  padding: 8px 10px;
+  font-size: 16px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+}
+
+.avatar-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 6px;
+}
+
+.avatar-choice input {
+  position: absolute;
+  opacity: 0;
+}
+
+.avatar-choice span {
+  display: grid;
+  place-items: center;
+  height: 48px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.avatar-choice input:checked + span {
+  border-color: var(--primary, var(--accent));
+  background: #fff4d6;
+}
+
+.avatar-choice input:focus-visible + span {
+  outline: 2px solid var(--accent);
+}

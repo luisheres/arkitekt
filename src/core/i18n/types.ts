@@ -78,6 +78,22 @@ export interface Messages {
     version(v: string): string;
     /** Between commissions in the campaign. */
     noClient: string;
+    defaultPlayer: string;
+    players: string;
+    playingAs(name: string): string;
+    changePlayer: string;
+    whoIsPlaying: string;
+    newPlayer: string;
+    playerName: string;
+    pickAvatar: string;
+    create: string;
+    edit: string;
+    play: string;
+    playingNow: string;
+    deletePlayer: string;
+    deletePlayerText(name: string): string;
+    playerSummary(houses: number, stars: number): string;
+    notStarted: string;
     /** Under Save and Open: progress needs no saving by hand. */
     autoSaved: string;
     chooseClient: string;

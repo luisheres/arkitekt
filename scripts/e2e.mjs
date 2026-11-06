@@ -483,6 +483,37 @@ try {
   const hardBudget = Number(/Budget\s*([\d,]+)/.exec(lindgrenCard)[1].replace(/,/g, ""));
   assert.ok(hardBudget < 65_000 && hardBudget > 45_000, `hard budget ${hardBudget}`);
   assert.match(lindgrenCard, /Fee up to 7,800/, "the fee is the same as on moderate");
+  await page.keyboard.press("Escape");
+
+  // Players: a new player starts from nothing; switching back finds everything as it was.
+  const designsOf = async () => {
+    await page.click('#sidebar header button:has-text("Open")');
+    const n = await page.locator("#modal .design-card").count();
+    await page.keyboard.press("Escape");
+    return n;
+  };
+  const player1Designs = await designsOf();
+  assert.ok(player1Designs >= 1);
+  await page.click(".studio .player-chip");
+  assert.equal(await page.locator("#modal h2").textContent(), "Who is playing?");
+  assert.equal(await page.locator("#modal .player-card.current").count(), 1);
+  await page.click('#modal [data-action="new"]');
+  await page.fill("#modal input.player-name", "Emma");
+  await page.click("#modal .avatar-choice >> nth=2");
+  await page.click('#modal [data-action="done"]');
+  await page.waitForFunction(() => window.architect && document.querySelector("#modal .welcome"));
+  assert.match(await page.locator("#modal .playing-as").innerText(), /Playing as Emma/);
+  assert.equal(await page.locator("#modal .mode-card.campaign .continue").count(), 0, "Emma has not started");
+  await page.click("#modal .dialog-close");
+  assert.match(await page.locator(".studio .player-chip").innerText(), /🐼 Emma/);
+  assert.equal(await designsOf(), 0, "Emma has no designs");
+  await page.click(".studio .player-chip");
+  assert.equal(await page.locator("#modal .player-card").count(), 2);
+  await page.click('#modal [data-action="play-0"]');
+  await page.waitForFunction(() => window.architect && document.querySelector("#modal .welcome"));
+  assert.match(await page.locator("#modal .playing-as").innerText(), /Playing as Player 1/);
+  await page.click("#modal .dialog-close");
+  assert.equal(await designsOf(), player1Designs, "Player 1's designs are back");
 
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");

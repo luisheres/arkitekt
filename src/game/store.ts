@@ -7,6 +7,7 @@
  */
 
 import { newDesignId, putDesign } from "./designs";
+import { playerKey } from "./profiles";
 import {
   type Abilities,
   type Career,
@@ -65,7 +66,8 @@ export type Change = "house" | "ui" | "client";
 
 export type Mode = "campaign" | "free";
 
-const SAVE_KEYS: Record<Mode, string> = { campaign: "architect.game.v2", free: "architect.free.v1" };
+/** Where the current player's campaign and free play are kept. */
+const saveKey = (mode: Mode): string => playerKey(mode === "campaign" ? "game.v2" : "free.v1");
 
 interface Saved {
   career: Career;
@@ -216,6 +218,11 @@ export class Store {
   }
 
   // --- Campaign ----------------------------------------------------------------------
+
+  /** Tell the views that something outside the store changed (such as the player's name). */
+  emitUi(): void {
+    this.emit("ui");
+  }
 
   /** Called when the player reaches for something not learned yet (to show the Workshop). */
   onLocked: (id: TechniqueId) => void = () => {};
@@ -514,7 +521,7 @@ export class Store {
         this.mode === "free"
           ? { setting: this.client.plot.setting, house: this.house.toJSON(), ...design }
           : { career: this.career, current: this.working ? { clientId: this.client.id, house: this.house.toJSON(), ...design } : null };
-      localStorage.setItem(SAVE_KEYS[this.mode], JSON.stringify(saved));
+      localStorage.setItem(saveKey(this.mode), JSON.stringify(saved));
     } catch {
       // Storage can be unavailable (private windows); saving is a convenience only.
     }
@@ -522,7 +529,7 @@ export class Store {
 
   private static restore<T>(mode: Mode): T | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEYS[mode]);
+      const raw = localStorage.getItem(saveKey(mode));
       return raw ? (JSON.parse(raw) as T) : null;
     } catch {
       return null;
