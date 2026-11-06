@@ -97,7 +97,7 @@ function showClients(): void {
       tier: core.clientTier(client),
       story: client.id in core.STORY_TIER,
       needs: core.clientNeeds(client, can),
-      maxFee: Math.round(client.budget * (core.BASE_FEE_SHARE + can.feePoints / 100) * 1.5),
+      maxFee: Math.round((client.feeBudget ?? client.budget) * (core.BASE_FEE_SHARE + can.feePoints / 100) * 1.5),
     };
   });
   const next = core.starsToNextTier(store.career);
@@ -170,15 +170,16 @@ const present = () => {
 function showMenu(): void {
   const career = store.campaignCareer();
   const started = career.completed.length > 0 || (career.techniques?.length ?? 0) > 0 || (store.mode === "campaign" && store.working);
-  showWelcome(started ? { houses: career.completed.length, stars: core.careerStars(career), money: core.careerMoney(career) } : null, {
+  const difficulty = career.difficulty ?? "moderate";
+  showWelcome(started ? { houses: career.completed.length, stars: core.careerStars(career), money: core.careerMoney(career), difficulty } : null, {
     campaign: () => {
       rememberMode("campaign");
       store.setMode("campaign");
       if (!store.working) showClients();
     },
-    startOver: () => {
+    startOver: (difficulty) => {
       rememberMode("campaign");
-      store.startOver();
+      store.startOver(difficulty);
       showClients();
     },
     free: (setting) => {

@@ -74,6 +74,11 @@ try {
   await shot("welcome");
   await page.click('#modal [data-action="campaign"]');
 
+  // A new campaign asks how tight budgets should be.
+  assert.equal(await page.locator("#modal h2").textContent(), "How tight should budgets be?");
+  assert.equal(await page.locator("#modal .mode-card.difficulty").count(), 3);
+  await page.click('#modal [data-action="difficulty-moderate"]');
+
   // Clients to choose from: the story's first client, two more, and the next tier, locked.
   assert.equal(await page.locator("#modal .offer-card:not(.teaser)").count(), 3);
   assert.match(await page.locator("#modal .offer-card.teaser").innerText(), /Family homes call when you have 5 more/);
@@ -86,7 +91,7 @@ try {
   await page.click('#modal [data-action="accept"]');
   assert.equal(await page.locator("#modal").isHidden(), true);
   assert.equal((await model()).client, "lindgren");
-  assert.match(await page.locator(".studio").innerText(), /Tier 1 · Starter homes/);
+  assert.match(await page.locator(".studio").innerText(), /Tier 1 · Starter homes Moderate/);
 
   // Open plan is not learned yet: its tool is locked and shows it in the Workshop.
   assert.equal(await page.locator('.tools button.locked:has-text("Open")').count(), 1);
@@ -356,7 +361,7 @@ try {
 
   // Free play, from the menu: any plot, every technique, no budget.
   await page.click('.studio [data-action="menu"]');
-  assert.match(await page.locator("#modal .mode-card.campaign").innerText(), /Continue: 1 house sold/);
+  assert.match(await page.locator("#modal .mode-card.campaign").innerText(), /Continue: 1 house sold.*Moderate/);
   await page.click('#modal [data-action="free"]');
   await page.click('#modal [data-action="plot-suburban"]');
   assert.equal((await model()).client, "free-suburban");
@@ -456,6 +461,18 @@ try {
   await page.click('#modal [data-action="campaign"]');
   assert.equal((await model()).client, "haddad");
   assert.equal((await model()).walls, 4);
+
+  // Starting over on hard: the same first client has a tighter budget.
+  await page.click('.studio [data-action="menu"]');
+  await page.click('#modal [data-action="startOver"]');
+  await page.click('#modal [data-action="confirm"]');
+  await shot("difficulty");
+  await page.click('#modal [data-action="difficulty-hard"]');
+  const lindgrenCard = await page.locator("#modal .offer-card >> nth=0").innerText();
+  assert.match(lindgrenCard, /Lindgren/);
+  const hardBudget = Number(/Budget\s*([\d,]+)/.exec(lindgrenCard)[1].replace(/,/g, ""));
+  assert.ok(hardBudget < 65_000 && hardBudget > 45_000, `hard budget ${hardBudget}`);
+  assert.match(lindgrenCard, /Fee up to 7,800/, "the fee is the same as on moderate");
 
   assert.deepEqual(errors, [], "no page errors");
   console.log("e2e: all checks passed");

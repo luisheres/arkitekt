@@ -221,7 +221,7 @@ export class Panel {
           <span title="${esc(m.progress.money)}">💰 <b>${money(careerMoney(career))}</b></span>
           <span title="${esc(m.progress.reputation)}">⭐ <b>${stars}</b></span>
         </div>
-        <div class="studio-tier">${esc(m.progress.tier(tier, m.tierName[tier]))}</div>
+        <div class="studio-tier">${esc(m.progress.tier(tier, m.tierName[tier]))} <span class="difficulty-tag ${career.difficulty ?? "moderate"}">${esc(m.difficulty[career.difficulty ?? "moderate"].name)}</span></div>
         <div class="tier-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}"><span style="width:${Math.round(progress * 100)}%"></span></div>
         <div class="sub">${esc(next ? m.progress.toNextTier(next.needed, m.tierName[next.tier]) : m.progress.topTier)}</div>
         <div class="row">${button("clients", `📋 ${esc(m.progress.clients)}`, m.progress.clientsTitle)}${button("workshop", `🔨 ${esc(m.progress.workshop)}`, m.progress.workshopTitle)}${menu}</div>`;

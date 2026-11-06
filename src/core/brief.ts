@@ -55,6 +55,8 @@ export interface Client {
   text: Record<Lang, ClientText>;
   plot: Plot;
   budget: number;
+  /** The budget the fee is reckoned on, when the difficulty changed `budget`. */
+  feeBudget?: number;
   items: BriefItem[];
 }
 
@@ -175,7 +177,7 @@ export function presentDesign(house: House, client: Client, prices: PriceList, m
   const stars = ratio >= 0.999 ? 3 : ratio >= 0.5 ? 2 : 1;
   const accepted = problems.length === 0;
   const share = BASE_FEE_SHARE + (can?.feePoints ?? 0) / 100;
-  const fee = accepted ? Math.round((client.budget * share * (1 + 0.5 * ratio)) / 100) * 100 : 0;
+  const fee = accepted ? Math.round(((client.feeBudget ?? client.budget) * share * (1 + 0.5 * ratio)) / 100) * 100 : 0;
   const quote = !accepted ? m.brief.quoteRejected : stars === 3 ? m.brief.quoteThreeStars : stars === 2 ? m.brief.quoteTwoStars : m.brief.quoteOneStar;
   return { accepted, problems, wishesMet, wishesTotal: wishes.length, stars, fee, quote };
 }

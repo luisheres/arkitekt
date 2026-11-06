@@ -86,6 +86,11 @@ export const en: Messages = {
   },
   branch: { facades: "Facades", roofs: "Roofs", floors: "Floors", structure: "Structure", business: "Business" },
   tierName: { 1: "Starter homes", 2: "Family homes", 3: "Villas", 4: "Signature houses" },
+  difficulty: {
+    easy: { name: "Easy", text: "Roomy budgets, with plenty to spare for nice things." },
+    moderate: { name: "Moderate", text: "Budgets like real clients have: enough, if you plan well." },
+    hard: { name: "Hard", text: "Tight budgets: every krona counts. Still always enough for a plain house." },
+  },
 
   progress: {
     welcomeTitle: "Welcome to Architect!",
@@ -99,6 +104,8 @@ export const en: Messages = {
     freePlay: "Free play",
     freePlayText: "Build anything you like on any plot, with every technique and no budget.",
     choosePlot: "Choose a plot",
+    chooseDifficulty: "How tight should budgets be?",
+    difficultyText: "Your fee is the same at every level; only the money for building changes.",
     back: "Back",
 
     money: "Money",

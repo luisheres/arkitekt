@@ -26,6 +26,8 @@ import {
   buyTechnique,
   careerAbilities,
   clientById,
+  careerClient,
+  type Difficulty,
   clientOffers,
   completeCommission,
   freePlayClient,
@@ -173,7 +175,7 @@ export class Store {
     this.career = saved?.career ?? newCareer();
     const current = saved?.current && clientById(saved.current.clientId);
     if (saved?.current && current && !isFreePlay(current)) {
-      this.client = current;
+      this.client = careerClient(this.career, current);
       this.house = House.fromJSON(saved.current.house);
       // Saves from before furniture was stored: furnish the rooms once.
       if (!saved.current.house.furniture) furnishAll(this.house);
@@ -191,9 +193,9 @@ export class Store {
     return this.mode === "campaign" ? this.career : (Store.restore<Saved>("campaign")?.career ?? newCareer());
   }
 
-  /** Start the campaign over from nothing; saved designs stay. */
-  startOver(): void {
-    this.career = newCareer();
+  /** Start the campaign over from nothing, at a difficulty; saved designs stay. */
+  startOver(difficulty: Difficulty): void {
+    this.career = newCareer(difficulty);
     this.mode = "campaign";
     this.client = clientOffers(this.career)[0];
     this.working = false;
@@ -327,7 +329,7 @@ export class Store {
       this.emit("client");
       return false;
     }
-    this.client = client;
+    this.client = mode === "campaign" ? careerClient(this.career, client) : client;
     this.house = House.fromJSON(d.house);
     if (!d.house.furniture) furnishAll(this.house);
     this.design = { id: d.id, name: d.name };

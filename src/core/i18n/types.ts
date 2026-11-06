@@ -5,6 +5,7 @@
 
 import type { Requirement } from "../brief";
 import type { CostGroup } from "../cost";
+import type { Difficulty } from "../difficulty";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
 import type { FloorFinish, FootprintError, OpeningKind, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
@@ -54,6 +55,8 @@ export interface Messages {
   branch: Record<Branch, string>;
   /** The kinds of client each tier brings. */
   tierName: Record<Tier, string>;
+  /** How tight budgets are. */
+  difficulty: Record<Difficulty, { name: string; text: string }>;
 
   /** The campaign: welcome, studio, clients to choose from, the Workshop. */
   progress: {
@@ -69,6 +72,8 @@ export interface Messages {
     freePlay: string;
     freePlayText: string;
     choosePlot: string;
+    chooseDifficulty: string;
+    difficultyText: string;
     back: string;
 
     money: string;

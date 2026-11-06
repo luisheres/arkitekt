@@ -3,6 +3,8 @@
 import {
   BRANCHES,
   type Career,
+  DIFFICULTIES,
+  type Difficulty,
   type Client,
   type SavedDesign,
   type Setting,
@@ -102,15 +104,44 @@ export function onLearn(fn: (id: TechniqueId) => void): void {
 // --- Welcome, clients and the Workshop --------------------------------------------------
 
 export interface WelcomeActions {
+  /** Continue the campaign in progress. */
   campaign(): void;
-  startOver(): void;
+  /** Start a new campaign at a difficulty. */
+  startOver(difficulty: Difficulty): void;
   free(setting: Setting): void;
+}
+
+const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🌱", moderate: "🏗️", hard: "🔥" };
+
+/** A new campaign: how tight should budgets be? */
+function chooseDifficulty(back: () => void, pick: (d: Difficulty) => void): void {
+  const cards = DIFFICULTIES.map(
+    (d) =>
+      `<button type="button" class="mode-card difficulty ${d}" data-action="difficulty-${d}">
+         <span class="mode-icon" aria-hidden="true">${DIFFICULTY_ICON[d]}</span>
+         <strong>${esc(m.difficulty[d].name)}</strong>
+         <span>${esc(m.difficulty[d].text)}</span>
+       </button>`,
+  ).join("");
+  const actions: Record<string, () => void> = { back };
+  for (const d of DIFFICULTIES) actions[`difficulty-${d}`] = () => pick(d);
+  open(
+    `<h2>${esc(m.progress.chooseDifficulty)}</h2>
+     <p class="sub">${esc(m.progress.difficultyText)}</p>
+     <div class="mode-cards three">${cards}</div>
+     <div class="actions"><button type="button" data-action="back">← ${esc(m.progress.back)}</button></div>`,
+    actions,
+    false,
+  );
+  modal().querySelector(".dialog")?.classList.add("wide");
+  modal().querySelector<HTMLButtonElement>(".difficulty.moderate")?.focus();
 }
 
 const SETTING_ICON: Record<Setting, string> = { suburban: "🏘️", lakeside: "🏞️", hillside: "⛰️" };
 
 /** The first thing on screen: campaign or free play. */
-export function showWelcome(progress: { houses: number; stars: number; money: number } | null, actions: WelcomeActions): void {
+export function showWelcome(progress: { houses: number; stars: number; money: number; difficulty: Difficulty } | null, actions: WelcomeActions): void {
+  const again = () => showWelcome(progress, actions);
   const p = m.progress;
   open(
     `<div class="welcome">
@@ -122,7 +153,7 @@ export function showWelcome(progress: { houses: number; stars: number; money: nu
            <span class="mode-icon" aria-hidden="true">🏆</span>
            <strong>${esc(p.campaign)}</strong>
            <span>${esc(p.campaignText)}</span>
-           ${progress ? `<span class="continue">${esc(p.continueCampaign(progress.houses, progress.stars, money(progress.money)))}</span>` : ""}
+           ${progress ? `<span class="continue">${esc(p.continueCampaign(progress.houses, progress.stars, money(progress.money)))} · ${DIFFICULTY_ICON[progress.difficulty]} ${esc(m.difficulty[progress.difficulty].name)}</span>` : ""}
          </button>
          <button type="button" class="mode-card free" data-action="free">
            <span class="mode-icon" aria-hidden="true">🎨</span>
@@ -133,16 +164,16 @@ export function showWelcome(progress: { houses: number; stars: number; money: nu
        ${progress ? `<div class="actions start-over"><button type="button" class="link" data-action="startOver">${esc(p.startOver)}</button></div>` : ""}
      </div>`,
     {
-      campaign: actions.campaign,
+      campaign: () => (progress ? actions.campaign() : chooseDifficulty(again, actions.startOver)),
       startOver: () =>
         open(
           `<h2>${esc(p.startOverTitle)}</h2>
            <p>${esc(p.startOverText)}</p>
            <div class="actions"><button type="button" data-action="cancel" data-focus>${esc(p.back)}</button><button type="button" class="primary danger-primary" data-action="confirm">${esc(p.startOver)}</button></div>`,
-          { cancel: () => showWelcome(progress, actions), confirm: actions.startOver },
+          { cancel: again, confirm: () => chooseDifficulty(again, actions.startOver) },
           false,
         ),
-      free: () => choosePlot(() => showWelcome(progress, actions), actions.free),
+      free: () => choosePlot(again, actions.free),
     },
     false,
   );

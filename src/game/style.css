@@ -2074,3 +2074,36 @@ button.locked::after,
 .progress-news li {
   margin: 3px 0;
 }
+
+.mode-card.difficulty.easy {
+  background: #e4f6dc;
+}
+
+.mode-card.difficulty.moderate {
+  background: #fff4d6;
+}
+
+.mode-card.difficulty.hard {
+  background: #ffe1d6;
+}
+
+.difficulty-tag {
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.difficulty-tag.easy {
+  background: #d9f2d0;
+}
+
+.difficulty-tag.moderate {
+  background: #fff1b8;
+}
+
+.difficulty-tag.hard {
+  background: #ffd2c2;
+}

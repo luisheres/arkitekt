@@ -89,6 +89,11 @@ export const sv: Messages = {
   },
   branch: { facades: "Fasader", roofs: "Tak", floors: "Golv", structure: "Stomme", business: "Företaget" },
   tierName: { 1: "Små hus", 2: "Familjehus", 3: "Villor", 4: "Drömhus" },
+  difficulty: {
+    easy: { name: "Lätt", text: "Rymliga budgetar, med gott om pengar över till fina saker." },
+    moderate: { name: "Medel", text: "Budgetar som riktiga kunder har: det räcker om du planerar väl." },
+    hard: { name: "Svår", text: "Snäva budgetar: varje krona räknas. Det räcker ändå alltid till ett enkelt hus." },
+  },
 
   progress: {
     welcomeTitle: "Välkommen till Arkitekt!",
@@ -102,6 +107,8 @@ export const sv: Messages = {
     freePlay: "Fritt byggande",
     freePlayText: "Bygg vad du vill på vilken tomt som helst, med alla tekniker och utan budget.",
     choosePlot: "Välj en tomt",
+    chooseDifficulty: "Hur snäva ska budgetarna vara?",
+    difficultyText: "Ditt arvode är detsamma på alla nivåer; bara pengarna till bygget ändras.",
     back: "Tillbaka",
 
     money: "Pengar",

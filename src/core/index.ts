@@ -27,3 +27,4 @@ export * from "./scenery";
 export * from "./validate";
 export * from "./treemap";
 export * from "./progression";
+export * from "./difficulty";

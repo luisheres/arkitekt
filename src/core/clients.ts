@@ -1,6 +1,7 @@
 /** The clients who commission houses, easiest first, and the architect's career. */
 
 import type { Client } from "./brief";
+import { type Difficulty, withDifficulty } from "./difficulty";
 import { generateClient, nextSeed } from "./generate";
 import { type Setting, starterPlots } from "./plot";
 import { type Abilities, type TechniqueId, type Tier, TIER_STARS, abilities, technique, techniquesFor, tierFor } from "./progression";
@@ -190,11 +191,16 @@ export interface Career {
   techniques?: TechniqueId[];
   /** How many times the player asked for other clients. */
   refreshes?: number;
+  /** How tight budgets are; moderate for careers from before difficulties. */
+  difficulty?: Difficulty;
 }
 
-export function newCareer(): Career {
-  return { earnings: 0, completed: [], spent: 0, techniques: [], refreshes: 0 };
+export function newCareer(difficulty: Difficulty = "moderate"): Career {
+  return { earnings: 0, completed: [], spent: 0, techniques: [], refreshes: 0, difficulty };
 }
+
+/** A client as this career meets them: with the budget of its difficulty. */
+export const careerClient = (c: Career, client: Client): Client => withDifficulty(client, c.difficulty ?? "moderate");
 
 /** The tier a client belongs to. */
 export function clientTier(client: Client): Tier {
@@ -259,7 +265,7 @@ export function clientOffers(c: Career): Client[] {
   for (let tries = 0; tries < 40 && offers.every((o) => clientNeeds(o, a).length > 0); tries++) {
     offers[offers.length - 1] = generateClient(next(), tiers[(tries + 1) % tiers.length]);
   }
-  return offers;
+  return offers.map((o) => careerClient(c, o));
 }
 
 /** Stars still needed for the next tier, or null at the top. */
