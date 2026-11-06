@@ -306,6 +306,7 @@ try {
   assert.equal(await page.locator("#modal").isHidden(), true);
   assert.equal(await page.evaluate(() => window.architect.store.career.completed.length), 1, "the sale is booked");
   assert.match(await page.locator(".client-section").innerText(), /No client yet/);
+  assert.equal(await page.locator(".client-section button:has-text('Present to client')").isVisible(), false, "nothing to present yet");
   // The career so far: one house, with its picture and the techniques learned.
   await page.click('.studio [data-action="career"]');
   assert.match(await page.locator("#modal h2").innerText(), /Player 1's career/);

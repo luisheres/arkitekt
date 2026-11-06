@@ -154,10 +154,14 @@ Every pop-up closes with the **×** in its corner or `Escape`. Closing the "Sold
 still books the sale; between clients, the sidebar offers to choose the next one. The
 **🏠 Menu** shows what you are playing and the game's version.
 
-Besides the five written clients, clients are generated for each tier: couples, retirees
-and people working from home for starter homes; families too for family homes; large
-families and well-off households wanting brick or stone villas; artists wanting a house
-to remember. Each has their own household, brief, plot and budget, in both languages.
+Besides the five written clients, clients are generated for each tier: couples,
+retirees, people working from home, a music student and new parents for starter homes;
+families, keen gardeners, three generations under one roof and a family with muddy dogs
+for family homes; large families, two doctors with a practice at home, a writer wanting
+a view and a balcony, and a very sporty family for villas; artists, a games-company
+founder and a TV chef for signature houses. Briefs ask for rooms and sizes, facades,
+roofs, floors, open plan, windows, step-free doors, storeys, and now also painted rooms,
+plants indoors, a planted garden and balconies. Each has their own household, brief, plot and budget, in both languages.
 The campaign and free play are saved separately, so switching loses nothing.
 
 ## Editing

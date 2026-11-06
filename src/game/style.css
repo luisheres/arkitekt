@@ -2497,3 +2497,8 @@ button.locked::after,
 .plan .balcony.bad {
   stroke: var(--error);
 }
+
+/* Hidden means hidden, also for elements laid out as rows or grids. */
+#sidebar [hidden] {
+  display: none !important;
+}

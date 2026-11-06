@@ -9,7 +9,7 @@
 
 import type { BriefItem, Client, ClientText } from "./brief";
 import type { Lang } from "./i18n/types";
-import { ROOF_STYLES, type RoofStyle, type RoomType, type WallMaterial } from "./model";
+import { type PaintColor, ROOF_STYLES, type RoofStyle, type RoomType, type WallMaterial } from "./model";
 import { type Plot, type Setting, starterPlots } from "./plot";
 import { TIER_MIN_BUDGET, type Tier } from "./progression";
 
@@ -42,15 +42,36 @@ const TYPICAL_AREA: Record<RoomType, number> = {
   Storage: 3,
 };
 
-type Archetype = "family" | "couple" | "retirees" | "remote" | "villa" | "signature";
+type Archetype =
+  | "family"
+  | "couple"
+  | "retirees"
+  | "remote"
+  | "villa"
+  | "signature"
+  | "student"
+  | "newParents"
+  | "gardeners"
+  | "multigen"
+  | "dogs"
+  | "doctors"
+  | "writer"
+  | "sporty"
+  | "founder"
+  | "chef";
 
 /** Who calls at each tier. */
 const ARCHETYPES: Record<Tier, Archetype[]> = {
-  1: ["couple", "remote", "retirees"],
-  2: ["family", "couple", "remote", "retirees"],
-  3: ["family", "villa"],
-  4: ["villa", "signature"],
+  1: ["couple", "remote", "retirees", "student", "newParents"],
+  2: ["family", "couple", "remote", "retirees", "gardeners", "multigen", "dogs"],
+  3: ["family", "villa", "doctors", "writer", "sporty"],
+  4: ["villa", "signature", "founder", "chef"],
 };
+
+/** Households written for their tier: their briefs are not scaled up or added to. */
+const MADE_FOR_TIER = new Set<Archetype>(["villa", "signature", "doctors", "writer", "sporty", "founder", "chef"]);
+
+const KID_COLOURS: PaintColor[] = ["Sky", "Mint", "Blush", "Sunny", "Lavender"];
 
 /** Where each tier's clients have bought land. */
 const PLOTS: Record<Tier, Setting[]> = { 1: ["suburban"], 2: ["suburban", "lakeside"], 3: ["lakeside", "hillside"], 4: ["hillside"] };
@@ -81,8 +102,16 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
   const b = pick(FIRST.filter((f) => f !== a));
   const roof = pick(tier ? ROOFS[tier] : ROOF_STYLES);
   const wall = pick(tier ? WALLS[tier] : LEGACY_WALLS);
-  // (Only tiered clients pick this, so clients from before tiers stay the same.)
+  // (Only tiered clients pick these, so clients from before tiers stay the same.)
   const premium: WallMaterial = tier ? pick<WallMaterial>(["Brick", "Stone"]) : "Brick";
+  const colour: PaintColor = tier ? pick(KID_COLOURS) : "Sky";
+  /** Wishes only clients with a tier have (clients from before tiers stay the same). */
+  const extra = <T>(items: T[]): T[] => (tier ? items : []);
+  const colourWords = (lang: "en" | "sv") =>
+    ({
+      en: { Sky: "sky blue", Mint: "mint green", Blush: "pink", Sunny: "sunny yellow", Lavender: "lavender", White: "white", Cream: "cream", Sage: "sage green" },
+      sv: { Sky: "himmelsblått", Mint: "mintgrönt", Blush: "rosa", Sunny: "solgult", Lavender: "lavendelfärgat", White: "vitt", Cream: "gräddvitt", Sage: "salviagrönt" },
+    })[lang][colour];
 
   switch (kind) {
     case "family": {
@@ -115,6 +144,11 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "rooms", room: "Bedroom", count: kids + 1, minArea: 9, floor: "upper" },
           { kind: "wallMaterial", material: wall },
           { kind: "floorFinish", finish: "Wood", room: "Living" },
+          ...extra<BriefItem["req"]>([
+            { kind: "paint", room: "Bedroom", color: colour },
+            { kind: "gardenPlants", min: 4 },
+            { kind: "balcony" },
+          ]),
         ],
       };
     }
@@ -145,6 +179,10 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "windowArea", room: "Living", min: 4 },
           { kind: "floorFinish", finish: "Wood" },
           { kind: "underBudget", share: 0.9 },
+          ...extra<BriefItem["req"]>([
+            { kind: "indoorPlants", min: 2 },
+            { kind: "paint", room: "Living", color: pick<PaintColor>(["Cream", "Sage", "Sky"]) },
+          ]),
         ],
       };
     case "retirees":
@@ -175,6 +213,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "windowArea", room: "Living", min: 4 },
           { kind: "wallMaterial", material: wall },
           { kind: "floorFinish", finish: "Wood", room: "Bedroom" },
+          ...extra<BriefItem["req"]>([{ kind: "gardenPlants", min: 5 }]),
         ],
       };
     case "remote":
@@ -204,6 +243,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "connected", a: "Kitchen", b: "Living" },
           { kind: "underBudget", share: 0.85 },
           { kind: "floorFinish", finish: "Wood", room: "Office" },
+          ...extra<BriefItem["req"]>([{ kind: "indoorPlants", min: 3 }]),
         ],
       };
     case "villa":
@@ -239,6 +279,8 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "storeys", min: 2 },
           { kind: "everyFloor", room: "Bathroom" },
           { kind: "floorFinish", finish: "Stone", room: "Hall" },
+          { kind: "balcony" },
+          { kind: "gardenPlants", min: 8 },
         ],
       };
     case "signature":
@@ -275,6 +317,319 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "rooms", room: "Utility", count: 1 },
           { kind: "storeys", min: 3 },
           { kind: "underBudget", share: 0.9 },
+          { kind: "balcony" },
+          { kind: "indoorPlants", min: 6 },
+        ],
+      };
+    case "student":
+      return {
+        text: {
+          en: {
+            name: `${a} ${surname}`,
+            who: "A music student moving out of a tiny flat",
+            story: `I practise every day, so I need a room just for music, away from where I sleep. Apart from that, a small, cosy place is plenty. My dream is to paint the music room ${colourWords("en")}.`,
+          },
+          sv: {
+            name: `${a} ${surname}`,
+            who: "En musikstudent som flyttar från en pytteliten lägenhet",
+            story: `Jag övar varje dag, så jag behöver ett rum bara för musiken, en bit från där jag sover. I övrigt räcker något litet och mysigt. Min dröm är att måla musikrummet ${colourWords("sv")}.`,
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Office", count: 1, minArea: 9 },
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 8 },
+          { kind: "rooms", room: "Bathroom", count: 1 },
+          { kind: "rooms", room: "Kitchen", count: 1 },
+          { kind: "floorArea", max: 70 },
+        ],
+        wishes: [
+          { kind: "paint", room: "Office", color: colour },
+          { kind: "indoorPlants", min: 2 },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "rooms", room: "Living", count: 1, minArea: 12 },
+          { kind: "underBudget", share: 0.85 },
+        ],
+      };
+    case "newParents":
+      return {
+        text: {
+          en: {
+            name: `${a} & ${b} ${surname}`,
+            who: "Expecting their first baby",
+            story: `The baby is due in spring! We need a nursery next to our bedroom, a bathroom with a bath, and a kitchen open to the living room so we can keep an eye on things. A ${colourWords("en")} nursery would make us very happy.`,
+          },
+          sv: {
+            name: `${a} och ${b} ${surname}`,
+            who: "Väntar sitt första barn",
+            story: `Bebisen kommer i vår! Vi behöver ett barnrum bredvid vårt sovrum, ett badrum med badkar och ett kök som är öppet mot vardagsrummet så att vi har koll. Ett ${colourWords("sv")} barnrum skulle göra oss jätteglada.`,
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Bedroom", count: 2, minArea: 8 },
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 12 },
+          { kind: "rooms", room: "Bathroom", count: 1, minArea: 5 },
+          { kind: "rooms", room: "Kitchen", count: 1 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 16 },
+        ],
+        wishes: [
+          { kind: "paint", room: "Bedroom", color: colour },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "storeys", max: 1 },
+          { kind: "rooms", room: "Utility", count: 1 },
+          { kind: "gardenPlants", min: 3 },
+        ],
+      };
+    case "gardeners":
+      return {
+        text: {
+          en: {
+            name: `${a} & ${b} ${surname}`,
+            who: "Keen gardeners who grow everything themselves",
+            story: "Our old garden was our pride and joy, and we want an even better one: trees, shrubs and flower beds all around the house. Inside, a big kitchen for all the harvest, a room for seedlings and tools, and plants on every windowsill.",
+          },
+          sv: {
+            name: `${a} och ${b} ${surname}`,
+            who: "Trädgårdsälskare som odlar allt själva",
+            story: "Vår gamla trädgård var vår stolthet, och nu vill vi ha en ännu bättre: träd, buskar och rabatter runt hela huset. Inne ett stort kök för hela skörden, ett rum för plantor och redskap, och växter i varje fönster.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 12 },
+          { kind: "rooms", room: "Utility", count: 1, minArea: 4 },
+          { kind: "rooms", room: "Bedroom", count: 2, minArea: 9 },
+          { kind: "rooms", room: "Bathroom", count: 1 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 18 },
+        ],
+        wishes: [
+          { kind: "gardenPlants", min: 8 },
+          { kind: "indoorPlants", min: 4 },
+          { kind: "windowArea", room: "Kitchen", min: 3 },
+          { kind: "wallMaterial", material: wall },
+          { kind: "floorFinish", finish: "Wood", room: "Living" },
+        ],
+      };
+    case "multigen":
+      return {
+        text: {
+          en: {
+            name: `The ${surname} family`,
+            who: "Three generations under one roof",
+            story: "Grandma is moving in with us and the children. She needs her own bedroom and a bathroom on the ground floor, so she never has to climb stairs, and wide doors. The children can sleep upstairs, where it's quieter for everyone.",
+          },
+          sv: {
+            name: `Familjen ${surname}`,
+            who: "Tre generationer under ett tak",
+            story: "Mormor flyttar in hos oss och barnen. Hon behöver ett eget sovrum och ett badrum på bottenvåningen, så att hon aldrig behöver gå i trappor, och breda dörrar. Barnen kan sova på övervåningen, där det är lugnare för alla.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 11, floor: "ground" },
+          { kind: "rooms", room: "Bedroom", count: 3, minArea: 9 },
+          { kind: "rooms", room: "Bathroom", count: 1, floor: "ground" },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 10 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 22 },
+          { kind: "doorWidth", min: 0.9 },
+        ],
+        wishes: [
+          { kind: "rooms", room: "Bedroom", count: 2, minArea: 9, floor: "upper" },
+          { kind: "everyFloor", room: "Bathroom" },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "paint", room: "Bedroom", color: colour },
+          { kind: "gardenPlants", min: 4 },
+        ],
+      };
+    case "dogs":
+      return {
+        text: {
+          en: {
+            name: `The ${surname} family`,
+            who: "Two adults, a child and three very muddy dogs",
+            story: "Our dogs come in from walks covered in mud, so we need a utility room by the door with a sink, and a big hall. Tiles or stone on the floors, please, not carpet! A garden with hedges round it would keep the dogs from running off.",
+          },
+          sv: {
+            name: `Familjen ${surname}`,
+            who: "Två vuxna, ett barn och tre väldigt leriga hundar",
+            story: "Våra hundar kommer in från promenaderna täckta av lera, så vi behöver en tvättstuga vid dörren med en vask och en stor hall. Klinker eller sten på golven, tack, ingen matta! En trädgård med häck runt skulle hindra hundarna från att springa iväg.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Utility", count: 1, minArea: 5 },
+          { kind: "rooms", room: "Hall", count: 1, minArea: 6 },
+          { kind: "rooms", room: "Bedroom", count: 2, minArea: 9 },
+          { kind: "rooms", room: "Bathroom", count: 1 },
+          { kind: "rooms", room: "Kitchen", count: 1 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 20 },
+        ],
+        wishes: [
+          { kind: "floorFinish", finish: "Tiles", room: "Hall" },
+          { kind: "gardenPlants", min: 5 },
+          { kind: "rooms", room: "Garage", count: 1 },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "wallMaterial", material: wall },
+        ],
+      };
+    case "doctors":
+      return {
+        text: {
+          en: {
+            name: `Dr ${a} & Dr ${b} ${surname}`,
+            who: "Two doctors opening a small practice at home",
+            story: `We will see patients at home two days a week, so we need two consulting rooms and a waiting area by the front door, kept apart from the family. The rest is for us and our three children. Something calm and solid: ${premium === "Stone" ? "stone" : "brick"}, we think.`,
+          },
+          sv: {
+            name: `Dr ${a} och dr ${b} ${surname}`,
+            who: "Två läkare som öppnar en liten mottagning hemma",
+            story: `Vi tar emot patienter hemma två dagar i veckan, så vi behöver två mottagningsrum och ett väntrum vid entrén, skilt från familjen. Resten är för oss och våra tre barn. Något lugnt och gediget: ${premium === "Stone" ? "sten" : "tegel"}, tänker vi.`,
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Office", count: 2, minArea: 10, floor: "ground" },
+          { kind: "rooms", room: "Hall", count: 1, minArea: 8 },
+          { kind: "rooms", room: "WC", count: 1, floor: "ground" },
+          { kind: "rooms", room: "Bedroom", count: 3, minArea: 10 },
+          { kind: "rooms", room: "Bedroom", count: 1, minArea: 14 },
+          { kind: "rooms", room: "Bathroom", count: 2, minArea: 5 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 12 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 26 },
+          { kind: "wallMaterial", material: premium },
+        ],
+        wishes: [
+          { kind: "storeys", min: 2 },
+          { kind: "indoorPlants", min: 3 },
+          { kind: "rooms", room: "Garage", count: 1, minArea: 20 },
+          { kind: "gardenPlants", min: 6 },
+          { kind: "paint", room: "Office", color: "Sage" },
+        ],
+      };
+    case "writer":
+      return {
+        text: {
+          en: {
+            name: `${a} ${surname}`,
+            who: "A writer whose books have done very well",
+            story: "I want to write with a view. A big study full of light, a balcony to drink my morning coffee on, a library for all my books, and rooms for guests, because my family visits all summer. Concrete and glass, I think: something modern.",
+          },
+          sv: {
+            name: `${a} ${surname}`,
+            who: "En författare vars böcker har gått mycket bra",
+            story: "Jag vill skriva med utsikt. Ett stort arbetsrum fullt av ljus, en balkong att dricka morgonkaffet på, ett bibliotek för alla mina böcker och rum för gäster, eftersom familjen hälsar på hela sommaren. Betong och glas, tror jag: något modernt.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Office", count: 1, minArea: 16 },
+          { kind: "windowArea", room: "Office", min: 5 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 30 },
+          { kind: "rooms", room: "Bedroom", count: 4, minArea: 10 },
+          { kind: "rooms", room: "Bathroom", count: 2, minArea: 5 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 12 },
+          { kind: "storeys", min: 2 },
+          { kind: "balcony" },
+        ],
+        wishes: [
+          { kind: "wallMaterial", material: "Concrete" },
+          { kind: "roofStyle", styles: ["Flat"] },
+          { kind: "indoorPlants", min: 4 },
+          { kind: "floorFinish", finish: "Wood", room: "Office" },
+          { kind: "gardenPlants", min: 6 },
+        ],
+      };
+    case "sporty":
+      return {
+        text: {
+          en: {
+            name: `The ${surname} family`,
+            who: "A family that is always on the move",
+            story: "Skis, bikes, kayaks, hockey bags: our things need somewhere to live! A big garage, a storeroom and a utility room for wet clothes. Five bedrooms, two bathrooms, and a big kitchen to refuel in.",
+          },
+          sv: {
+            name: `Familjen ${surname}`,
+            who: "En familj som alltid är i rörelse",
+            story: "Skidor, cyklar, kajaker, hockeyväskor: våra saker behöver någonstans att bo! Ett stort garage, ett förråd och en tvättstuga för blöta kläder. Fem sovrum, två badrum och ett stort kök att tanka energi i.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Garage", count: 1, minArea: 30 },
+          { kind: "rooms", room: "Storage", count: 1, minArea: 6 },
+          { kind: "rooms", room: "Utility", count: 1, minArea: 5 },
+          { kind: "rooms", room: "Bedroom", count: 5, minArea: 9 },
+          { kind: "rooms", room: "Bathroom", count: 2, minArea: 5 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 14 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 26 },
+        ],
+        wishes: [
+          { kind: "storeys", min: 2 },
+          { kind: "balcony" },
+          { kind: "floorFinish", finish: "Tiles", room: "Hall" },
+          { kind: "paint", room: "Bedroom", color: colour },
+          { kind: "wallMaterial", material: wall },
+        ],
+      };
+    case "founder":
+      return {
+        text: {
+          en: {
+            name: `${a} ${surname}`,
+            who: "Founded a games company and sold it",
+            story: "I want the most modern house on the hill. Concrete, glass, a flat roof, and balconies to watch the sunset from. A big studio to work in, a gym, rooms for friends, and plants everywhere, so it still feels alive.",
+          },
+          sv: {
+            name: `${a} ${surname}`,
+            who: "Grundade ett spelföretag och sålde det",
+            story: "Jag vill ha det modernaste huset på kullen. Betong, glas, platt tak och balkonger att se solnedgången från. En stor ateljé att jobba i, ett gym, rum för vänner och växter överallt, så att det ändå känns levande.",
+          },
+        },
+        musts: [
+          { kind: "wallMaterial", material: "Concrete" },
+          { kind: "roofStyle", styles: ["Flat"] },
+          { kind: "balcony" },
+          { kind: "storeys", min: 2 },
+          { kind: "rooms", room: "Office", count: 2, minArea: 14 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 40 },
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 16 },
+          { kind: "rooms", room: "Bedroom", count: 4, minArea: 12 },
+          { kind: "rooms", room: "Bathroom", count: 3, minArea: 5 },
+          { kind: "rooms", room: "Garage", count: 1, minArea: 30 },
+        ],
+        wishes: [
+          { kind: "indoorPlants", min: 6 },
+          { kind: "windowArea", room: "Living", min: 12 },
+          { kind: "storeys", min: 3 },
+          { kind: "floorFinish", finish: "Stone", room: "Living" },
+          { kind: "gardenPlants", min: 8 },
+        ],
+      };
+    case "chef":
+      return {
+        text: {
+          en: {
+            name: `${a} ${surname}`,
+            who: "A famous chef with a TV cooking show",
+            story: "The kitchen is everything: huge, bright, with room for a camera crew, opening onto a dining room that seats twenty. Outside, an herb garden and fruit trees. Upstairs, a quiet home for my family, with a balcony over the garden.",
+          },
+          sv: {
+            name: `${a} ${surname}`,
+            who: "En känd kock med ett eget matlagningsprogram på tv",
+            story: "Köket är allt: enormt, ljust, med plats för ett tv-team, öppet mot en matsal för tjugo gäster. Utanför en kryddträdgård och fruktträd. På övervåningen ett lugnt hem för familjen, med en balkong över trädgården.",
+          },
+        },
+        musts: [
+          { kind: "rooms", room: "Kitchen", count: 1, minArea: 32 },
+          { kind: "windowArea", room: "Kitchen", min: 6 },
+          { kind: "rooms", room: "Living", count: 1, minArea: 40 },
+          { kind: "connected", a: "Kitchen", b: "Living" },
+          { kind: "gardenPlants", min: 8 },
+          { kind: "storeys", min: 2 },
+          { kind: "rooms", room: "Bedroom", count: 4, minArea: 12 },
+          { kind: "rooms", room: "Bathroom", count: 2, minArea: 6 },
+          { kind: "rooms", room: "Storage", count: 1, minArea: 8 },
+          { kind: "wallMaterial", material: premium },
+        ],
+        wishes: [
+          { kind: "balcony" },
+          { kind: "floorFinish", finish: "Stone", room: "Kitchen" },
+          { kind: "indoorPlants", min: 5 },
+          { kind: "roofMaterial", material: "Tiles" },
+          { kind: "everyFloor", room: "Bathroom" },
         ],
       };
   }
@@ -306,7 +661,7 @@ export function budgetFor(items: readonly BriefItem[], tier: Tier = 1): number {
 
 /** What a household asks for on top at higher tiers. */
 function tierExtras(kind: Archetype, tier: Tier): BriefItem["req"][] {
-  if (kind === "villa" || kind === "signature") return [];
+  if (MADE_FOR_TIER.has(kind)) return [];
   const extras: BriefItem["req"][] = [];
   if (tier >= 2 && kind !== "retirees") extras.push({ kind: "rooms", room: "WC", count: 1 });
   if (tier >= 3) {
@@ -326,7 +681,7 @@ export function generateClient(seed: number, tier?: Tier): Client {
   const d = draft(kind, rnd, tier);
   // Three or four of the archetype's wishes.
   const wishes = [...d.wishes].sort(() => rnd() - 0.5).slice(0, 3 + Math.floor(rnd() * 2));
-  const size = tier && kind !== "villa" && kind !== "signature" ? SIZE[tier] : 1;
+  const size = tier && !MADE_FOR_TIER.has(kind) ? SIZE[tier] : 1;
   const grow = (r: BriefItem["req"]): BriefItem["req"] => (r.kind === "rooms" && r.minArea ? { ...r, minArea: Math.round(r.minArea * size) } : r);
   const musts = [...d.musts.map(grow), ...(tier ? tierExtras(kind, tier) : [])];
   const items: BriefItem[] = [...musts.map((req) => ({ req, must: true })), ...wishes.map((req) => ({ req: grow(req), must: false }))];

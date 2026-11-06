@@ -225,3 +225,24 @@ describe("career history", () => {
     expect(c.learnedAt).toEqual({ brick: 1234 });
   });
 });
+
+describe("client variety", () => {
+  it("brings many kinds of households, wishing for many kinds of things", () => {
+    const whos = new Set<string>();
+    const wishes = new Set<string>();
+    for (const tier of TIERS)
+      for (let seed = 1; seed < 400; seed += 7) {
+        const c = generateClient(seed, tier);
+        whos.add(c.text.en.who);
+        for (const i of c.items) wishes.add(i.req.kind);
+      }
+    expect(whos.size).toBeGreaterThanOrEqual(14);
+    for (const kind of ["balcony", "gardenPlants", "indoorPlants", "paint", "wallMaterial", "windowArea", "connected"]) expect(wishes, kind).toContain(kind);
+  });
+
+  it("keeps clients from before tiers exactly as they were", () => {
+    // gen-1234 was generated before tiers existed; its brief must not change under it.
+    const c = generateClient(1234);
+    expect(c.items.every((i) => !["balcony", "gardenPlants", "indoorPlants", "paint"].includes(i.req.kind))).toBe(true);
+  });
+});
