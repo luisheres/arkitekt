@@ -73,6 +73,14 @@ export interface Messages {
     freePlayText: string;
     choosePlot: string;
     chooseDifficulty: string;
+    /** On the welcome screen, opened from the game: "Now playing: Campaign · Moderate". */
+    nowPlaying(what: string): string;
+    version(v: string): string;
+    /** Between commissions in the campaign. */
+    noClient: string;
+    /** Under Save and Open: progress needs no saving by hand. */
+    autoSaved: string;
+    chooseClient: string;
     difficultyText: string;
     back: string;
 
@@ -178,10 +186,7 @@ export interface Messages {
     savedDesigns: string;
     noSavedDesigns: string;
     openDesign: string;
-    exportDesign: string;
-    importDesign: string;
     soldTag: string;
-    importFailed: string;
     storageFull: string;
     cancel: string;
     tools: Record<ToolName, string>;

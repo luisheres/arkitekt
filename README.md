@@ -33,7 +33,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs and their file format; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -111,13 +111,18 @@ darker underneath, and the plan shows the same trees from above.
    Your fee is 8% of their budget (more with Marketing), plus up to half again for wishes
    granted, and 1–3 stars for your reputation.
 
-**Saving.** The design you are working on is kept automatically. To keep designs and come
-back to them, **Save** (`Ctrl+S`) stores the design under a name in the browser, with a
-picture; saving again updates it, or save a new copy. **Open…** lists your saved designs
-and picks one up again (its client becomes your current commission; the design you
-were on is saved first). Designs can be exported to a `.json` file and imported again,
-to keep a backup or move them to another computer. Sold designs stay in the list but
-cannot be sold twice.
+**Saving.** Everything is kept in the browser's storage, nothing is downloaded: the
+campaign (money, reputation, techniques, difficulty), the house you are working on in the
+campaign, and your free play house are saved automatically as you go (and when the page
+closes), each separately. To keep several designs, **Save** (`Ctrl+S`) stores the current
+one under a name, with a picture; saving again updates it, or save a new copy. **Open…**
+lists your saved designs from both modes and picks one up again (a campaign design makes
+its client your commission, a free play design opens in free play; the design you were
+on is saved first). Sold designs stay in the list but cannot be sold twice.
+
+Every pop-up closes with the **×** in its corner or `Escape`. Closing the "Sold!" pop-up
+still books the sale; between clients, the sidebar offers to choose the next one. The
+**🏠 Menu** shows what you are playing and the game's version.
 
 Besides the five written clients, clients are generated for each tier: couples, retirees
 and people working from home for starter homes; families too for family homes; large

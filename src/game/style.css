@@ -1293,18 +1293,6 @@ button.link:hover {
   color: var(--bad);
 }
 
-.button-like {
-  padding: 4px 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.button-like:hover {
-  border-color: #b9b4aa;
-}
-
 .toast {
   position: fixed;
   left: 50%;
@@ -2106,4 +2094,47 @@ button.locked::after,
 
 .difficulty-tag.hard {
   background: #ffd2c2;
+}
+
+/* Every dialog closes with the × in its corner (it stays in view while scrolling). */
+.dialog-close {
+  position: sticky;
+  top: 0;
+  float: right;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  margin: -10px -14px 0 12px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.now-playing {
+  display: inline-block;
+  margin: 8px 0 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-weight: 700;
+}
+
+.mode-card.current {
+  box-shadow: 0 0 0 3px var(--primary, var(--accent));
+}
+
+.welcome .version {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.choose-client {
+  margin-top: 8px;
+}
+
+.auto-saved {
+  margin: 4px 0 0;
+  font-size: 11px;
 }

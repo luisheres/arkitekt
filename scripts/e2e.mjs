@@ -71,6 +71,7 @@ try {
   // The welcome screen: campaign or free play.
   await page.locator("#modal .dialog").waitFor();
   assert.equal(await page.locator("#modal h2").textContent(), "Welcome to Architect!");
+  assert.equal(await page.locator("#modal .dialog-close").count(), 1, "every dialog has a ×");
   await shot("welcome");
   await page.click('#modal [data-action="campaign"]');
 
@@ -290,11 +291,19 @@ try {
   assert.match(await page.locator("#modal h2").textContent(), /Sold!/);
   assert.match(await page.locator("#modal .progress-news").innerText(), /\+\d ⭐ · your reputation is now \d ⭐/);
   await shot("sold");
-  await page.click("#modal button.primary"); // Next client
+  // Closing with the × still books the sale; with no client yet, the sidebar offers to choose one.
+  await page.click("#modal .dialog-close");
+  assert.equal(await page.locator("#modal").isHidden(), true);
+  assert.equal(await page.evaluate(() => window.architect.store.career.completed.length), 1, "the sale is booked");
+  assert.match(await page.locator(".client-section").innerText(), /No client yet/);
+  await page.click(".client-section .choose-client");
 
-  // The next clients to choose from: the story goes on with the Haddads.
+  // The next clients to choose from: the story goes on with the Haddads. Closing the list
+  // and coming back is fine.
   await page.locator("#modal .offers").waitFor();
-  assert.equal(await page.locator('#modal [data-action="close"]').count(), 0, "a client must be chosen");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("#modal").isHidden(), true);
+  await page.click(".client-section .choose-client");
   await page.click('#modal [data-action="pick-0"]');
   assert.match(await page.locator("#modal h2").textContent(), /Noor/);
   await page.click('#modal [data-action="accept"]');
@@ -349,7 +358,7 @@ try {
   assert.equal(await page.locator("#modal .offer-card:not(.teaser)").count(), 3);
   await page.click('#modal [data-action="refresh"]');
   await page.locator("#modal .offers").waitFor();
-  await page.click('#modal [data-action="close"]');
+  await page.click("#modal .dialog-close");
   assert.equal((await model()).client, "haddad");
 
   // Another storey is not learned yet: the button shows the Workshop.
@@ -358,6 +367,14 @@ try {
   assert.equal(await page.locator('#modal .tech-card.focus[data-tech="twoStoreys"]').count(), 1);
   await page.keyboard.press("Escape");
   assert.equal(await page.evaluate(() => window.architect.store.house.levels), 1);
+
+  // The menu says what is being played, and its × goes back to the game.
+  await page.click('.studio [data-action="menu"]');
+  assert.equal(await page.locator("#modal .now-playing").innerText(), "▶ Now playing: Campaign · Moderate");
+  assert.match(await page.locator("#modal .version").innerText(), /Architect, version \d+\.\d+\.\d+/);
+  assert.equal(await page.locator("#modal .mode-card.campaign.current").count(), 1);
+  await page.click("#modal .dialog-close");
+  assert.equal((await model()).client, "haddad");
 
   // Free play, from the menu: any plot, every technique, no budget.
   await page.click('.studio [data-action="menu"]');
@@ -443,16 +460,9 @@ try {
   await page.click('#modal .design-card button[data-cmd="open"]');
   assert.equal((await model()).walls, walls, "the design is back");
 
-  // Export it to a file and import that file as a second design.
+  // Designs live in the browser: no files to download or upload.
   await page.click('#sidebar header button:has-text("Open")');
-  const [download] = await Promise.all([page.waitForEvent("download"), page.click('#modal button[data-cmd="export"]')]);
-  assert.match(download.suggestedFilename(), /^Two storeys for the Anderssons\.json$/);
-  await page.setInputFiles("#modal input[type=file]", await download.path());
-  await page.locator("#modal .design-card >> nth=1").waitFor();
-  assert.equal(await page.locator("#modal .design-card").count(), 2);
-  // A file that is not a design is refused with a message.
-  await page.setInputFiles("#modal input[type=file]", { name: "x.json", mimeType: "application/json", buffer: Buffer.from("{}") });
-  assert.match(await page.locator("#modal .notice").textContent(), /not an Architect design/);
+  assert.equal(await page.locator('#modal [data-cmd="export"], #modal input[type=file]').count(), 0);
   await shot("saved-designs");
   await page.keyboard.press("Escape");
 

@@ -23,23 +23,38 @@ import { lang, m } from "./i18n";
 
 const modal = (): HTMLElement => document.querySelector<HTMLElement>("#modal")!;
 
-/** Show `html` in the modal; buttons with `data-action` call the matching handler and close it. */
-function open(html: string, actions: Record<string, () => void>, dismissable: boolean): void {
+/** Closes the dialog on screen (without its dismiss handler), when there is one. */
+let closeCurrent: (() => void) | null = null;
+
+/**
+ * Show `html` in the modal; buttons with `data-action` call the matching handler and close
+ * it. Every dialog has a × in its corner; it and Escape close the dialog and then call
+ * `onDismiss` (for dialogs where closing should still do something, like getting paid).
+ */
+function open(html: string, actions: Record<string, () => void>, onDismiss: () => void = () => {}): void {
+  closeCurrent?.();
   const root = modal();
-  root.innerHTML = `<div class="dialog" role="dialog" aria-modal="true">${html}</div>`;
+  root.innerHTML = `<div class="dialog" role="dialog" aria-modal="true"><button type="button" class="dialog-close" aria-label="${esc(m.ui.close)}" title="${esc(m.ui.close)}">×</button>${html}</div>`;
   root.hidden = false;
   const close = () => {
     root.hidden = true;
     root.innerHTML = "";
     document.removeEventListener("keydown", onKey, true);
+    closeCurrent = null;
+  };
+  closeCurrent = close;
+  const dismiss = () => {
+    close();
+    onDismiss();
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && dismissable) {
+    if (e.key === "Escape") {
       e.stopPropagation();
-      close();
+      dismiss();
     }
   };
   document.addEventListener("keydown", onKey, true);
+  root.querySelector(".dialog-close")!.addEventListener("click", dismiss);
   for (const b of root.querySelectorAll<HTMLButtonElement>("button[data-action]")) {
     b.addEventListener("click", () => {
       close();
@@ -86,7 +101,6 @@ export function showClient(client: Client, working: boolean, onAccept: () => voi
          : `<button type="button" class="primary" data-action="accept">${esc(working ? m.ui.backToDrawingBoard : m.ui.takeJob)}</button>`
      }</div>`,
     { accept: onAccept, back: () => choosing?.onBack(), learn: () => choosing && learnHandler(choosing.needs[0]) },
-    working || !!choosing,
   );
 }
 
@@ -104,6 +118,8 @@ export function onLearn(fn: (id: TechniqueId) => void): void {
 // --- Welcome, clients and the Workshop --------------------------------------------------
 
 export interface WelcomeActions {
+  /** Closed without choosing: carry on as before. */
+  dismiss(): void;
   /** Continue the campaign in progress. */
   campaign(): void;
   /** Start a new campaign at a difficulty. */
@@ -130,8 +146,7 @@ function chooseDifficulty(back: () => void, pick: (d: Difficulty) => void): void
      <p class="sub">${esc(m.progress.difficultyText)}</p>
      <div class="mode-cards three">${cards}</div>
      <div class="actions"><button type="button" data-action="back">← ${esc(m.progress.back)}</button></div>`,
-    actions,
-    false,
+    actions
   );
   modal().querySelector(".dialog")?.classList.add("wide");
   modal().querySelector<HTMLButtonElement>(".difficulty.moderate")?.focus();
@@ -140,28 +155,36 @@ function chooseDifficulty(back: () => void, pick: (d: Difficulty) => void): void
 const SETTING_ICON: Record<Setting, string> = { suburban: "🏘️", lakeside: "🏞️", hillside: "⛰️" };
 
 /** The first thing on screen: campaign or free play. */
-export function showWelcome(progress: { houses: number; stars: number; money: number; difficulty: Difficulty } | null, actions: WelcomeActions): void {
-  const again = () => showWelcome(progress, actions);
+export function showWelcome(
+  progress: { houses: number; stars: number; money: number; difficulty: Difficulty } | null,
+  actions: WelcomeActions,
+  /** What is being played now, when coming back from the game ("Campaign · Moderate"). */
+  nowPlaying?: { mode: "campaign" | "free"; text: string },
+): void {
+  const again = () => showWelcome(progress, actions, nowPlaying);
   const p = m.progress;
+  const current = (mode: string) => (nowPlaying?.mode === mode ? ` current" aria-current="true` : "");
   open(
     `<div class="welcome">
        <div class="welcome-art" aria-hidden="true">🏡</div>
        <h2>${esc(p.welcomeTitle)}</h2>
        <p class="sub">${esc(p.welcomeText)}</p>
+       ${nowPlaying ? `<p class="now-playing">▶ ${esc(p.nowPlaying(nowPlaying.text))}</p>` : ""}
        <div class="mode-cards">
-         <button type="button" class="mode-card campaign" data-action="campaign">
+         <button type="button" class="mode-card campaign${current("campaign")}" data-action="campaign">
            <span class="mode-icon" aria-hidden="true">🏆</span>
            <strong>${esc(p.campaign)}</strong>
            <span>${esc(p.campaignText)}</span>
            ${progress ? `<span class="continue">${esc(p.continueCampaign(progress.houses, progress.stars, money(progress.money)))} · ${DIFFICULTY_ICON[progress.difficulty]} ${esc(m.difficulty[progress.difficulty].name)}</span>` : ""}
          </button>
-         <button type="button" class="mode-card free" data-action="free">
+         <button type="button" class="mode-card free${current("free")}" data-action="free">
            <span class="mode-icon" aria-hidden="true">🎨</span>
            <strong>${esc(p.freePlay)}</strong>
            <span>${esc(p.freePlayText)}</span>
          </button>
        </div>
        ${progress ? `<div class="actions start-over"><button type="button" class="link" data-action="startOver">${esc(p.startOver)}</button></div>` : ""}
+       <p class="version">${esc(p.version(__APP_VERSION__))}</p>
      </div>`,
     {
       campaign: () => (progress ? actions.campaign() : chooseDifficulty(again, actions.startOver)),
@@ -170,12 +193,11 @@ export function showWelcome(progress: { houses: number; stars: number; money: nu
           `<h2>${esc(p.startOverTitle)}</h2>
            <p>${esc(p.startOverText)}</p>
            <div class="actions"><button type="button" data-action="cancel" data-focus>${esc(p.back)}</button><button type="button" class="primary danger-primary" data-action="confirm">${esc(p.startOver)}</button></div>`,
-          { cancel: again, confirm: () => chooseDifficulty(again, actions.startOver) },
-          false,
+          { cancel: again, confirm: () => chooseDifficulty(again, actions.startOver) }
         ),
       free: () => choosePlot(again, actions.free),
     },
-    false,
+    actions.dismiss,
   );
   modal().querySelector(".dialog")?.classList.add("wide");
 }
@@ -198,8 +220,7 @@ function choosePlot(back: () => void, pick: (s: Setting) => void): void {
     `<h2>${esc(m.progress.choosePlot)}</h2>
      <div class="mode-cards three">${cards}</div>
      <div class="actions"><button type="button" data-action="back">← ${esc(m.progress.back)}</button></div>`,
-    actions,
-    false,
+    actions
   );
   modal().querySelector(".dialog")?.classList.add("wide");
 }
@@ -216,8 +237,6 @@ export interface Offer {
 export interface OfferActions {
   pick(client: Client): void;
   refresh(): void;
-  /** Null when the player must pick (no commission in progress). */
-  close: (() => void) | null;
 }
 
 /** The clients to choose from. */
@@ -243,18 +262,14 @@ export function showOffers(offers: readonly Offer[], teaser: { tier: Tier; stars
   const teaserCard = teaser
     ? `<article class="offer-card teaser" aria-disabled="true"><div class="offer-tags"><span class="tier-tag tier${teaser.tier}">${esc(m.tierName[teaser.tier])}</span></div><div class="teaser-lock" aria-hidden="true">🔒</div><p>${esc(p.nextTierTeaser(m.tierName[teaser.tier], teaser.stars))}</p></article>`
     : "";
-  const handlers: Record<string, () => void> = {
-    refresh: actions.refresh,
-    close: () => actions.close?.(),
-  };
+  const handlers: Record<string, () => void> = { refresh: actions.refresh };
   offers.forEach((o, i) => (handlers[`pick-${i}`] = () => actions.pick(o.client)));
   open(
     `<h2>${esc(p.offersTitle)}</h2>
      <p class="sub">${esc(p.offersText)}</p>
      <div class="offers">${cards}${teaserCard}</div>
-     <div class="actions"><button type="button" data-action="refresh">${esc(p.otherClients)}</button>${actions.close ? `<button type="button" data-action="close">${esc(m.ui.close)}</button>` : ""}</div>`,
+     <div class="actions"><button type="button" data-action="refresh">${esc(p.otherClients)}</button></div>`,
     handlers,
-    actions.close !== null,
   );
   modal().querySelector(".dialog")?.classList.add("wide");
 }
@@ -292,8 +307,7 @@ export function showWorkshop(career: Career, buy: (id: TechniqueId) => void, foc
      <p class="sub">${esc(p.workshopText)}</p>
      <div class="workshop">${branches}</div>
      <div class="actions"><button type="button" class="primary" data-action="close">${esc(m.ui.close)}</button></div>`,
-    {},
-    true,
+    {}
   );
   const root = modal();
   root.querySelector(".dialog")?.classList.add("wide");
@@ -301,8 +315,11 @@ export function showWorkshop(career: Career, buy: (id: TechniqueId) => void, foc
   if (focus) root.querySelector(`[data-tech="${focus}"]`)?.scrollIntoView({ block: "center" });
 }
 
-/** The client's reaction to a presented design. */
-export function showVerdict(client: Client, v: Verdict, onNext: () => void, progress: string[] = []): void {
+/**
+ * The client's reaction to a presented design. When they buy it, `onSold` books the sale
+ * (also when the dialog is just closed) and `onNext` goes on to the next clients.
+ */
+export function showVerdict(client: Client, v: Verdict, onSold: () => void, onNext: () => void, progress: string[] = []): void {
   const name = esc(client.text[lang].name);
   if (!v.accepted) {
     const shown = v.problems.slice(0, 8);
@@ -314,7 +331,6 @@ export function showVerdict(client: Client, v: Verdict, onNext: () => void, prog
        <ul class="problems">${shown.map((p) => `<li>${esc(p)}</li>`).join("")}${more > 0 ? `<li class="sub">${esc(m.ui.andMore(more))}</li>` : ""}</ul>
        <div class="actions"><button type="button" class="primary" data-action="close">${esc(m.ui.keepWorking)}</button></div>`,
       {},
-      true,
     );
     return;
   }
@@ -329,8 +345,13 @@ export function showVerdict(client: Client, v: Verdict, onNext: () => void, prog
      </dl>
      ${progress.length ? `<ul class="progress-news">${progress.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
      <div class="actions"><button type="button" class="primary" data-action="next">${esc(m.ui.nextClient)}</button></div>`,
-    { next: onNext },
-    false,
+    {
+      next: () => {
+        onSold();
+        onNext();
+      },
+    },
+    onSold,
   );
 }
 
@@ -345,8 +366,7 @@ export function showSaveDialog(defaultName: string, current: { name: string } | 
        ${current ? `<button type="button" data-action="saveNew">${esc(m.ui.saveAsNew)}</button>` : ""}
        <button type="button" class="primary" data-action="save">${esc(m.ui.save)}</button>
      </div>`,
-    { save: () => onSave(name.trim() || defaultName, false), saveNew: () => onSave(name.trim() || defaultName, true) },
-    true,
+    { save: () => onSave(name.trim() || defaultName, false), saveNew: () => onSave(name.trim() || defaultName, true) }
   );
   const input = modal().querySelector<HTMLInputElement>("input.design-name")!;
   input.addEventListener("input", () => (name = input.value));
@@ -368,8 +388,6 @@ export interface DesignListItem {
 export interface DesignListActions {
   open(d: SavedDesign): void;
   remove(d: SavedDesign): void;
-  export(d: SavedDesign): void;
-  import(file: File): void;
 }
 
 /** The saved designs, newest first, with what can be done with each. */
@@ -387,7 +405,6 @@ export function showDesigns(items: DesignListItem[], actions: DesignListActions,
         </div>
         <div class="design-actions">
           ${sold ? `<span class="tag">${esc(m.ui.soldTag)}</span>` : `<button type="button" class="primary" data-cmd="open" data-i="${i}">${esc(m.ui.openDesign)}</button>`}
-          <button type="button" data-cmd="export" data-i="${i}">${esc(m.ui.exportDesign)}</button>
           <button type="button" class="danger" data-cmd="remove" data-i="${i}">${esc(m.ui.delete)}</button>
         </div>
       </li>`,
@@ -398,11 +415,9 @@ export function showDesigns(items: DesignListItem[], actions: DesignListActions,
      ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
      ${items.length ? `<ul class="design-list">${cards}</ul>` : `<p class="sub">${esc(m.ui.noSavedDesigns)}</p>`}
      <div class="actions">
-       <label class="button-like">${esc(m.ui.importDesign)}<input type="file" accept=".json,application/json" hidden></label>
        <button type="button" class="primary" data-action="close" data-focus>${esc(m.ui.close)}</button>
      </div>`,
-    {},
-    true,
+    {}
   );
   const root = modal();
   root.querySelectorAll<HTMLButtonElement>("button[data-cmd]").forEach((b) =>
@@ -412,14 +427,9 @@ export function showDesigns(items: DesignListItem[], actions: DesignListActions,
         root.hidden = true;
         root.innerHTML = "";
         actions.open(d);
-      } else if (b.dataset.cmd === "export") actions.export(d);
-      else actions.remove(d);
+      } else actions.remove(d);
     }),
   );
-  const file = root.querySelector<HTMLInputElement>("input[type=file]")!;
-  file.addEventListener("change", () => {
-    if (file.files?.[0]) actions.import(file.files[0]);
-  });
 }
 
 /** A short message that fades away, e.g. after saving. */

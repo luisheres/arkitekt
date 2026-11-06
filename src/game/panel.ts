@@ -61,6 +61,7 @@ export class Panel {
   private readonly studio: HTMLElement;
   private readonly clientSection: HTMLElement;
   private readonly clientBox: HTMLElement;
+  private readonly clientActions: HTMLElement;
   private readonly brief: HTMLElement;
   private readonly status: HTMLElement;
   private readonly saveBtn: HTMLButtonElement;
@@ -92,7 +93,7 @@ export class Panel {
     openBtn.addEventListener("click", actions.openDesigns);
     this.designName = el("span", { className: "sub design-name" });
     root.append(
-      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.studio, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName)),
+      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.studio, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName), el("p", { className: "sub auto-saved" }, m.progress.autoSaved)),
     );
 
     // The client and their brief.
@@ -102,7 +103,8 @@ export class Panel {
     briefBtn.addEventListener("click", actions.showBrief);
     const presentBtn = el("button", { type: "button", className: "primary", title: m.ui.presentTitle }, m.ui.present);
     presentBtn.addEventListener("click", actions.present);
-    this.clientSection = el("section", { className: "client-section" }, this.clientBox, this.brief, el("div", { className: "row" }, presentBtn, briefBtn));
+    this.clientActions = el("div", { className: "row" }, presentBtn, briefBtn);
+    this.clientSection = el("section", { className: "client-section" }, this.clientBox, this.brief, this.clientActions);
     root.append(this.clientSection);
 
     // Tools.
@@ -176,12 +178,22 @@ export class Panel {
     const { client } = store;
     this.renderStudio();
     this.clientSection.hidden = store.mode === "free";
+    // Between commissions there is no brief yet: just a way to choose the next client.
+    const waiting = store.mode === "campaign" && !store.working;
+    this.brief.hidden = waiting;
+    this.clientActions.hidden = waiting;
     this.clientBox.innerHTML = "";
-    this.clientBox.append(
-      el("h2", {}, m.ui.client),
-      el("div", { className: "client-name" }, client.text[lang].name),
-      el("div", { className: "sub" }, m.ui.clientPlot(client.plot.name[lang], plotSize(client), money(client.budget))),
-    );
+    if (waiting) {
+      const choose = el("button", { type: "button", className: "primary choose-client" }, `📋 ${m.progress.chooseClient}`);
+      choose.addEventListener("click", this.actions.showClients);
+      this.clientBox.append(el("h2", {}, m.ui.client), el("p", { className: "sub" }, m.progress.noClient), choose);
+    } else {
+      this.clientBox.append(
+        el("h2", {}, m.ui.client),
+        el("div", { className: "client-name" }, client.text[lang].name),
+        el("div", { className: "sub" }, m.ui.clientPlot(client.plot.name[lang], plotSize(client), money(client.budget))),
+      );
+    }
     for (const [tool, b] of this.toolButtons) {
       b.classList.toggle("active", tool === store.tool);
       setLocked(b, store.toolLock(tool), b.dataset.title ?? "");

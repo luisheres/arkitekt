@@ -25,7 +25,7 @@ import {
   showWorkshop,
   toast,
 } from "./dialogs";
-import { deleteDesign, listDesigns, newDesignId, putDesign } from "./designs";
+import { deleteDesign, listDesigns } from "./designs";
 import { CostPanel } from "./costChart";
 import { Panel } from "./panel";
 import { Popover } from "./popover";
@@ -44,7 +44,10 @@ const sessionMode = (() => {
     return null;
   }
 })();
+/** The mode played in this tab, once chosen (or carried on with). */
+let chosenMode: Mode | null = sessionMode;
 const rememberMode = (mode: Mode) => {
+  chosenMode = mode;
   try {
     sessionStorage.setItem(MODE_KEY, mode);
   } catch {
@@ -111,7 +114,6 @@ function showClients(): void {
       store.refreshOffers();
       showClients();
     },
-    close: store.working ? () => {} : null,
   });
 }
 
@@ -157,10 +159,8 @@ const present = () => {
   showVerdict(
     store.client,
     verdict,
-    () => {
-      store.completeCommission(verdict.fee, verdict.stars);
-      showClients();
-    },
+    () => store.completeCommission(verdict.fee, verdict.stars),
+    showClients,
     news,
   );
 };
@@ -171,7 +171,15 @@ function showMenu(): void {
   const career = store.campaignCareer();
   const started = career.completed.length > 0 || (career.techniques?.length ?? 0) > 0 || (store.mode === "campaign" && store.working);
   const difficulty = career.difficulty ?? "moderate";
-  showWelcome(started ? { houses: career.completed.length, stars: core.careerStars(career), money: core.careerMoney(career), difficulty } : null, {
+  const progress = started ? { houses: career.completed.length, stars: core.careerStars(career), money: core.careerMoney(career), difficulty } : null;
+  const nowPlaying = chosenMode
+    ? {
+        mode: store.mode,
+        text: store.mode === "campaign" ? `${m.progress.campaign} · ${m.difficulty[difficulty].name}` : `${m.progress.freePlay} · ${store.plot.name[lang]}`,
+      }
+    : undefined;
+  showWelcome(progress, {
+    dismiss: () => chosenMode ?? rememberMode(store.mode),
     campaign: () => {
       rememberMode("campaign");
       store.setMode("campaign");
@@ -187,7 +195,7 @@ function showMenu(): void {
       store.setMode("free");
       store.setFreePlot(setting);
     },
-  });
+  }, nowPlaying);
 }
 // --- Saved designs ------------------------------------------------------------------
 
@@ -208,13 +216,6 @@ function saveDesign(name: string, asNew: boolean, quiet = false): boolean {
 const askToSave = () => {
   if (store.working) showSaveDialog(defaultDesignName(), store.design, (name, asNew) => saveDesign(name, asNew));
 };
-
-function downloadDesign(d: core.SavedDesign): void {
-  const url = URL.createObjectURL(new Blob([core.designToFile(d)], { type: "application/json" }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: `${d.name.replace(/[\\/:*?"<>|]+/g, "-")}.json` });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function openDesigns(notice = ""): void {
   const items: DesignListItem[] = listDesigns().map((d) => {
@@ -239,23 +240,15 @@ function openDesigns(notice = ""): void {
         deleteDesign(d.id);
         openDesigns();
       },
-      export: downloadDesign,
-      import: async (file) => {
-        const d = core.parseDesignFile(await file.text(), newDesignId());
-        if (!d) return openDesigns(m.ui.importFailed);
-        try {
-          putDesign(d);
-        } catch {
-          return openDesigns(m.ui.storageFull);
-        }
-        openDesigns();
-      },
     },
     notice,
   );
 }
 
 new CostPanel(main, store);
+
+// Saving waits a moment after each change; don't lose that moment when the page closes.
+window.addEventListener("pagehide", () => store.save());
 
 new Panel(document.querySelector<HTMLElement>("#sidebar")!, store, {
   save: askToSave,
@@ -307,7 +300,10 @@ function showCaptures(views: CapturedView[]): void {
   capturesEl.replaceChildren();
   const close = document.createElement("button");
   close.type = "button";
-  close.textContent = m.ui.close;
+  close.textContent = "×";
+  close.className = "dialog-close";
+  close.title = m.ui.close;
+  close.setAttribute("aria-label", m.ui.close);
   close.addEventListener("click", () => (capturesEl.hidden = true));
   const header = document.createElement("header");
   const title = document.createElement("strong");
