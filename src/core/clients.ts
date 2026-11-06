@@ -3,7 +3,7 @@
 import type { Client } from "./brief";
 import { type Difficulty, withDifficulty } from "./difficulty";
 import { generateClient, nextSeed } from "./generate";
-import { type Setting, starterPlots } from "./plot";
+import { plotById, starterPlots } from "./plot";
 import { type Abilities, type TechniqueId, type Tier, TIER_STARS, abilities, technique, techniquesFor, tierFor } from "./progression";
 
 const [suburban, lakeside, hillside] = starterPlots();
@@ -217,7 +217,7 @@ export const careerClient = (c: Career, client: Client): Client => withDifficult
 
 /** The tier a client belongs to. */
 export function clientTier(client: Client): Tier {
-  const tiered = /^gen([1-4])-/.exec(client.id);
+  const tiered = /^(?:gen|c)([1-4])-/.exec(client.id);
   return tiered ? (Number(tiered[1]) as Tier) : (STORY_TIER[client.id] ?? 1);
 }
 
@@ -270,13 +270,13 @@ export function clientOffers(c: Career): Client[] {
   let seed = Math.imul(c.completed.length * 131 + (c.refreshes ?? 0) * 977 + 7, 2654435761) >>> 0;
   const next = () => (seed = (Math.imul(seed ^ 0x5bd1e995, 2654435761) >>> 0) % 1_000_000);
   for (let i = 0; offers.length < 3; i++) {
-    const client = generateClient(next(), tiers[i % tiers.length]);
+    const client = generateClient(next(), tiers[i % tiers.length], "all");
     if (!gone.has(client.id)) offers.push(client);
   }
   // Make sure there is something the player can build now.
   const a = careerAbilities(c);
   for (let tries = 0; tries < 40 && offers.every((o) => clientNeeds(o, a).length > 0); tries++) {
-    offers[offers.length - 1] = generateClient(next(), tiers[(tries + 1) % tiers.length]);
+    offers[offers.length - 1] = generateClient(next(), tiers[(tries + 1) % tiers.length], "all");
   }
   return offers.map((o) => careerClient(c, o));
 }
@@ -290,12 +290,12 @@ export function starsToNextTier(c: Career): { tier: Tier; needed: number } | nul
 }
 
 /** The pretend client of free play: no brief, no budget, just a plot. */
-export function freePlayClient(setting: Setting): Client {
-  const plot = starterPlots().find((p) => p.setting === setting) ?? starterPlots()[0];
+export function freePlayClient(plotId: string): Client {
+  const plot = plotById(plotId) ?? starterPlots()[0];
   const name = { en: "Free play", sv: "Fritt byggande" };
   const who = { en: "Build whatever you like", sv: "Bygg vad du vill" };
   return {
-    id: `free-${plot.setting}`,
+    id: `free-${plot.id}`,
     text: { en: { name: name.en, who: who.en, story: "" }, sv: { name: name.sv, who: who.sv, story: "" } },
     plot,
     budget: Number.POSITIVE_INFINITY,
@@ -306,10 +306,12 @@ export function freePlayClient(setting: Setting): Client {
 export const isFreePlay = (client: Client): boolean => client.id.startsWith("free-");
 
 export function clientById(id: string): Client | undefined {
-  if (id.startsWith("free-")) return freePlayClient(id.slice(5) as Setting);
+  if (id.startsWith("free-")) return freePlayClient(id.slice(5));
   if (id.startsWith("gen-")) return generateClient(Number(id.slice(4)));
   const tiered = /^gen([1-4])-(\d+)$/.exec(id);
   if (tiered) return generateClient(Number(tiered[2]), Number(tiered[1]) as Tier);
+  const current = /^c([1-4])-(\d+)$/.exec(id);
+  if (current) return generateClient(Number(current[2]), Number(current[1]) as Tier, "all");
   return CLIENTS.find((c) => c.id === id);
 }
 /**

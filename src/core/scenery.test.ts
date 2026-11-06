@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Vec2 } from "./geometry";
-import { starterPlots } from "./plot";
+import { SETTINGS, allPlots, plotById, starterPlots } from "./plot";
 import { STREET, inLake, sceneryFor, treeLook } from "./scenery";
 
 const [suburban, lakeside, hillside] = starterPlots();
@@ -60,5 +60,53 @@ describe("scenery", () => {
     const looks = new Set(trees.filter((t) => t.kind === "round").map(treeLook));
     expect(looks).toEqual(new Set(["plain", "blossom", "apple"]));
     expect(trees.filter((t) => t.kind !== "round").every((t) => treeLook(t) === "plain")).toBe(true);
+  });
+});
+
+describe("all plots", () => {
+  const plots = allPlots();
+
+  it("are thirty, with their own ids, names in every language, and tiers that buy them", () => {
+    expect(plots).toHaveLength(30);
+    expect(new Set(plots.map((p) => p.id)).size).toBe(30);
+    for (const p of plots) {
+      expect(p.name.en.length && p.name.sv.length).toBeTruthy();
+      expect(p.tiers.length).toBeGreaterThan(0);
+      expect(plotById(p.id)).toBe(p);
+    }
+    for (const tier of [1, 2, 3, 4]) expect(plots.filter((p) => p.tiers.includes(tier)).length, `tier ${tier}`).toBeGreaterThanOrEqual(6);
+    for (const setting of SETTINGS) expect(plots.some((p) => p.setting === setting), setting).toBe(true);
+  });
+
+  it("keep the plot and street flat and the scenery off them and out of the water", () => {
+    for (const plot of plots) {
+      const s = sceneryFor(plot);
+      for (const [x, y] of [[0, 0], [plot.width, plot.depth], [plot.width / 2, plot.depth / 2], [plot.width / 2, STREET.center]]) expect(s.height(x, y), plot.id).toBeCloseTo(0, 6);
+      for (const t of s.trees) {
+        const onPlot = t.at.x > 0 && t.at.x < plot.width && t.at.y > 0 && t.at.y < plot.depth;
+        if (onPlot) expect(t.kind, plot.id).toBe("bush");
+        expect(t.at.y > STREET.from - 1 && t.at.y < STREET.to + 0.5, `${plot.id} street`).toBe(false);
+        if (s.lake) expect(inLake(s.lake, t.at), `${plot.id} water`).toBe(false);
+      }
+      expect(s.trees.length, plot.id).toBeGreaterThan(10);
+      // Water never reaches the plot.
+      if (s.lake) for (const [x, y] of [[0, plot.depth], [plot.width, plot.depth], [plot.width / 2, plot.depth + 2]]) expect(inLake(s.lake, new Vec2(x, y)), plot.id).toBe(false);
+    }
+  });
+
+  it("give each kind of surroundings its own ground", () => {
+    const covers = (id: string) => {
+      const plot = plotById(id)!;
+      const s = sceneryFor(plot);
+      const seen = new Set<string>();
+      for (let x = -80; x < plot.width + 80; x += 4) for (let y = -60; y < plot.depth + 80; y += 4) seen.add(s.surface(x, y));
+      return seen;
+    };
+    expect(covers("farm")).toContain("field1");
+    expect(covers("mountain")).toContain("snow");
+    expect(covers("seaside")).toContain("sand");
+    expect(sceneryFor(plotById("seaside")!).lake?.kind).toBe("sea");
+    expect(sceneryFor(plotById("riverside")!).lake?.kind).toBe("river");
+    expect(sceneryFor(plotById("townplot")!).neighbors.length).toBeGreaterThanOrEqual(10);
   });
 });

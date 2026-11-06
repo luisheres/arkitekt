@@ -4,7 +4,7 @@
  * Rendered once per plot into an image the plan draws underneath everything else.
  */
 
-import { type Plot, STREET, inLake, sceneryFor } from "../core";
+import { type Plot, STREET, type Surface, inLake, sceneryFor } from "../core";
 import { Vec2 } from "../core";
 
 export interface Backdrop {
@@ -18,8 +18,17 @@ export interface Backdrop {
 
 const cache = new Map<string, Backdrop>();
 
+/** Plan colours of what covers the ground (as in 3D). */
+const COVER: Record<Exclude<Surface, "grass">, [number, number, number]> = {
+  sand: [240, 217, 160],
+  field1: [232, 207, 95],
+  field2: [134, 196, 60],
+  field3: [165, 122, 82],
+  snow: [247, 251, 255],
+};
+
 export function backdropFor(plot: Plot): Backdrop {
-  const key = `${plot.setting}:${plot.width}x${plot.depth}`;
+  const key = plot.id;
   let b = cache.get(key);
   if (!b) cache.set(key, (b = draw(plot)));
   return b;
@@ -48,8 +57,11 @@ function draw(plot: Plot): Backdrop {
       const shade = Math.max(-0.35, Math.min(0.35, (-dx * 0.7 + dy * 0.7) * 0.6));
       let [r, g, bl] = [118, 196, 82];
       if (z > 4) [r, g, bl] = [86, 160, 80];
-      if (s.lake && inLake(s.lake, new Vec2(x, y))) [r, g, bl] = [108, 200, 240];
-      else if (s.lake && z < s.lake.level + 0.45 && ((x - s.lake.center.x) / s.lake.rx) ** 2 + ((y - s.lake.center.y) / s.lake.ry) ** 2 < 1.6) [r, g, bl] = [240, 217, 160];
+      if (s.lake && inLake(s.lake, new Vec2(x, y))) [r, g, bl] = s.lake.kind === "sea" ? [84, 176, 232] : [108, 200, 240];
+      else {
+        const cover = s.surface(x, y);
+        if (cover !== "grass") [r, g, bl] = COVER[cover];
+      }
       const k = 1 + shade;
       const o = (j * w + i) * 4;
       img.data[o] = Math.min(255, r * k);

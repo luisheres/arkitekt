@@ -15,7 +15,8 @@ import {
   cannotBuy,
   careerMoney,
   num,
-  starterPlots,
+  SETTINGS,
+  allPlots,
   technique,
 } from "../core";
 import { esc, money } from "./hud";
@@ -222,7 +223,8 @@ export interface WelcomeActions {
   campaign(): void;
   /** Start a new campaign at a difficulty. */
   startOver(difficulty: Difficulty): void;
-  free(setting: Setting): void;
+  /** Free play on a plot. */
+  free(plotId: string): void;
 }
 
 const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🌱", moderate: "🏗️", hard: "🔥" };
@@ -250,7 +252,17 @@ function chooseDifficulty(back: () => void, pick: (d: Difficulty) => void): void
   modal().querySelector<HTMLButtonElement>(".difficulty.moderate")?.focus();
 }
 
-const SETTING_ICON: Record<Setting, string> = { suburban: "🏘️", lakeside: "🏞️", hillside: "⛰️" };
+export const SETTING_ICON: Record<Setting, string> = {
+  suburban: "🏘️",
+  town: "🏙️",
+  lakeside: "🏞️",
+  riverside: "🛶",
+  forest: "🌲",
+  farmland: "🌾",
+  seaside: "🏖️",
+  hillside: "⛰️",
+  mountain: "🏔️",
+};
 
 /** The first thing on screen: campaign or free play. */
 export function showWelcome(
@@ -303,25 +315,28 @@ export function showWelcome(
   modal().querySelector(".dialog")?.classList.add("wide");
 }
 
-/** Free play: pick a plot to build on. */
-function choosePlot(back: () => void, pick: (s: Setting) => void): void {
-  const cards = starterPlots()
-    .map(
-      (plot) =>
-        `<button type="button" class="mode-card plot-card" data-action="plot-${plot.setting}">
-           <span class="mode-icon" aria-hidden="true">${SETTING_ICON[plot.setting]}</span>
-           <strong>${esc(plot.name[lang])}</strong>
-           <span>${num(m, plot.width)} × ${num(m, plot.depth)} m</span>
-         </button>`,
-    )
-    .join("");
+/** Free play: pick a plot to build on, from every kind of surroundings. */
+function choosePlot(back: () => void, pick: (id: string) => void): void {
+  const groups = SETTINGS.map((setting) => {
+    const cards = allPlots()
+      .filter((p) => p.setting === setting)
+      .map(
+        (plot) =>
+          `<button type="button" class="plot-choice" data-action="plot-${plot.id}">
+             <strong>${esc(plot.name[lang])}</strong>
+             <span class="sub">${num(m, plot.width)} × ${num(m, plot.depth)} m</span>
+           </button>`,
+      )
+      .join("");
+    return `<section class="plot-group"><h3>${SETTING_ICON[setting]} ${esc(m.settingName[setting])}</h3><div class="plot-choices">${cards}</div></section>`;
+  }).join("");
   const actions: Record<string, () => void> = { back };
-  for (const plot of starterPlots()) actions[`plot-${plot.setting}`] = () => pick(plot.setting);
+  for (const plot of allPlots()) actions[`plot-${plot.id}`] = () => pick(plot.id);
   open(
     `<h2>${esc(m.progress.choosePlot)}</h2>
-     <div class="mode-cards three">${cards}</div>
+     <div class="plot-groups">${groups}</div>
      <div class="actions"><button type="button" data-action="back">← ${esc(m.progress.back)}</button></div>`,
-    actions
+    actions,
   );
   modal().querySelector(".dialog")?.classList.add("wide");
 }

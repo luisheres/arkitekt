@@ -14,8 +14,8 @@ import {
   careerTier,
   messages,
   starsToNextTier,
-  starterPlots,
-  type Setting,
+  SETTINGS,
+  allPlots,
   type TechniqueId,
 } from "../core";
 import { plotSize } from "./dialogs";
@@ -90,7 +90,7 @@ export class Panel {
     });
     this.studio.addEventListener("change", (e) => {
       const select = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-plot]");
-      if (select) store.setFreePlot(select.value as Setting);
+      if (select) store.setFreePlot(select.value);
     });
     const langSelect = el("select", { title: m.ui.language, ariaLabel: m.ui.language }, ...LANGS.map((l) => el("option", { value: l, selected: l === lang }, messages(l).languageName)));
     langSelect.addEventListener("change", () => setLang(langSelect.value as (typeof LANGS)[number], actions.beforeReload));
@@ -227,9 +227,13 @@ export class Panel {
     const player = `<button type="button" class="player-chip" data-action="players" title="${esc(m.progress.changePlayer)}"><span aria-hidden="true">${esc(me.avatar)}</span> ${esc(me.name)}</button>`;
     let html: string;
     if (store.mode === "free") {
-      const options = starterPlots()
-        .map((p) => `<option value="${p.setting}"${p.setting === store.plot.setting ? " selected" : ""}>${esc(p.name[lang])}</option>`)
-        .join("");
+      const options = SETTINGS.map(
+        (setting) =>
+          `<optgroup label="${esc(m.settingName[setting])}">${allPlots()
+            .filter((p) => p.setting === setting)
+            .map((p) => `<option value="${p.id}"${p.id === store.plot.id ? " selected" : ""}>${esc(p.name[lang])}</option>`)
+            .join("")}</optgroup>`,
+      ).join("");
       html = `${player}<div class="studio-mode">🎨 ${esc(m.progress.freePlay)}</div>
         <label class="studio-plot">${esc(m.progress.plot)} <select data-plot>${options}</select></label>
         <div class="row">${menu}</div>`;

@@ -29,10 +29,28 @@ export function applyPreset(orbit: Orbit, index: number): void {
 }
 
 /** Place `camera` according to the orbit parameters. */
-export function placeCamera(camera: THREE.Camera, orbit: Orbit): void {
+/**
+ * Put the camera on its orbit, looking at the target. With `ground` (the height of the
+ * land at a point), the camera never sinks into a hillside, and rises until the land
+ * between it and the house no longer blocks the view.
+ */
+export function placeCamera(camera: THREE.Camera, orbit: Orbit, ground?: (x: number, z: number) => number): void {
   const { distance: d, yaw, pitch } = orbit;
   const offset = new THREE.Vector3(d * Math.cos(pitch) * Math.sin(yaw), d * Math.sin(pitch), d * Math.cos(pitch) * Math.cos(yaw));
   camera.position.copy(orbit.target).add(offset);
+  if (ground) {
+    const pos = camera.position;
+    pos.y = Math.max(pos.y, ground(pos.x, pos.z) + 2.5);
+    // Look along the line of sight; where the land rises above it, lift the camera so the
+    // line clears it (a point a share t of the way to the target moves up by 1 - t).
+    for (let t = 0.05; t < 0.95; t += 0.05) {
+      const x = pos.x + (orbit.target.x - pos.x) * t;
+      const z = pos.z + (orbit.target.z - pos.z) * t;
+      const y = pos.y + (orbit.target.y - pos.y) * t;
+      const above = ground(x, z) + 1.5 - y;
+      if (above > 0) pos.y += above / (1 - t);
+    }
+  }
   camera.up.set(0, 1, 0);
   camera.lookAt(orbit.target);
 }

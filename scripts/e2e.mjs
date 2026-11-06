@@ -400,6 +400,8 @@ try {
   await page.click('.studio [data-action="menu"]');
   assert.match(await page.locator("#modal .mode-card.campaign").innerText(), /Continue: 1 house sold.*Moderate/);
   await page.click('#modal [data-action="free"]');
+  assert.equal(await page.locator("#modal .plot-choice").count(), 30, "thirty plots to choose from");
+  assert.equal(await page.locator("#modal .plot-group").count(), 9, "in nine kinds of surroundings");
   await page.click('#modal [data-action="plot-suburban"]');
   assert.equal((await model()).client, "free-suburban");
   assert.equal((await model()).walls, 0);

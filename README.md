@@ -74,10 +74,26 @@ saturated hand-drawn textures, a gradient sky with puffy clouds and haze in the
 distance. Every plot has its own surroundings, generated from fixed seeds
 (`src/core/scenery.ts`) and shown both in 3D and in the plan:
 
-- **Suburban lot**: a street with pavements, neighbours' houses on either side and across
-  the road, rolling gardens and trees.
-- **Lakeside lot**: a lake just behind the garden, with a sandy shore, reeds and a jetty.
-- **Hillside view lot**: wooded hills rising behind, and the land falling away in front.
+There are 30 plots in nine kinds of surroundings, each plot with its own size and its
+own seed, so no two look the same:
+
+- **Suburbs**: a street with pavements, neighbours' houses on either side and across the
+  road, rolling gardens and trees (suburban, corner, narrow and cul-de-sac lots).
+- **Town**: flat, with houses close all around (town plot, old town garden, square-side).
+- **By a lake**: a lake behind the garden, with a sandy shore, reeds and a jetty (four plots,
+  up to a large lake-view estate).
+- **By a river**: a river running past the back of the garden.
+- **Forest**: a clearing in dense pine and birch woods.
+- **Countryside**: striped fields of wheat, crops and ploughed earth, a farmhouse and a red
+  barn, and an old orchard of apple trees.
+- **By the sea**: the sea behind the garden, with a beach, dunes, a cliff top or a harbour
+  with a jetty.
+- **Hillside**: wooded hills rising behind, and the land falling away in front.
+- **Mountains**: steep slopes all round, pines up to the tree line, then rock and snow.
+
+Each plot is bought by certain client tiers, so better plots come with bigger clients; free
+play can build on any of them. In 3D the camera never sinks into a hillside: it rises to
+see over the land to the house.
 
 The plot itself and the street stay flat, so building is the same everywhere.
 

@@ -6,6 +6,7 @@
 import type { Requirement } from "../brief";
 import type { CostGroup } from "../cost";
 import type { Difficulty } from "../difficulty";
+import type { Setting } from "../plot";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
 import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
@@ -54,6 +55,8 @@ export interface Messages {
   /** Building techniques: a name and what they let you do. */
   technique: Record<TechniqueId, { name: string; text: string }>;
   branch: Record<Branch, string>;
+  /** What surrounds a plot, as a heading. */
+  settingName: Record<Setting, string>;
   /** The kinds of client each tier brings. */
   tierName: Record<Tier, string>;
   /** How tight budgets are. */

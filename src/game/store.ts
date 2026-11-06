@@ -18,7 +18,6 @@ import {
   type HouseJson,
   type PriceList,
   type SavedDesign,
-  type Setting,
   type TechniqueId,
   type Unlock,
   type Vec2,
@@ -80,7 +79,8 @@ interface Saved {
 }
 
 interface SavedFree {
-  setting: Setting;
+  /** The plot's id (from before there were more plots: its setting, which is the same). */
+  setting: string;
   house: HouseJson;
   design?: { id: string; name: string };
 }
@@ -215,9 +215,9 @@ export class Store {
   }
 
   /** Free play: build on another plot (the house stays as it is). */
-  setFreePlot(setting: Setting): void {
+  setFreePlot(plotId: string): void {
     if (this.mode !== "free") return;
-    this.client = freePlayClient(setting);
+    this.client = freePlayClient(plotId);
     this.emit("client");
   }
 
@@ -525,7 +525,7 @@ export class Store {
       const design = this.design ? { design: this.design } : {};
       const saved: Saved | SavedFree =
         this.mode === "free"
-          ? { setting: this.client.plot.setting, house: this.house.toJSON(), ...design }
+          ? { setting: this.client.plot.id, house: this.house.toJSON(), ...design }
           : { career: this.career, current: this.working ? { clientId: this.client.id, house: this.house.toJSON(), ...design } : null };
       localStorage.setItem(saveKey(this.mode), JSON.stringify(saved));
     } catch {

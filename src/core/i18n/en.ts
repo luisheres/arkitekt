@@ -97,6 +97,7 @@ export const en: Messages = {
     bulkBuying: { name: "Bulk buying", text: "Buy materials by the truckload: 5% off everything." },
   },
   branch: { facades: "Facades", roofs: "Roofs", floors: "Floors", interiors: "Interiors", garden: "Garden", structure: "Structure", business: "Business" },
+  settingName: { suburban: "Suburbs", town: "Town", lakeside: "By a lake", riverside: "By a river", forest: "Forest", farmland: "Countryside", seaside: "By the sea", hillside: "Hillside", mountain: "Mountains" },
   tierName: { 1: "Starter homes", 2: "Family homes", 3: "Villas", 4: "Signature houses" },
   difficulty: {
     easy: { name: "Easy", text: "Roomy budgets, with plenty to spare for nice things." },

@@ -10,7 +10,7 @@
 import type { BriefItem, Client, ClientText } from "./brief";
 import type { Lang } from "./i18n/types";
 import { type PaintColor, ROOF_STYLES, type RoofStyle, type RoomType, type WallMaterial } from "./model";
-import { type Plot, type Setting, starterPlots } from "./plot";
+import { type Plot, type Setting, allPlots, starterPlots } from "./plot";
 import { TIER_MIN_BUDGET, type Tier } from "./progression";
 
 /** Small, fast, seedable random numbers (mulberry32). */
@@ -673,9 +673,10 @@ function tierExtras(kind: Archetype, tier: Tier): BriefItem["req"][] {
 
 /**
  * The client for a seed, at a tier; without a tier, a client as generated before tiers
- * (any household, any plot).
+ * (any household, any plot). Clients first met with three plots to choose from ("gen…"
+ * ids) keep those; newer ones ("c…" ids) buy any plot their tier buys.
  */
-export function generateClient(seed: number, tier?: Tier): Client {
+export function generateClient(seed: number, tier?: Tier, plots: "original" | "all" = "original"): Client {
   const rnd = random(seed);
   const kind = tier ? ARCHETYPES[tier][Math.floor(rnd() * ARCHETYPES[tier].length)] : (["family", "couple", "retirees", "remote"] as const)[Math.floor(rnd() * 4)];
   const d = draft(kind, rnd, tier);
@@ -685,12 +686,17 @@ export function generateClient(seed: number, tier?: Tier): Client {
   const grow = (r: BriefItem["req"]): BriefItem["req"] => (r.kind === "rooms" && r.minArea ? { ...r, minArea: Math.round(r.minArea * size) } : r);
   const musts = [...d.musts.map(grow), ...(tier ? tierExtras(kind, tier) : [])];
   const items: BriefItem[] = [...musts.map((req) => ({ req, must: true })), ...wishes.map((req) => ({ req: grow(req), must: false }))];
-  const plots = starterPlots();
-  if (!tier) return { id: `gen-${seed}`, text: d.text, plot: plots[Math.floor(rnd() * plots.length)], budget: budgetFor(items), items };
+  const starters = starterPlots();
+  if (!tier) return { id: `gen-${seed}`, text: d.text, plot: starters[Math.floor(rnd() * starters.length)], budget: budgetFor(items), items };
+  const budget = Math.max(budgetFor(items, tier), TIER_MIN_BUDGET[tier]);
+  if (plots === "all") {
+    const choice = allPlots().filter((p) => p.tiers.includes(tier));
+    return { id: `c${tier}-${seed}`, text: d.text, plot: choice[Math.floor(rnd() * choice.length)], budget, items };
+  }
   const settings = PLOTS[tier];
   const setting = settings[Math.floor(rnd() * settings.length)];
-  const plot = plots.find((p) => p.setting === setting) as Plot;
-  return { id: `gen${tier}-${seed}`, text: d.text, plot, budget: Math.max(budgetFor(items, tier), TIER_MIN_BUDGET[tier]), items };
+  const plot = starters.find((p) => p.setting === setting) as Plot;
+  return { id: `gen${tier}-${seed}`, text: d.text, plot, budget, items };
 }
 
 /** The seed for the generated client after `after` (or the first one). */

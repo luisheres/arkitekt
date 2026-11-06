@@ -100,6 +100,7 @@ export const sv: Messages = {
     bulkBuying: { name: "Storinköp", text: "Köp material i lastbilsvis: 5 % billigare allt." },
   },
   branch: { facades: "Fasader", roofs: "Tak", floors: "Golv", interiors: "Inredning", garden: "Trädgård", structure: "Stomme", business: "Företaget" },
+  settingName: { suburban: "Villaområde", town: "Stad", lakeside: "Vid en sjö", riverside: "Vid en å", forest: "Skog", farmland: "Landsbygd", seaside: "Vid havet", hillside: "Sluttning", mountain: "Fjäll" },
   tierName: { 1: "Små hus", 2: "Familjehus", 3: "Villor", 4: "Drömhus" },
   difficulty: {
     easy: { name: "Lätt", text: "Rymliga budgetar, med gott om pengar över till fina saker." },

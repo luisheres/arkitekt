@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import { type Plot, STREET, type Scenery, type Tree, sceneryFor, treeLook } from "../core";
+import { type Plot, STREET, type Scenery, type Surface, type Tree, sceneryFor, treeLook } from "../core";
 import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
@@ -111,8 +111,14 @@ function terrain(s: Scenery, center: THREE.Vector3): THREE.Mesh {
   const grass = new THREE.Color("#6cc24a");
   const meadow = new THREE.Color("#9ad25a");
   const forest = new THREE.Color("#3f9a4a");
-  const sand = new THREE.Color("#f0d9a0");
   const rockC = new THREE.Color("#a7a29a");
+  const covers: Record<Exclude<Surface, "grass">, THREE.Color> = {
+    sand: new THREE.Color("#f0d9a0"),
+    field1: new THREE.Color("#e8cf5f"), // ripe wheat
+    field2: new THREE.Color("#86c43c"), // young crops
+    field3: new THREE.Color("#a57a52"), // ploughed earth
+    snow: new THREE.Color("#f7fbff"),
+  };
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i) + center.x;
@@ -124,8 +130,10 @@ function terrain(s: Scenery, center: THREE.Vector3): THREE.Mesh {
     c.copy(grass).lerp(meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
     if (h > 4) c.lerp(forest, Math.min((h - 4) / 8, 1));
     if (slope > 0.55) c.lerp(rockC, Math.min((slope - 0.55) * 2, 0.8));
-    // Sand only on the lake's shore.
-    if (s.lake && h < s.lake.level + 0.45 && ((x - s.lake.center.x) / s.lake.rx) ** 2 + ((y - s.lake.center.y) / s.lake.ry) ** 2 < 1.6) c.copy(sand);
+    // Beaches, fields and snow.
+    const cover = s.surface(x, y);
+    if (cover !== "grass") c.copy(covers[cover]);
+    if (cover === "field1" || cover === "field2" || cover === "field3") c.multiplyScalar(0.94 + 0.06 * Math.sin(x * 1.7 + y * 0.4)); // furrows
     colors.set([c.r, c.g, c.b], i * 3);
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -184,14 +192,16 @@ function lake(s: Scenery): THREE.Group {
     m.position.set(l.center.x, y, l.center.y);
     return m;
   };
-  g.add(flat(ellipse(1.02), toon({ color: "#3fb3e8", transparent: true, opacity: 0.88 }), l.level));
-  // A white rim of foam where the water meets the shore.
-  const rim = ellipse(1.03);
-  rim.holes.push(new THREE.Path().absellipse(0, 0, l.rx * 0.985, l.ry * 0.985, 0, Math.PI * 2, true, 0));
+  // A white rim of foam where the water meets the shore: about a metre wide (for a lake,
+  // as it always was; a river or the sea would get a band many metres wide otherwise).
+  const [outer, inner, water] = l.kind === "lake" ? [1.03, 0.985, 1.02] : [1 + 0.5 / Math.min(l.rx, l.ry), 1 - 0.5 / Math.min(l.rx, l.ry), 1 + 0.3 / Math.min(l.rx, l.ry)];
+  g.add(flat(ellipse(water), toon({ color: l.kind === "sea" ? "#2f9fe0" : "#3fb3e8", transparent: true, opacity: 0.88 }), l.level));
+  const rim = ellipse(outer);
+  rim.holes.push(new THREE.Path().absellipse(0, 0, l.rx * inner, l.ry * inner, 0, Math.PI * 2, true, 0));
   g.add(flat(rim, toon({ color: "#ffffff" }), l.level + 0.01));
-  // Reeds along the shore.
+  // Reeds along a lake's shore.
   const reed = toon({ color: "#5f9e3f" });
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < (l.kind === "lake" ? 40 : 0); i++) {
     const a = (i / 40) * Math.PI * 2 + Math.sin(i * 7.3) * 0.08;
     if (Math.abs(Math.sin(a)) > 0.9 && Math.sin(a) < 0) continue; // keep the jetty's end clear
     const r = 1.0 + 0.03 * Math.sin(i * 3.1);

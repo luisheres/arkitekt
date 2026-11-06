@@ -1,6 +1,7 @@
 /** The live 3D view of the house on its plot, with an orbit camera. */
 
 import * as THREE from "three";
+import { sceneryFor } from "../core";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { HAZE } from "./landscape";
@@ -73,6 +74,9 @@ export class View3D {
   }
 
   /** The default camera: looking at the plot center from the front-right. */
+  /** The height of the land under a point (for keeping the camera out of hillsides). */
+  private readonly ground = (x: number, z: number): number => sceneryFor(this.store.plot).height(x, z);
+
   private homeOrbit(): Orbit {
     const { plot } = this.store;
     const o: Orbit = { target: new THREE.Vector3(plot.width * 0.5, 2, plot.depth * 0.5), yaw: 0, pitch: 0, distance: 24 };
@@ -86,7 +90,7 @@ export class View3D {
     const r = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster();
-    placeCamera(this.camera, this.orbit);
+    placeCamera(this.camera, this.orbit, this.ground);
     this.camera.updateMatrixWorld();
     ray.setFromCamera(ndc, this.camera);
     for (const hit of ray.intersectObject(this.houseGroup, true)) {
@@ -158,7 +162,7 @@ export class View3D {
       if (this.canvas.clientWidth === 0) return; // hidden in plan-only layout
       this.syncHouse();
       this.world.guides.visible = this.store.showGuides;
-      placeCamera(this.camera, this.orbit);
+      placeCamera(this.camera, this.orbit, this.ground);
       this.toon.render(this.scene, this.camera);
     });
   }

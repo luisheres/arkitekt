@@ -205,10 +205,10 @@ function showMenu(): void {
       store.startOver(difficulty);
       showClients();
     },
-    free: (setting) => {
+    free: (plotId) => {
       rememberMode("free");
       store.setMode("free");
-      store.setFreePlot(setting);
+      store.setFreePlot(plotId);
     },
     players: showPlayersDialog,
   }, nowPlaying, currentProfile());
