@@ -1,6 +1,6 @@
 /** Read-only sidebar sections: the client's brief checklist, costs and issues. */
 
-import { type Issue, area, estimate, evaluateBrief, money as formatMoney, totalCost, validate } from "../core";
+import { type Issue, area, earthworks, estimate, evaluateBrief, fixed, money as formatMoney, num, siteLevel, totalCost, validate } from "../core";
 import { m } from "./i18n";
 import type { Selection, Store } from "./store";
 
@@ -43,6 +43,13 @@ function targetAttrs(i: Issue, store: Store): string {
   return ` data-kind="${t.kind}" ${data}${levelAttr} tabindex="0"`;
 }
 
+/** "Platform +1.35 m · 19 m³ dug, 19 m³ filled" */
+function groundLine(store: Store): string {
+  const { house, plot } = store;
+  const e = earthworks(house, plot);
+  return m.ui.platform(fixed(m, siteLevel(house, plot), 2), num(m, Math.round(e.cut)), num(m, Math.round(e.fill)));
+}
+
 /** Live checklist of the client's must-haves and wishes. */
 export function renderBrief(el: HTMLElement, store: Store): void {
   const results = evaluateBrief(store.house, store.client, store.prices, m);
@@ -59,7 +66,7 @@ export function renderBrief(el: HTMLElement, store: Store): void {
 
 export function renderStatus(el: HTMLElement, store: Store): void {
   const { house, plot, budget, prices } = store;
-  const cost = estimate(house, prices);
+  const cost = estimate(house, prices, plot);
   const total = totalCost(cost);
   const issues = validate(house, plot, budget, prices, store.mode === "campaign" ? store.abilities : undefined);
   const rows = m.ui.costRows;
@@ -68,6 +75,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
   const left = budget - total;
   el.innerHTML = `
     <div class="sub">${esc(m.ui.floorArea(area(m, house.floorArea())))}</div>
+    ${plot.terrain && house.walls.length ? `<div class="sub">${esc(groundLine(store))}</div>` : ""}
     <table>
       ${row(rows.walls, cost.walls)}
       ${row(rows.interiorWalls, cost.interiorWalls)}
@@ -79,6 +87,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
       ${cost.finishes ? row(rows.finishes, cost.finishes) : ""}
       ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
       ${cost.extras ? row(rows.extras, cost.extras) : ""}
+      ${cost.groundworks ? row(rows.groundworks, cost.groundworks) : ""}
       ${row(rows.total, total, "total")}
       ${Number.isFinite(budget) ? row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over") : ""}
     </table>

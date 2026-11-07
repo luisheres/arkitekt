@@ -18,7 +18,7 @@ export type Lang = (typeof LANGS)[number];
 /** A piece of text in every language. */
 export type Localized = Record<Lang, string>;
 
-export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door" | "stairs";
+export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door" | "stairs" | "move";
 
 /** The forms of a room type's name that sentences need. */
 export interface RoomWords {
@@ -298,6 +298,7 @@ export interface Messages {
       finishes: string;
       stairs: string;
       extras: string;
+      groundworks: string;
       total: string;
       budgetLeft: string;
       overBudget: string;
@@ -312,11 +313,26 @@ export interface Messages {
       /** A flat roof over the part of a storey that has no storey above. */
       terrace: string;
       balcony: string;
+      earthworks: string;
+      basementDig: string;
+      basementWalls: string;
       paint(color: string): string;
       empty: string;
       /** "3 ×" in front of a count of windows or doors. */
       count(n: number): string;
     };
+    addBasement: string;
+    addBasementTitle: string;
+    removeBasement: string;
+    removeBasementTitle: string;
+    /** The whole house: moving and turning it. */
+    moveAndTurn: string;
+    wholeHouse: string;
+    turnLeft: string;
+    turnRight: string;
+    moveHint: string;
+    /** On sloping ground: the platform's height and the earth moved. */
+    platform(height: string, dug: string, filled: string): string;
     /** The room menu's paint swatches, the Garden menu, balconies. */
     wallColour: string;
     garden: string;

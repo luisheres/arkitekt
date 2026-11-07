@@ -57,6 +57,8 @@ import {
   INDOOR_PLANTS,
   balconyOutline,
   clampBalcony,
+  shapedGround,
+  moveHouse,
   snapPoint,
   validate,
   wallThickness,
@@ -80,6 +82,7 @@ type Drag =
   | { kind: "stair"; id: number; grab: Vec2 }
   | { kind: "furniture"; id: number; grab: Vec2 }
   | { kind: "balcony"; id: number; grab: number }
+  | { kind: "house"; grab: Vec2; moved: Vec2 }
   | { kind: "room"; start: Vec2 };
 
 type Hit =
@@ -248,6 +251,57 @@ export class PlanView {
     }
     this.clampView();
     this.requestRender();
+  }
+
+  // --- Ground -----------------------------------------------------------------------
+
+  private contourCache: { key: string; minor: Vec2[][]; major: Vec2[][] } | null = null;
+
+  /** Contour lines of the ground as built (marching squares), worked out once per change. */
+  private contours(): { minor: Vec2[][]; major: Vec2[][] } {
+    const { plot, house, revision } = this.store;
+    const key = `${plot.id}:${revision}`;
+    if (this.contourCache?.key === key) return this.contourCache;
+    const ground = shapedGround(house, plot);
+    const step = 0.5;
+    const nx = Math.round(plot.width / step);
+    const ny = Math.round(plot.depth / step);
+    const h: number[][] = [];
+    for (let i = 0; i <= nx; i++) {
+      h.push([]);
+      for (let j = 0; j <= ny; j++) h[i].push(ground((i / nx) * plot.width, (j / ny) * plot.depth));
+    }
+    const all = h.flat();
+    const [lo, hi] = [Math.min(...all), Math.max(...all)];
+    const minor: Vec2[][] = [];
+    const major: Vec2[][] = [];
+    const point = (i: number, j: number) => new Vec2((i / nx) * plot.width, (j / ny) * plot.depth);
+    for (let level = Math.ceil(lo / 0.5) * 0.5; level <= hi; level += 0.5) {
+      const into = Math.abs(level - Math.round(level)) < 1e-6 ? major : minor;
+      for (let i = 0; i < nx; i++)
+        for (let j = 0; j < ny; j++) {
+          // Where the level crosses each edge of the cell.
+          const corners: [number, number][] = [
+            [i, j],
+            [i + 1, j],
+            [i + 1, j + 1],
+            [i, j + 1],
+          ];
+          const crossings: Vec2[] = [];
+          for (let k = 0; k < 4; k++) {
+            const [a, b] = [corners[k], corners[(k + 1) % 4]];
+            const [ha, hb] = [h[a[0]][a[1]], h[b[0]][b[1]]];
+            if (ha === hb || (ha < level) === (hb < level)) continue;
+            const t = (level - ha) / (hb - ha);
+            const [pa, pb] = [point(...a), point(...b)];
+            crossings.push(pa.add(pb.sub(pa).scale(t)));
+          }
+          if (crossings.length >= 2) into.push([crossings[0], crossings[1]]);
+          if (crossings.length === 4) into.push([crossings[2], crossings[3]]);
+        }
+    }
+    this.contourCache = { key, minor, major };
+    return this.contourCache;
   }
 
   // --- Model helpers -----------------------------------------------------------------
@@ -458,6 +512,11 @@ export class PlanView {
         }
         break;
       }
+      case "move":
+        if (!this.house.walls.length) return;
+        store.beginGesture();
+        this.drag = { kind: "house", grab: p, moved: new Vec2(0, 0) };
+        break;
       case "wall":
       case "boundary":
         this.addDraftPoint(this.snap(p));
@@ -517,6 +576,14 @@ export class PlanView {
       if (distance !== drag.distance) {
         store.gestureEdit((h) => moveWall(h, drag.id, original, distance));
         drag.distance = distance;
+      }
+    } else if (drag.kind === "house") {
+      // The whole house follows the pointer, on the 10 cm grid.
+      const want = snapToGrid(p.sub(drag.grab), this.freeSnap ? 0.05 : 0.1);
+      const delta = want.sub(drag.moved);
+      if (Math.abs(delta.x) > 1e-9 || Math.abs(delta.y) > 1e-9) {
+        store.gestureEdit((h) => moveHouse(h, delta));
+        drag.moved = want;
       }
     } else if (drag.kind === "balcony") {
       // Slide the balcony along its wall.
@@ -676,6 +743,12 @@ export class PlanView {
     out.push(`<line class="street-line" x1="${lx0.toFixed(1)}" x2="${lx1.toFixed(1)}" y1="${streetY}" y2="${streetY}"/>`);
     out.push(this.label(new Vec2(plot.width / 2, -4.5), m.ui.street, "street-label"));
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
+    // On sloping ground: contour lines every half metre (stronger every metre), as built.
+    if (plot.terrain) {
+      const { minor, major } = this.contours();
+      const path = (segs: Vec2[][]) => segs.map(([a, b]) => `M${this.toScreen(a).map((v) => v.toFixed(1)).join(",")}L${this.toScreen(b).map((v) => v.toFixed(1)).join(",")}`).join("");
+      out.push(`<path class="contour" d="${path(minor)}"/><path class="contour major" d="${path(major)}"/>`);
+    }
 
     // Grid: 1 m lines, stronger every 5 m.
     if (this.scale >= 8) {
@@ -694,9 +767,9 @@ export class PlanView {
     out.push(rect(plot.setback, plot.setback, plot.width - plot.setback, plot.depth - plot.setback, "setback"));
     out.push(this.sceneryLayer(vx0, vx1, vy0, vy1));
 
-    // The floor below, faintly, to build on.
-    if (this.level > 0) {
-      const below = this.house.wallsOn(this.level - 1).filter((w) => !w.boundary);
+    // The floor below, faintly, to build on (in the basement: the ground floor above).
+    if (this.level !== 0) {
+      const below = this.house.wallsOn(this.level > 0 ? this.level - 1 : 0).filter((w) => !w.boundary);
       out.push(`<g class="below">${below.map((w) => `<polyline points="${this.pts([w.start, w.end])}"/>`).join("")}</g>`);
     }
 
@@ -928,7 +1001,7 @@ export class PlanView {
   /** The floor switcher: one button per storey, plus adding and removing storeys. */
   private renderLevels(): void {
     const { house, level } = this.store;
-    const buttons = Array.from({ length: house.levels }, (_, k) => house.levels - 1 - k).map(
+    const buttons = [...house.levelList()].reverse().map(
       (k) => `<button type="button" data-level="${k}" class="${k === level ? "active" : ""}">${esc(m.levelName(k))}</button>`,
     );
     const lock = this.store.floorLock();
@@ -938,7 +1011,14 @@ export class PlanView {
         ? `<button type="button" data-action="add" class="${lock ? "locked" : ""}" title="${esc(addTitle)}">+ ${esc(m.ui.addFloor)}</button>`
         : "";
     const remove = house.levels > 1 ? `<button type="button" data-action="remove" title="${esc(m.ui.removeFloorTitle)}">− ${esc(m.ui.removeFloor)}</button>` : "";
-    const html = `<div class="label">${esc(m.ui.floors)}</div>${add}${buttons.join("")}${remove}`;
+    // A basement goes under the ground floor; on the basement, a way to fill it in again.
+    const basementLock = this.store.lockOf({ kind: "basement" });
+    const basement = !house.basement
+      ? `<button type="button" data-action="basement" class="${basementLock ? "locked" : ""}" title="${esc(basementLock ? m.progress.locked(m.technique[basementLock].name, money(m, technique(basementLock).price)) : m.ui.addBasementTitle)}">+ ${esc(m.ui.addBasement)}</button>`
+      : level < 0
+        ? `<button type="button" data-action="no-basement" title="${esc(m.ui.removeBasementTitle)}">− ${esc(m.ui.removeBasement)}</button>`
+        : "";
+    const html = `<div class="label">${esc(m.ui.floors)}</div>${add}${buttons.join("")}${basement}${remove}`;
     if (this.levels.innerHTML !== html) this.levels.innerHTML = html;
   }
 
@@ -948,6 +1028,8 @@ export class PlanView {
     if (b.dataset.level) this.store.setLevel(Number(b.dataset.level));
     else if (b.dataset.action === "add") this.store.addFloor();
     else if (b.dataset.action === "remove") this.store.removeTopFloor();
+    else if (b.dataset.action === "basement") this.store.addBasement();
+    else if (b.dataset.action === "no-basement") this.store.removeBasement();
   }
 
   /** A flight of stairs: treads, and an arrow pointing up (from below) or down (from above). */

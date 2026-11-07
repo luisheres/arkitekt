@@ -5,7 +5,7 @@
  * boxes whose cost just changed flash.
  */
 
-import { COST_GROUPS, type CostGroup, type CostLine, type Rect, area, costLines, squarify } from "../core";
+import { COST_GROUPS, type CostGroup, type CostLine, type Rect, area, costLines, num, squarify } from "../core";
 import { esc, money } from "./hud";
 import { m } from "./i18n";
 import type { Store } from "./store";
@@ -18,6 +18,7 @@ export const GROUP_COLORS: Record<CostGroup, string> = {
   interiorWalls: "#e7b94a",
   stairs: "#a77de0",
   extras: "#cf6fb5",
+  groundworks: "#9a7b5c",
 };
 
 const HEADER = 22;
@@ -47,6 +48,12 @@ export function lineName(l: CostLine, short = false): string {
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costRows.stairs}`;
     case "balcony":
       return m.ui.costChart.balcony;
+    case "earthworks":
+      return m.ui.costChart.earthworks;
+    case "basementDig":
+      return m.ui.costChart.basementDig;
+    case "basementWalls":
+      return m.ui.costChart.basementWalls;
     case "plant":
       return `${m.ui.costChart.count(l.quantity)} ${m.furnitureName[w.plant]}`;
     case "paint":
@@ -56,6 +63,7 @@ export function lineName(l: CostLine, short = false): string {
 
 /** How the amount comes about: "42.5 m² × 220". */
 function lineDetail(l: CostLine): string {
+  if (l.unit === "m3") return `${num(m, l.quantity, 1)} m³ × ${money(l.amount / l.quantity)}`;
   return l.unit === "m2" ? `${area(m, l.quantity)} × ${money(l.amount / l.quantity)}` : "";
 }
 
@@ -255,7 +263,7 @@ export class CostPanel {
   private render(flash: boolean): void {
     if (this.root.hidden) return;
     const { house, prices, budget } = this.store;
-    const lines = costLines(house, prices);
+    const lines = costLines(house, prices, this.store.plot);
     const groups = groupTotals(lines);
     const total = groups.reduce((s, g) => s + g.amount, 0);
     const left = budget - total;

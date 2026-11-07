@@ -381,6 +381,9 @@ try {
   await page.click("#modal .dialog-close");
   assert.equal((await model()).client, "haddad");
 
+  // Nor is a basement.
+  assert.equal(await page.locator(".level-switch button[data-action=basement].locked").count(), 1);
+
   // Another storey is not learned yet: the button shows the Workshop.
   assert.equal(await page.locator(".level-switch button[data-action=add].locked").count(), 1);
   await page.click(".level-switch button[data-action=add]");
@@ -515,6 +518,44 @@ try {
   assert.equal(await page.locator('#modal [data-cmd="export"], #modal input[type=file]').count(), 0);
   await shot("saved-designs");
   await page.keyboard.press("Escape");
+
+  // Sloping ground: the house stands on a level platform; digging and filling cost money.
+  await page.click('.studio [data-action="menu"]');
+  await page.click('#modal [data-action="free"]');
+  await page.click('#modal [data-action="plot-slope"]');
+  await page.click("text=Clear plot");
+  await page.keyboard.press("r");
+  await drag([8, 10], [18, 18]);
+  await frame();
+  assert.match(await status(), /Stands on a level platform at \+\d+\.\d\d m · \d+ m³ dug, \d+ m³ filled/);
+  assert.match(await status(), /Groundworks/);
+  assert.ok((await page.locator(".plan .contour").count()) > 0, "contour lines");
+  const levelAt = () => page.evaluate(() => window.architect.core.siteLevel(window.architect.store.house, window.architect.store.plot));
+  const lowLevel = await levelAt();
+  // Move the whole house up the slope with the Move tool: the platform rises with it.
+  await page.keyboard.press("m");
+  await drag([13, 14], [13, 20]);
+  const corners = () => page.evaluate(() => window.architect.store.house.walls.map((w) => [w.start.x, w.start.y]).sort().join(" "));
+  assert.equal(await corners(), "18,16 18,24 8,16 8,24".split(" ").sort().join(" "));
+  assert.ok((await levelAt()) > lowLevel + 0.4, "higher up the slope");
+  // Turn it a quarter: 10 x 8 becomes 8 x 10.
+  await page.keyboard.press("v");
+  await page.click('#sidebar .house button:has-text("Move & turn")');
+  await page.click('.popover button:has-text("Turn right")');
+  await page.keyboard.press("Escape");
+  const span = await page.evaluate(() => {
+    const xs = window.architect.store.house.walls.flatMap((w) => [w.start.x, w.end.x]);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  assert.equal(span, 8);
+  // A basement: dug under the house, with stairs needed down to it.
+  await page.click(".level-switch button[data-action=basement]");
+  assert.equal(await page.evaluate(() => window.architect.store.level), -1);
+  assert.match(await page.locator(".level-switch").innerText(), /Basement/);
+  assert.match(await status(), /No stairs lead down to the basement/);
+  await shot("basement");
+  await page.click(".level-switch button[data-action=no-basement]");
+  assert.equal(await page.evaluate(() => window.architect.store.house.basement), false);
 
   // Back to the campaign: the Haddads' design is where it was left.
   await page.click('.studio [data-action="menu"]');

@@ -87,6 +87,7 @@ export const sv: Messages = {
     paint: { name: "Målarfärger", text: "Måla rummen i åtta färger i stället för vitt." },
     houseplants: { name: "Krukväxter", text: "Växter i kruka som gör rummen mysiga." },
     landscaping: { name: "Trädgårdsdesign", text: "Plantera träd, buskar, rabatter och häckar i trädgården." },
+    basement: { name: "Källare", text: "Gräv ut en våning under huset, för förråd, tvättstuga eller verkstad." },
     balconies: { name: "Balkonger", text: "Balkonger på övervåningarna, med en dörr ut." },
     woodFloor: { name: "Trägolv", text: "Varma golv av trä." },
     stoneFloor: { name: "Stengolv", text: "Golv av polerad sten." },
@@ -200,7 +201,7 @@ export const sv: Messages = {
     canAfford: (n) => (n === 1 ? "Du har råd med en ny teknik i verkstaden." : `Du har råd med ${n} nya tekniker i verkstaden.`),
   },
 
-  levelName: (level) => (level === 0 ? "Bottenvåning" : `Våning ${level + 1}`),
+  levelName: (level) => (level < 0 ? "Källare" : level === 0 ? "Bottenvåning" : `Våning ${level + 1}`),
 
   footprint(e) {
     switch (e.kind) {
@@ -293,6 +294,12 @@ export const sv: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
+      case "BasementOutsideHouse":
+        return "Källaren sträcker sig utanför bottenvåningen; den måste rymmas under huset";
+      case "NoStairsToBasement":
+        return "Ingen trappa leder ner till källaren; placera en trappa i källaren";
+      case "OpeningBelowGround":
+        return "En dörr eller ett fönster i källarens yttervägg skulle hamna under marken; ta bort den";
       case "BalconyOnGroundFloor":
         return "En balkong sitter på bottenvåningen; balkonger hör hemma på övervåningarna (använd väggens meny där uppe)";
       case "BalconyNotOnOuterWall":
@@ -422,7 +429,7 @@ export const sv: Messages = {
     storageFull: "Webbläsaren har inte plats för fler sparade ritningar. Ta bort en gammal, eller exportera den till en fil först.",
     cancel: "Avbryt",
     clickToEdit: "Klicka på ett rum, en vägg, ett fönster, en dörr eller en möbel, i planen eller i 3D, för att ändra det. Högerklick fungerar också.",
-    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa" },
+    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa", move: "Flytta huset" },
     undo: "Ångra",
     undoTitle: "Ångra (Ctrl+Z)",
     redo: "Gör om",
@@ -492,6 +499,7 @@ export const sv: Messages = {
       finishes: "Golvbeläggning",
       stairs: "Trappor",
       extras: "Balkonger och växter",
+      groundworks: "Markarbeten",
       total: "Totalt",
       budgetLeft: "Kvar av budgeten",
       overBudget: "Över budget",
@@ -500,13 +508,26 @@ export const sv: Messages = {
       open: "Vart går pengarna?",
       title: "Vart pengarna går",
       hint: "Ju större ruta, desto mer kostar det. Peka på en ruta för att se detaljerna.",
-      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor", extras: "Balkonger och växter" },
+      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor", extras: "Balkonger och växter", groundworks: "Markarbeten" },
       terrace: "Terrasstak",
+      earthworks: "Schaktning och fyllning",
+      basementDig: "Källarschakt",
+      basementWalls: "Källarväggar",
       balcony: "Balkong",
       paint: (color) => `Färg: ${color.toLowerCase()}`,
       empty: "Inget är byggt än, så inget kostar något.",
       count: (n) => `${n} st`,
     },
+    addBasement: "Källare",
+    addBasementTitle: "Gräv en källare under huset: ytterväggarna följer bottenvåningens",
+    removeBasement: "Ta bort källaren",
+    removeBasementTitle: "Fyll igen källaren, med allt i den",
+    moveAndTurn: "Flytta och vrid",
+    wholeHouse: "Hela huset",
+    turnLeft: "⟲ Vrid åt vänster",
+    turnRight: "⟳ Vrid åt höger",
+    moveHint: "Vrid det ett kvarts varv i taget, eller välj verktyget ✋ Flytta (M) och dra det i planen. I en slänt ändrar flytten hur mycket jord som schaktas.",
+    platform: (height, dug, filled) => `Står på en plan yta på +${height} m · ${dug} m³ bortschaktat, ${filled} m³ utfyllt`,
     wallColour: "Väggfärg",
     garden: "Trädgård",
     gardenTitle: "Plantera träd, buskar, rabatter och häckar",
@@ -542,6 +563,7 @@ export const sv: Messages = {
       window: "Klicka på en yttervägg för att lägga till ett fönster.",
       door: "Klicka på en vägg för att lägga till en dörr.",
       stairs: "Klicka inne i ett rum för att placera en trappa upp till våningen ovanför; vrid den i sidopanelen.",
+      move: "Dra i huset för att flytta hela, med rum, trappor och möbler. Vrid det under Flytta och vrid i sidopanelen.",
     },
     street: "GATA",
     room: "Rum",

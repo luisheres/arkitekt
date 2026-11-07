@@ -158,7 +158,7 @@ function roomFrame(poly: readonly Vec2[]): Frame | null {
 /** Furnish every labelled room of the house. */
 export function furnish(house: House): Furniture[] {
   const out: Furniture[] = [];
-  for (let level = 0; level < house.levels; level++) {
+  for (const level of house.levelList()) {
     const analysis = analyzeRooms(house, level);
     if (!analysis.ok) continue;
     for (const room of analysis.value.rooms) if (room.type) out.push(...furnishRoom(house, room));

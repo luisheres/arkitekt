@@ -150,7 +150,7 @@ export class View3D {
     this.houseDirty = false;
     if (this.houseGroup) disposeHouse(this.houseGroup);
     const { house, showRoof, hiddenLevels, showFurniture } = this.store;
-    this.houseGroup = buildHouse(house, { roof: showRoof, hidden: hiddenLevels, furniture: showFurniture });
+    this.houseGroup = buildHouse(house, { roof: showRoof, hidden: hiddenLevels, furniture: showFurniture, plot: this.store.plot });
     this.scene.add(this.houseGroup);
   }
 

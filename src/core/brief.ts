@@ -89,7 +89,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
   /** The room a door or open link points to, on the same storey. */
   const sameLevel = (r: Room, index: number) => rooms.find((x) => x.level === r.level && x.index === index);
   const storeys = Array.from({ length: house.levels }, (_, k) => k).filter((k) => house.wallsOn(k).length > 0).length;
-  const cost = totalCost(estimate(house, prices));
+  const cost = totalCost(estimate(house, prices, client.plot));
   const doors = house.openings.filter((o) => o.kind === "Door");
 
   const check = (r: Requirement): [boolean, string] => {
@@ -106,7 +106,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "wallMaterial": {
         const family = WALL_FAMILY[r.material];
         const exterior = house.walls.filter((w) => {
-          if (w.boundary) return false;
+          if (w.boundary || w.level < 0) return false;
           const level = analysis.levels[w.level];
           return !level?.ok || level.value.layout.exterior.has(w.id);
         });
@@ -139,7 +139,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "storeys":
         return [storeys > 0 && storeys >= (r.min ?? 0) && storeys <= (r.max ?? Infinity), String(storeys)];
       case "everyFloor": {
-        const have = new Set(ofType(r.room).map((x) => x.level)).size;
+        const have = new Set(ofType(r.room).filter((x) => x.level >= 0).map((x) => x.level)).size;
         return [storeys > 0 && have >= storeys, m.brief.countOf(Math.min(have, storeys), storeys)];
       }
       case "underBudget":

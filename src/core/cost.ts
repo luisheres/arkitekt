@@ -3,7 +3,9 @@
 import { analyzeLayout } from "./layout";
 import { type FurnitureKind, PLANT_PRICE } from "./furniture";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
+import type { Plot } from "./plot";
 import { analyzeHouse } from "./rooms";
+import { earthworks } from "./site";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -32,6 +34,12 @@ export interface PriceList {
   balconyM2: number;
   /** Per m² of painted wall (any colour but white). */
   paintM2: number;
+  /** Per m³ of earth dug away or filled in to level the ground. */
+  earthM3: number;
+  /** Per m³ dug out for a basement. */
+  basementDigM3: number;
+  /** Per m² of a basement's outer walls (waterproof concrete). */
+  basementWallM2: number;
   /** Per plant, by kind. */
   plants: Partial<Record<FurnitureKind, number>>;
 }
@@ -53,6 +61,9 @@ export function defaultPrices(): PriceList {
     stairs: 3500,
     balconyM2: 900,
     paintM2: 8,
+    earthM3: 55,
+    basementDigM3: 45,
+    basementWallM2: 160,
     plants: { ...PLANT_PRICE },
   };
 }
@@ -71,14 +82,16 @@ export interface CostBreakdown {
   stairs: number;
   /** Balconies, plants and paint. */
   extras: number;
+  /** Levelling the ground, and the basement's hole and walls. */
+  groundworks: number;
 }
 
 export function totalCost(c: CostBreakdown): number {
-  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.finishes + c.stairs + c.extras;
+  return c.walls + c.interiorWalls + c.windows + c.doors + c.roof + c.foundation + c.floors + c.finishes + c.stairs + c.extras + c.groundworks;
 }
 
 /** The big groups of a cost breakdown. */
-export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs" | "extras";
+export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs" | "extras" | "groundworks";
 
 /** What a line of the breakdown pays for. */
 export type CostWhat =
@@ -92,6 +105,9 @@ export type CostWhat =
   | { kind: "finish"; finish: FloorFinish }
   | { kind: "stairs" }
   | { kind: "balcony" }
+  | { kind: "earthworks" }
+  | { kind: "basementDig" }
+  | { kind: "basementWalls" }
   | { kind: "plant"; plant: FurnitureKind }
   | { kind: "paint"; color: PaintColor };
 
@@ -101,12 +117,12 @@ export interface CostLine {
   what: CostWhat;
   /** m² for surfaces; a count for windows, doors and stairs. */
   quantity: number;
-  unit: "m2" | "pieces";
+  unit: "m2" | "m3" | "pieces";
   amount: number;
 }
 
 /** The order the groups are listed in. */
-export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs", "extras"];
+export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs", "extras", "groundworks"];
 
 /**
  * Every cost of the house, line by line (each material, finish and kind of opening on its
@@ -114,7 +130,7 @@ export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "o
  * Lines that cost nothing are left out. Parts that cannot be built yet (an unclosed
  * footprint, an impossible roof) cost nothing; validation reports those separately.
  */
-export function costLines(house: House, prices: PriceList): CostLine[] {
+export function costLines(house: House, prices: PriceList, plot?: Plot): CostLine[] {
   const lines = new Map<string, CostLine>();
   const add = (group: CostGroup, what: CostWhat, quantity: number, unit: CostLine["unit"], amount: number) => {
     const key = JSON.stringify(what);
@@ -126,13 +142,15 @@ export function costLines(house: House, prices: PriceList): CostLine[] {
   };
 
   // Until a storey's walls enclose something, every wall is priced as an exterior wall.
-  const layouts = Array.from({ length: house.levels }, (_, k) => analyzeLayout(house, k));
+  const layouts = new Map(house.levelList().map((k) => [k, analyzeLayout(house, k)]));
   for (const wall of house.walls) {
     if (wall.boundary) continue; // room boundaries are not built
     const holes = house.openingsIn(wall.id).reduce((s, o) => s + o.area(), 0);
     const net = Math.max(wall.grossArea() - holes, 0);
-    const layout = layouts[wall.level];
+    const layout = layouts.get(wall.level);
     if (layout?.ok && !layout.value.exterior.has(wall.id)) add("interiorWalls", { kind: "interiorWalls" }, net, "m2", net * prices.interiorWallM2);
+    // A basement's outer walls hold back the earth: concrete, whatever they look like.
+    else if (wall.level < 0) add("groundworks", { kind: "basementWalls" }, net, "m2", net * prices.basementWallM2);
     else add("facade", { kind: "facade", material: wall.material }, net, "m2", net * prices.wallM2[wall.material]);
   }
 
@@ -154,9 +172,16 @@ export function costLines(house: House, prices: PriceList): CostLine[] {
     add("roof", { kind: "terrace", material }, exposed, "m2", exposed * prices.roofM2[material]);
   }
 
-  const ground = house.floorArea(0);
+  // The foundation goes under the lowest storey; every storey above stands on a floor structure.
+  const lowest = house.lowestLevel();
+  const ground = house.floorArea(lowest);
   add("floors", { kind: "foundation" }, ground, "m2", ground * prices.foundationM2);
-  for (let k = 1; k < house.levels; k++) add("floors", { kind: "upperFloors" }, house.floorArea(k), "m2", house.floorArea(k) * prices.upperFloorM2);
+  for (let k = lowest + 1; k < house.levels; k++) add("floors", { kind: "upperFloors" }, house.floorArea(k), "m2", house.floorArea(k) * prices.upperFloorM2);
+
+  // Levelling the ground for the house, and digging out the basement.
+  const earth = plot ? earthworks(house, plot) : { cut: 0, fill: 0, basement: house.basement ? house.floorArea(-1) * house.basementDepth() : 0 };
+  if (earth.cut + earth.fill > 0.05) add("groundworks", { kind: "earthworks" }, earth.cut + earth.fill, "m3", (earth.cut + earth.fill) * prices.earthM3);
+  if (earth.basement > 0) add("groundworks", { kind: "basementDig" }, earth.basement, "m3", earth.basement * prices.basementDigM3);
   for (const room of analyzeHouse(house).rooms) add("floors", { kind: "finish", finish: room.floor }, room.area, "m2", room.area * prices.floorM2[room.floor]);
   if (house.stairs.length) add("stairs", { kind: "stairs" }, house.stairs.length, "pieces", house.stairs.length * prices.stairs);
 
@@ -177,8 +202,8 @@ export function costLines(house: House, prices: PriceList): CostLine[] {
 }
 
 /** Price every component of the house, by kind. */
-export function estimate(house: House, prices: PriceList): CostBreakdown {
-  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, finishes: 0, stairs: 0, extras: 0 };
+export function estimate(house: House, prices: PriceList, plot?: Plot): CostBreakdown {
+  const c: CostBreakdown = { walls: 0, interiorWalls: 0, windows: 0, doors: 0, roof: 0, foundation: 0, floors: 0, finishes: 0, stairs: 0, extras: 0, groundworks: 0 };
   const field: Record<CostWhat["kind"], keyof CostBreakdown> = {
     facade: "walls",
     interiorWalls: "interiorWalls",
@@ -192,8 +217,11 @@ export function estimate(house: House, prices: PriceList): CostBreakdown {
     balcony: "extras",
     plant: "extras",
     paint: "extras",
+    earthworks: "groundworks",
+    basementDig: "groundworks",
+    basementWalls: "groundworks",
   };
-  for (const l of costLines(house, prices)) {
+  for (const l of costLines(house, prices, plot)) {
     c[l.what.kind === "opening" && l.what.opening === "Window" ? "windows" : field[l.what.kind]] += l.amount;
   }
   return c;

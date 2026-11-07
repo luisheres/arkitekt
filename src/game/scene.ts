@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
-import { PAINT_HEX, floorTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   type TriMesh,
@@ -13,6 +13,10 @@ import {
   ROOF_MATERIALS,
   WALL_MATERIALS,
   PAINT_COLORS,
+  type Plot,
+  shapedGround,
+  siteLevel,
+  standingOutline,
   isGardenPlant,
   FLOOR_STRUCTURE,
   roomAt,
@@ -137,15 +141,58 @@ export interface HouseViewOptions {
   hidden?: ReadonlySet<number>;
   /** Show furniture in rooms that have a use. */
   furniture?: boolean;
+  /**
+   * The plot it stands on: the house goes on its level platform, the lawn is shaped around
+   * it (dug out and filled), and garden plants stand on the ground.
+   */
+  plot?: Plot;
+}
+
+/** The garden's lawn, shared by every build. */
+const lawnMaterial = worldMaterial(groundTexture("lawn"));
+
+/**
+ * The plot's lawn as built: following the ground, level around the house. Open over the
+ * house when it has a basement, so the basement shows when the storeys above are hidden.
+ */
+function buildLawn(plot: Plot, ground: (x: number, y: number) => number, hole: readonly Vec2[] | null): THREE.Mesh {
+  const step = 0.5;
+  const nx = Math.round(plot.width / step);
+  const ny = Math.round(plot.depth / step);
+  const positions: number[] = [];
+  for (let j = 0; j <= ny; j++)
+    for (let i = 0; i <= nx; i++) {
+      const [x, y] = [(i / nx) * plot.width, (j / ny) * plot.depth];
+      positions.push(x, ground(x, y) + 0.01, y);
+    }
+  const index: number[] = [];
+  const at = (i: number, j: number) => j * (nx + 1) + i;
+  for (let j = 0; j < ny; j++)
+    for (let i = 0; i < nx; i++) {
+      if (hole && pointInPolygon(new Vec2Class(((i + 0.5) / nx) * plot.width, ((j + 0.5) / ny) * plot.depth), hole)) continue;
+      index.push(at(i, j), at(i, j + 1), at(i + 1, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(((nx + 1) * (ny + 1)) * 2), 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, lawnMaterial);
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export function buildHouse(house: House, options: HouseViewOptions = { roof: true }): THREE.Group {
   const group = new THREE.Group();
+  const platform = options.plot ? siteLevel(house, options.plot) : 0;
+  const ground = options.plot ? shapedGround(house, options.plot) : () => 0;
+  /** What stands on the ground rather than on the platform. */
+  const outside: THREE.Object3D[] = [];
   const top = house.topLevel();
-  const visible = (level: number) => level < house.levels && !options.hidden?.has(level);
-  const analyses = Array.from({ length: house.levels }, (_, k) => analyzeRooms(house, k));
+  const visible = (level: number) => level >= house.lowestLevel() && level < house.levels && !options.hidden?.has(level);
+  const analyses = new Map(house.levelList().map((k) => [k, analyzeRooms(house, k)]));
   const layoutOf = (level: number) => {
-    const a = analyses[level];
+    const a = analyses.get(level);
     return a?.ok ? a.value.layout : null;
   };
   const base = (level: number) => house.levelBase(level);
@@ -181,7 +228,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     // Box faces: +x, -x, +y, -y, +z, -z. Local +z is the wall's left side; an exterior
     // wall shows its facade outside, and each side facing a room shows that room's paint.
     const facade = palette.wall[wall.material];
-    const analysis = analyses[wall.level];
+    const analysis = analyses.get(wall.level);
     const rooms = analysis?.ok ? analysis.value.rooms : [];
     const left = leftNormal(wall);
     const leftIsInside = exterior && interiorNormal(house, wall).dot(left) > 0;
@@ -262,8 +309,9 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
   });
 
-  // Floor structure between storeys; where the storey above is smaller it is a terrace.
-  for (let level = 0; level < top; level++) {
+  // Floor structure between storeys (above the basement too); where the storey above is
+  // smaller it is a terrace.
+  for (let level = house.lowestLevel(); level < top; level++) {
     if (!visible(level + 1)) continue; // the slab is the floor of the storey above
     const outline = slabOutline(house, level);
     if (!outline) continue;
@@ -345,8 +393,13 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       if (!visible(f.level)) continue;
       const piece = buildFurniture(f);
       piece.traverse((o) => (o.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick));
-      // Garden plants stand on the ground; everything else on the floor.
-      piece.position.y = isGardenPlant(f.kind) ? 0 : f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
+      // Garden plants stand on the ground (outside the platform); everything else on the floor.
+      if (isGardenPlant(f.kind)) {
+        piece.position.y = ground(f.at.x, f.at.y);
+        outside.push(piece);
+        continue;
+      }
+      piece.position.y = f.level === 0 ? FLOOR_SLAB_HEIGHT : base(f.level) + 0.01;
       group.add(piece);
     }
   }
@@ -363,7 +416,12 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       group.add(gables);
     }
   }
-  return group;
+  // The house on its platform; the lawn and the garden around it, on the ground.
+  group.position.y = platform;
+  const site = new THREE.Group();
+  site.add(group, ...outside);
+  if (options.plot) site.add(buildLawn(options.plot, ground, house.basement ? standingOutline(house) : null));
+  return site;
 }
 
 /** Free the per-house geometry (shared geometry and materials are kept). */

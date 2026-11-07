@@ -172,7 +172,7 @@ const present = () => {
         tier: core.clientTier(store.client),
         budget: store.client.budget,
         area: store.house.floorArea(),
-        cost: core.totalCost(core.estimate(store.house, store.prices)),
+        cost: core.totalCost(core.estimate(store.house, store.prices, store.plot)),
         thumbnail: view3d.thumbnail(),
       }),
     showClients,
@@ -276,7 +276,7 @@ const askToSave = () => {
 function openDesigns(notice = ""): void {
   const items: DesignListItem[] = listDesigns().map((d) => {
     const house = core.House.fromJSON(d.house);
-    const cost = core.totalCost(core.estimate(house, store.prices));
+    const cost = core.totalCost(core.estimate(house, store.prices, core.clientById(d.clientId)?.plot));
     return {
       design: d,
       client: core.clientById(d.clientId)?.text[lang].name ?? "",
@@ -340,8 +340,8 @@ function renderToggles(): void {
   const { house, showRoof, hiddenLevels, showFurniture } = store;
   const row = (key: string, label: string, on: boolean, hint = "") =>
     `<label${hint ? ` title="${hint}"` : ""}><input type="checkbox" data-toggle="${key}"${on ? " checked" : ""}> ${label}</label>`;
-  const levels = Array.from({ length: house.levels }, (_, k) => house.levels - 1 - k).map((k) => row(`level:${k}`, m.levelName(k), !hiddenLevels.has(k)));
-  const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${house.levels > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}`;
+  const levels = [...house.levelList()].reverse().map((k) => row(`level:${k}`, m.levelName(k), !hiddenLevels.has(k)));
+  const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${levels.length > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}`;
   if (toggles.innerHTML !== html) toggles.innerHTML = html;
 }
 toggles.addEventListener("change", (e) => {
@@ -384,7 +384,7 @@ function showCaptures(views: CapturedView[]): void {
 
 // --- Keyboard -----------------------------------------------------------------------
 
-const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door", KeyS: "stairs" };
+const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door", KeyS: "stairs", KeyM: "move" };
 
 window.addEventListener("keydown", (e) => {
   if (isModalOpen()) return;

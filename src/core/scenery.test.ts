@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Vec2 } from "./geometry";
-import { SETTINGS, allPlots, plotById, starterPlots } from "./plot";
+import { SETTINGS, allPlots, groundHeight, plotById, starterPlots } from "./plot";
 import { STREET, inLake, sceneryFor, treeLook } from "./scenery";
 
 const [suburban, lakeside, hillside] = starterPlots();
@@ -78,10 +78,11 @@ describe("all plots", () => {
     for (const setting of SETTINGS) expect(plots.some((p) => p.setting === setting), setting).toBe(true);
   });
 
-  it("keep the plot and street flat and the scenery off them and out of the water", () => {
+  it("follow each plot's own ground, keep the street level, and keep scenery off them and out of the water", () => {
     for (const plot of plots) {
       const s = sceneryFor(plot);
-      for (const [x, y] of [[0, 0], [plot.width, plot.depth], [plot.width / 2, plot.depth / 2], [plot.width / 2, STREET.center]]) expect(s.height(x, y), plot.id).toBeCloseTo(0, 6);
+      for (const [x, y] of [[0, 0], [plot.width, plot.depth], [plot.width / 2, plot.depth / 2]]) expect(s.height(x, y), plot.id).toBeCloseTo(groundHeight(plot, x, y), 6);
+      for (const x of [0, plot.width / 2, plot.width]) expect(s.height(x, STREET.center), `${plot.id} street`).toBeCloseTo(0, 6);
       for (const t of s.trees) {
         const onPlot = t.at.x > 0 && t.at.x < plot.width && t.at.y > 0 && t.at.y < plot.depth;
         if (onPlot) expect(t.kind, plot.id).toBe("bush");
@@ -89,8 +90,11 @@ describe("all plots", () => {
         if (s.lake) expect(inLake(s.lake, t.at), `${plot.id} water`).toBe(false);
       }
       expect(s.trees.length, plot.id).toBeGreaterThan(10);
-      // Water never reaches the plot.
-      if (s.lake) for (const [x, y] of [[0, plot.depth], [plot.width, plot.depth], [plot.width / 2, plot.depth + 2]]) expect(inLake(s.lake, new Vec2(x, y)), plot.id).toBe(false);
+      // Water never reaches the plot, and stays below it.
+      if (s.lake) {
+        for (const [x, y] of [[0, plot.depth], [plot.width, plot.depth], [plot.width / 2, plot.depth + 2]]) expect(inLake(s.lake, new Vec2(x, y)), plot.id).toBe(false);
+        for (const [x, y] of [[0, plot.depth], [plot.width, plot.depth]]) expect(groundHeight(plot, x, y), plot.id).toBeGreaterThan(s.lake.level);
+      }
     }
   });
 
@@ -108,5 +112,15 @@ describe("all plots", () => {
     expect(sceneryFor(plotById("seaside")!).lake?.kind).toBe("sea");
     expect(sceneryFor(plotById("riverside")!).lake?.kind).toBe("river");
     expect(sceneryFor(plotById("townplot")!).neighbors.length).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe("the lie of the land", () => {
+  it("is flat on the original plots and slopes on others, always level with the street at the front", () => {
+    for (const plot of starterPlots()) expect(plot.terrain).toBeUndefined();
+    const slope = plotById("skislope")!;
+    expect(groundHeight(slope, slope.width / 2, slope.depth)).toBeGreaterThan(5);
+    for (const plot of allPlots()) for (const x of [0, plot.width / 2, plot.width]) expect(groundHeight(plot, x, 0), plot.id).toBeCloseTo(0, 9);
+    expect(allPlots().filter((p) => p.terrain).length).toBeGreaterThanOrEqual(15);
   });
 });

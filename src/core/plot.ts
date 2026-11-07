@@ -23,6 +23,38 @@ export interface Plot {
   setback: number;
   /** The client tiers (1-4) that buy land here. */
   tiers: readonly number[];
+  /** How the land lies, when it is not flat. */
+  terrain?: Terrain;
+}
+
+/**
+ * The lie of the land on a plot: a slope rising towards the back (negative: falling, as
+ * towards water), a tilt from one side to the other, and how bumpy it is (metres). The
+ * front edge, along the street, is always at street level.
+ */
+export interface Terrain {
+  /** Metres of rise per metre towards the back. */
+  back: number;
+  /** Metres of rise per metre to the left (+x), at the back of the plot. */
+  side: number;
+  bumps: number;
+}
+
+/** Gentle lumps and hollows. */
+const undulate = (x: number, y: number) => Math.sin(x * 0.37 + 1.3) * Math.cos(y * 0.29 + 0.4) + 0.5 * Math.sin(x * 0.17 - y * 0.23);
+
+/**
+ * The natural ground height on a plot (outside it, the height at the nearest point of its
+ * edge, so the surroundings carry on from it). Zero everywhere on a flat plot.
+ */
+export function groundHeight(plot: Plot, x: number, y: number): number {
+  const t = plot.terrain;
+  if (!t) return 0;
+  const cx = Math.min(Math.max(x, 0), plot.width);
+  const cy = Math.min(Math.max(y, 0), plot.depth);
+  // Nothing at the street edge; the full slope and bumps a few metres in.
+  const ramp = Math.min(cy / 3, 1);
+  return t.back * cy + t.side * (cx - plot.width / 2) * (cy / plot.depth) + t.bumps * undulate(cx, cy) * ramp;
 }
 
 /** True when `p` lies in the buildable area (inside the plot, respecting the setback). */
@@ -75,8 +107,32 @@ const SPECS: PlotSpec[] = [
 
 const LOCATION: Record<Setting, number> = { suburban: 1, town: 1.1, lakeside: 1.35, riverside: 1.25, forest: 1.05, farmland: 0.95, seaside: 1.6, hillside: 1.8, mountain: 1.9 };
 
+/** Plots that are not flat (the original three stay flat, as saved designs expect). */
+const TERRAIN: Record<string, Terrain> = {
+  corner: { back: 0.02, side: 0.02, bumps: 0.1 },
+  culdesac: { back: 0.03, side: -0.02, bumps: 0.15 },
+  bay: { back: -0.025, side: 0.01, bumps: 0.15 },
+  reeds: { back: -0.02, side: -0.01, bumps: 0.1 },
+  lakeview: { back: 0.05, side: 0.03, bumps: 0.35 },
+  riverside: { back: -0.02, side: 0, bumps: 0.15 },
+  mill: { back: -0.025, side: 0.02, bumps: 0.2 },
+  rivermeadow: { back: -0.015, side: -0.01, bumps: 0.2 },
+  clearing: { back: 0.01, side: 0, bumps: 0.35 },
+  pinewood: { back: 0.05, side: 0.02, bumps: 0.4 },
+  birchgrove: { back: 0.03, side: -0.03, bumps: 0.3 },
+  meadow: { back: 0.02, side: 0.01, bumps: 0.15 },
+  orchard: { back: 0.03, side: 0, bumps: 0.2 },
+  dunes: { back: 0.01, side: 0, bumps: 0.55 },
+  clifftop: { back: 0.05, side: 0.02, bumps: 0.3 },
+  slope: { back: 0.1, side: 0.03, bumps: 0.3 },
+  valley: { back: 0.07, side: -0.04, bumps: 0.4 },
+  mountain: { back: 0.14, side: 0.02, bumps: 0.5 },
+  alpine: { back: 0.09, side: 0.05, bumps: 0.6 },
+  skislope: { back: 0.18, side: 0, bumps: 0.3 },
+};
+
 const PLOTS: readonly Plot[] = SPECS.map(([id, en, sv, setting, width, depth, setback, price, tiers]) =>
-  Object.freeze({ id, name: { en, sv }, setting, width, depth, setback, price, locationMultiplier: LOCATION[setting], tiers }),
+  Object.freeze({ id, name: { en, sv }, setting, width, depth, setback, price, locationMultiplier: LOCATION[setting], tiers, ...(TERRAIN[id] ? { terrain: TERRAIN[id] } : {}) }),
 );
 
 /** Every plot, the same objects each time (scenery is worked out once per plot). */

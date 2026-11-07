@@ -37,12 +37,13 @@ import {
   pricesWith,
   MAX_LEVELS,
   addStoreyAbove,
+  addBasement,
   clearRoomFurnitureAt,
   furnishAll,
   setRoomType,
 } from "../core";
 
-export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door" | "stairs";
+export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door" | "stairs" | "move";
 
 /** Tools that draw chains of walls (or room boundaries) corner by corner. */
 export const drawsWalls = (t: Tool): t is "wall" | "boundary" => t === "wall" || t === "boundary";
@@ -61,6 +62,8 @@ export type Selection =
   | { kind: "facade" }
   /** The garden: what can be planted. */
   | { kind: "garden" }
+  /** The whole house: moving and turning it. */
+  | { kind: "house" }
   | { kind: "balcony"; id: number }
   | null;
 
@@ -144,8 +147,12 @@ export class Store {
     return () => this.listeners.delete(fn);
   }
 
+  /** Goes up with every change to the house or client, for views that cache what they draw. */
+  revision = 0;
+
   private emit(change: Change): void {
     if (change !== "ui") {
+      this.revision++;
       this.dropStaleSelection();
       this.scheduleSave();
     }
@@ -425,7 +432,7 @@ export class Store {
 
   /** Edit another storey. */
   setLevel(level: number): void {
-    this.level = Math.max(0, Math.min(level, this.house.levels - 1));
+    this.level = Math.max(this.house.lowestLevel(), Math.min(level, this.house.levels - 1));
     this.selection = null;
     this.emit("ui");
   }
@@ -441,6 +448,22 @@ export class Store {
   }
 
   /** Remove the top storey with everything on it. */
+  /** Dig a basement under the ground floor (it needs the technique, and closed outer walls). */
+  addBasement(): void {
+    const lock = this.lockOf({ kind: "basement" });
+    if (lock) return this.onLocked(lock);
+    let level: number | null = null;
+    this.edit((h) => (level = addBasement(h)));
+    if (level !== null) this.setLevel(level);
+  }
+
+  /** Fill in the basement, with everything in it. */
+  removeBasement(): void {
+    if (!this.house.basement) return;
+    this.edit((h) => h.removeBasement());
+    this.setLevel(Math.max(this.level, 0));
+  }
+
   removeTopFloor(): void {
     if (this.house.levels <= 1) return;
     this.edit((h) => h.removeTopLevel());
@@ -504,6 +527,7 @@ export class Store {
   private dropStaleSelection(): void {
     // Undo can take away the storey being edited.
     if (this.level >= this.house.levels) this.level = this.house.levels - 1;
+    if (this.level < this.house.lowestLevel()) this.level = this.house.lowestLevel();
     const sel = this.selection;
     if (sel?.kind === "stair" && !this.house.stair(sel.id)) this.selection = null;
     if (sel?.kind === "furniture" && !this.house.furniturePiece(sel.id)) this.selection = null;

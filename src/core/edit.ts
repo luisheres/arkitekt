@@ -5,6 +5,7 @@
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
+import { isGardenPlant } from "./furniture";
 import { analyzeLayout } from "./layout";
 import { BALCONY_LIMITS, type Balcony, type BalconyId, type FloorFinish, House, type LabelId, type PaintColor, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { analyzeRooms, roomAt } from "./rooms";
@@ -307,6 +308,19 @@ export function setRoomType(house: House, at: Vec2, type: RoomType | null, level
  * Start a new storey on top of the house, with exterior walls along the outline of the
  * storey below (same height and material), ready to be divided into rooms.
  */
+/**
+ * Dig a basement under the house, with concrete outer walls along the ground floor's.
+ * Returns its level (-1), or null when the ground floor's walls do not enclose it yet.
+ */
+export function addBasement(house: House): number | null {
+  if (house.basement) return -1;
+  const layout = analyzeLayout(house, 0);
+  if (!layout.ok) return null;
+  house.basement = true;
+  for (const w of house.wallsOn(0)) if (layout.value.exterior.has(w.id)) house.addWall(w.start, w.end, BASEMENT_HEIGHT, "Concrete", false, -1);
+  return -1;
+}
+
 export function addStoreyAbove(house: House): number {
   const below = house.topLevel();
   const level = house.addLevel();
@@ -380,4 +394,56 @@ export function placeBalcony(house: House, wallId: WallId): BalconyId | null {
   if (!wall || wall.boundary) return null;
   const width = Math.min(3, Math.max(BALCONY_LIMITS.width[0], wall.length() - 0.6));
   return house.addBalcony(wallId, wall.length() / 2, width, 1.4);
+}
+
+// --- The whole house ---------------------------------------------------------------------
+
+/** A basement's walls are a little lower than the storeys above. */
+export const BASEMENT_HEIGHT = 2.4;
+
+/** A coordinate without floating-point dust (and without -0, which JSON loses). */
+const clean = (x: number): number => Number(x.toFixed(6)) + 0;
+
+/** Move the whole house (walls, rooms, stairs and furniture; not the garden's plants). */
+export function moveHouse(house: House, delta: Vec2): void {
+  const move = (p: Vec2) => new Vec2(clean(p.x + delta.x), clean(p.y + delta.y));
+  for (const w of house.walls) [w.start, w.end] = [move(w.start), move(w.end)];
+  for (const l of house.labels) l.at = move(l.at);
+  for (const s of house.stairs) s.at = move(s.at);
+  for (const f of house.furniture) if (!isGardenPlant(f.kind)) f.at = move(f.at);
+}
+
+/** The point the house turns about: the middle of all its walls, on the 10 cm grid. */
+export function houseCentre(house: House): Vec2 | null {
+  const points = house.walls.flatMap((w) => [w.start, w.end]);
+  if (!points.length) return null;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return new Vec2(roundTo((Math.min(...xs) + Math.max(...xs)) / 2, 0.1), roundTo((Math.min(...ys) + Math.max(...ys)) / 2, 0.1));
+}
+
+/**
+ * Turn the whole house a quarter turn about its middle: `turns` = 1 turns +x towards +y
+ * (anticlockwise in plan coordinates). Walls stay on the grid; stairs and furniture turn with it.
+ */
+export function rotateHouse(house: House, turns: 1 | -1): void {
+  const c = houseCentre(house);
+  if (!c) return;
+  const turn = (v: Vec2) => (turns === 1 ? new Vec2(-v.y, v.x) : new Vec2(v.y, -v.x));
+  const about = (p: Vec2) => {
+    const q = c.add(turn(p.sub(c)));
+    return new Vec2(clean(q.x), clean(q.y));
+  };
+  for (const w of house.walls) [w.start, w.end] = [about(w.start), about(w.end)];
+  for (const l of house.labels) l.at = about(l.at);
+  for (const s of house.stairs) {
+    s.at = about(s.at);
+    s.facing = (((s.facing + turns) % 4) + 4) % 4;
+  }
+  for (const f of house.furniture) {
+    if (isGardenPlant(f.kind)) continue;
+    f.at = about(f.at);
+    const v = turn(f.facing);
+    f.facing = new Vec2(clean(v.x), clean(v.y));
+  }
 }

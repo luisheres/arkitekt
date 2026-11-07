@@ -71,6 +71,12 @@ export type Issue =
   | { kind: "BalconyNotOnOuterWall"; balcony: BalconyId }
   | { kind: "BalconyNeedsDoor"; balcony: BalconyId }
   | { kind: "BalconyOutsidePlot"; balcony: BalconyId }
+  /** The basement reaches beyond the ground floor above it. */
+  | { kind: "BasementOutsideHouse" }
+  /** No stairs lead down to the basement. */
+  | { kind: "NoStairsToBasement" }
+  /** A door or window in a basement's outer wall would be under the ground. */
+  | { kind: "OpeningBelowGround"; opening: OpeningId }
   /** The design uses a technique not learned yet (campaign only). */
   | { kind: "NotLearned"; technique: TechniqueId }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
@@ -119,15 +125,16 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
       if (!house.stairs.some((s) => s.level === level - 1)) issues.push({ kind: "NoStairs", level });
     }
   });
+  checkBasement(house, analysis, issues);
   checkStairs(house, analysis, issues);
   checkBalconies(house, plot, analysis, issues);
-  if (analysis.levels.every((l) => l.ok)) {
+  if (analysis.levels.every((l) => l.ok) && (!analysis.basement || analysis.basement.ok)) {
     if (house.floorArea() < MIN_FLOOR_AREA) issues.push({ kind: "TooSmall" });
     checkRoof(house, issues);
   }
 
   if (can) for (const technique of missingTechniques(house, can)) issues.push({ kind: "NotLearned", technique });
-  const cost = totalCost(estimate(house, prices));
+  const cost = totalCost(estimate(house, prices, plot));
   if (cost > budget) issues.push({ kind: "OverBudget", cost, budget });
   return issues;
 }
@@ -251,12 +258,30 @@ function checkBalconies(house: House, plot: Plot, analysis: HouseAnalysis, issue
     const wall = house.wall(b.wall);
     if (!wall) continue;
     const level = analysis.levels[wall.level];
-    if (wall.level === 0) issues.push({ kind: "BalconyOnGroundFloor", balcony: b.id });
+    if (wall.level <= 0) issues.push({ kind: "BalconyOnGroundFloor", balcony: b.id });
     else if (level?.ok && !level.value.layout.exterior.has(wall.id)) issues.push({ kind: "BalconyNotOnOuterWall", balcony: b.id });
     const [from, to] = [b.offset - b.width / 2, b.offset + b.width / 2];
     const door = house.openings.some((o) => o.wall === wall.id && o.kind === "Door" && o.offset + o.width / 2 > from && o.offset - o.width / 2 < to);
     if (!door) issues.push({ kind: "BalconyNeedsDoor", balcony: b.id });
     const outline = balconyOutline(house, b) ?? [];
     if (outline.some((p) => p.x < -1e-6 || p.y < -1e-6 || p.x > plot.width + 1e-6 || p.y > plot.depth + 1e-6)) issues.push({ kind: "BalconyOutsidePlot", balcony: b.id });
+  }
+}
+
+/** A basement lies under the house, with stairs down to it and no doors or windows out. */
+function checkBasement(house: House, analysis: HouseAnalysis, issues: Issue[]): void {
+  const basement = analysis.basement;
+  if (!basement) return;
+  if (!basement.ok) {
+    issues.push(basement.error.kind === "NoWalls" ? { kind: "EmptyLevel", level: -1 } : { kind: "Footprint", error: basement.error, level: -1 });
+    return;
+  }
+  checkRooms(house, basement.value, -1, issues);
+  const ground = analysis.levels[0];
+  if (ground?.ok && !restsOn(basement.value.layout.outline, ground.value.layout.outline)) issues.push({ kind: "BasementOutsideHouse" });
+  if (!house.stairs.some((s) => s.level === -1)) issues.push({ kind: "NoStairsToBasement" });
+  for (const o of house.openings) {
+    const wall = house.wall(o.wall);
+    if (wall?.level === -1 && basement.value.layout.exterior.has(wall.id)) issues.push({ kind: "OpeningBelowGround", opening: o.id });
   }
 }

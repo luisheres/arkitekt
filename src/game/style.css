@@ -2502,3 +2502,15 @@ button.locked::after,
 #sidebar [hidden] {
   display: none !important;
 }
+
+/* Contour lines on sloping plots */
+.plan .contour {
+  fill: none;
+  stroke: rgba(70, 110, 40, 0.28);
+  stroke-width: 1;
+}
+
+.plan .contour.major {
+  stroke: rgba(60, 95, 30, 0.5);
+  stroke-width: 1.4;
+}

@@ -84,6 +84,7 @@ export const en: Messages = {
     paint: { name: "Paint colours", text: "Paint rooms in any of eight colours instead of white." },
     houseplants: { name: "Houseplants", text: "Plants in pots to make rooms cosy." },
     landscaping: { name: "Garden design", text: "Plant trees, shrubs, flower beds and hedges in the garden." },
+    basement: { name: "Basements", text: "Dig a storey below the house, for storage, a utility room or a workshop." },
     balconies: { name: "Balconies", text: "Balconies on the upper floors, with a door out." },
     woodFloor: { name: "Wooden floors", text: "Warm wooden floorboards." },
     stoneFloor: { name: "Stone floors", text: "Floors of polished stone." },
@@ -197,7 +198,7 @@ export const en: Messages = {
     canAfford: (n) => (n === 1 ? "You can afford a new technique in the Workshop." : `You can afford ${n} new techniques in the Workshop.`),
   },
 
-  levelName: (level) => (level === 0 ? "Ground floor" : `Floor ${level + 1}`),
+  levelName: (level) => (level < 0 ? "Basement" : level === 0 ? "Ground floor" : `Floor ${level + 1}`),
 
   footprint(e) {
     switch (e.kind) {
@@ -290,6 +291,12 @@ export const en: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
+      case "BasementOutsideHouse":
+        return "The basement reaches beyond the ground floor; it has to fit under the house";
+      case "NoStairsToBasement":
+        return "No stairs lead down to the basement; place stairs in the basement";
+      case "OpeningBelowGround":
+        return "A door or window in the basement's outer wall would be under the ground; remove it";
       case "BalconyOnGroundFloor":
         return "A balcony is on the ground floor; balconies belong on upper floors (use the wall menu upstairs)";
       case "BalconyNotOnOuterWall":
@@ -414,7 +421,7 @@ export const en: Messages = {
     storageFull: "This browser has no room left for saved designs. Delete an old one, or export it to a file first.",
     cancel: "Cancel",
     clickToEdit: "Click a room, wall, window, door or piece of furniture, in the plan or in 3D, to edit it. Right-click works too.",
-    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs" },
+    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs", move: "Move house" },
     undo: "Undo",
     undoTitle: "Undo (Ctrl+Z)",
     redo: "Redo",
@@ -484,6 +491,7 @@ export const en: Messages = {
       finishes: "Floor finishes",
       stairs: "Stairs",
       extras: "Balconies and plants",
+      groundworks: "Groundworks",
       total: "Total",
       budgetLeft: "Budget left",
       overBudget: "Over budget",
@@ -492,13 +500,26 @@ export const en: Messages = {
       open: "Where does the money go?",
       title: "Where the money goes",
       hint: "The bigger the box, the more it costs. Point at a box for the details.",
-      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs", extras: "Balconies and plants" },
+      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs", extras: "Balconies and plants", groundworks: "Groundworks" },
       terrace: "Terrace roof",
+      earthworks: "Levelling the ground",
+      basementDig: "Digging the basement",
+      basementWalls: "Basement walls",
       balcony: "Balcony",
       paint: (color) => `${color} paint`,
       empty: "Nothing is built yet, so nothing costs anything.",
       count: (n) => `${n} ×`,
     },
+    addBasement: "Basement",
+    addBasementTitle: "Dig a basement under the house: its outer walls follow the ground floor's",
+    removeBasement: "Remove basement",
+    removeBasementTitle: "Fill in the basement, with everything in it",
+    moveAndTurn: "Move & turn",
+    wholeHouse: "The whole house",
+    turnLeft: "⟲ Turn left",
+    turnRight: "⟳ Turn right",
+    moveHint: "Turn it a quarter at a time, or pick the ✋ Move tool (M) and drag it in the plan. On a slope, moving it changes how much earth is dug.",
+    platform: (height, dug, filled) => `Stands on a level platform at +${height} m · ${dug} m³ dug, ${filled} m³ filled`,
     wallColour: "Wall colour",
     garden: "Garden",
     gardenTitle: "Plant trees, shrubs, flower beds and hedges",
@@ -534,6 +555,7 @@ export const en: Messages = {
       window: "Click an exterior wall to add a window.",
       door: "Click a wall to add a door.",
       stairs: "Click inside a room to place stairs up to the floor above; rotate them in the sidebar.",
+      move: "Drag the house to move all of it, rooms, stairs and furniture too. Turn it from Move & turn in the sidebar.",
     },
     street: "STREET",
     room: "Room",

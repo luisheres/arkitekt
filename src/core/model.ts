@@ -207,6 +207,7 @@ export interface HouseJson {
   roof: Roof | null;
   labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish; paint?: PaintColor }[];
   levels?: number;
+  basement?: boolean;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
   /** Missing in saves from before furniture could be edited. */
@@ -223,8 +224,10 @@ export class House {
   balconies: Balcony[] = [];
   /** Furniture placed in the house (every piece has an id). */
   furniture: Furniture[] = [];
-  /** Number of storeys, including empty ones being started. */
+  /** Number of storeys above ground (0 is the ground floor), including empty ones being started. */
   levels = 1;
+  /** A basement below the ground floor: storey -1. */
+  basement = false;
   private nextId = 0;
 
   private freshId(): number {
@@ -305,6 +308,31 @@ export class House {
   addLevel(): number {
     this.levels += 1;
     return this.levels - 1;
+  }
+
+  /** The lowest storey: -1 with a basement, else the ground floor. */
+  lowestLevel(): number {
+    return this.basement ? -1 : 0;
+  }
+
+  /** Every storey from the lowest up. */
+  levelList(): number[] {
+    return Array.from({ length: this.levels - this.lowestLevel() }, (_, i) => this.lowestLevel() + i);
+  }
+
+  /** Remove the basement with everything in it, and the stairs up from it. */
+  removeBasement(): void {
+    if (!this.basement) return;
+    for (const w of this.wallsOn(-1)) this.removeWall(w.id);
+    this.labels = this.labels.filter((l) => l.level !== -1);
+    this.stairs = this.stairs.filter((s) => s.level !== -1);
+    this.furniture = this.furniture.filter((f) => f.level !== -1);
+    this.basement = false;
+  }
+
+  /** How deep the basement's hole is: its height and the floor above. */
+  basementDepth(): number {
+    return this.storeyHeight(-1) + FLOOR_STRUCTURE;
   }
 
   /** Remove the top storey with everything on it, and the stairs leading up to it. */
@@ -391,8 +419,9 @@ export class House {
     return this.eaveHeight(level) || DEFAULT_WALL_HEIGHT;
   }
 
-  /** Height of a storey's floor above the ground. */
+  /** Height of a storey's floor above the ground floor's (below it for the basement). */
   levelBase(level: number): number {
+    if (level < 0) return -this.basementDepth();
     let base = 0;
     for (let k = 0; k < level; k++) base += this.storeyHeight(k) + FLOOR_STRUCTURE;
     return base;
@@ -409,7 +438,10 @@ export class House {
     return layout.ok ? { ok: true, value: layout.value.outline } : layout;
   }
 
-  /** Floor area of one storey, or of all storeys when `level` is omitted (0 where the walls are not closed). */
+  /**
+   * Floor area of one storey, or of all storeys above ground when `level` is omitted (0
+   * where the walls are not closed). The basement is not counted in the total.
+   */
   floorArea(level?: number): number {
     if (level === undefined) {
       let total = 0;
@@ -436,6 +468,7 @@ export class House {
       roof: this.roof ? { ...this.roof } : null,
       labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) })),
       levels: this.levels,
+      ...(this.basement ? { basement: true } : {}),
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
@@ -450,6 +483,7 @@ export class House {
     h.roof = j.roof ? { ...j.roof } : null;
     h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) }));
     h.levels = j.levels ?? 1;
+    h.basement = j.basement ?? false;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));

@@ -21,7 +21,7 @@
 
 import { Vec2 } from "./geometry";
 import type { WallMaterial } from "./model";
-import type { Plot, Setting } from "./plot";
+import { type Plot, type Setting, groundHeight } from "./plot";
 
 /** The street runs along the front of the plot, between these plan y values. */
 export const STREET = { from: -8, to: -1, center: -4.5 } as const;
@@ -152,6 +152,11 @@ function makeScenery(plot: Plot): Scenery {
       : { kind: "lake", center: new Vec2(w / 2 + (vary() - 0.5) * w * 0.6, d + 6 + 14 + vary() * 8), rx: 28 + vary() * 14, ry: 14 + vary() * 6, level: -0.35 };
   if (setting === "riverside") lake = { kind: "river", center: new Vec2(w / 2, d + 13 + vary() * 4), rx: 260, ry: 6 + vary() * 3, level: -0.5 };
   if (setting === "seaside") lake = { kind: "sea", center: new Vec2(w / 2, d + 8 + vary() * 4 + 120), rx: 520, ry: 120, level: plot.id === "clifftop" ? -2.5 : -0.6 };
+  // Water stays below a plot that slopes down towards it.
+  if (lake && plot.terrain) {
+    const back = Math.min(groundHeight(plot, 0, plot.depth), groundHeight(plot, plot.width, plot.depth), groundHeight(plot, plot.width / 2, plot.depth));
+    lake.level = Math.min(lake.level, back - 0.7);
+  }
   const beach = setting === "seaside" && plot.id !== "clifftop";
   const jetty: Jetty | null =
     setting === "lakeside" || plot.id === "harbour"
@@ -200,7 +205,8 @@ function makeScenery(plot: Plot): Scenery {
   };
 
   const height = (x: number, y: number): number => {
-    let h = landscape(x, y) * smoothstep(0, 14, flatDistance(plot, x, y));
+    // The plot's own ground (zero on a flat plot), carried on into the surroundings.
+    let h = groundHeight(plot, x, y) + landscape(x, y) * smoothstep(0, 14, flatDistance(plot, x, y));
     if (lake) {
       // Carve the bed, with a beach (or a bank) sloping into the water: for a lake over a
       // share of its size, for a river or the sea over a few metres from the water's edge.

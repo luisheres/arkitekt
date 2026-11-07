@@ -51,6 +51,7 @@ import {
   type Wall,
   clampBalcony,
   placeBalcony,
+  rotateHouse,
   setRoomType,
   PAINT_COLORS,
   INDOOR_PLANTS,
@@ -106,6 +107,7 @@ export function inspectorKey(store: Store): string {
   if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
   if (sel.kind === "facade") return "facade";
   if (sel.kind === "garden") return "garden";
+  if (sel.kind === "house") return "house";
   return `${sel.kind}:${sel.id}`;
 }
 
@@ -115,6 +117,8 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
   switch (sel.kind) {
     case "garden":
       return gardenInspector(store);
+    case "house":
+      return houseInspector(store);
     case "balcony":
       return balconyInspector(store, sel.id);
     case "room":
@@ -534,5 +538,25 @@ function balconyInspector(store: Store, id: number): Inspector | null {
   return {
     el: el("div", {}, el("h2", {}, m.ui.balcony), ...fields.map((f) => f.el), el("p", { className: "sub" }, m.ui.balconyNote), el("div", { className: "row" }, deleteButton(store))),
     fields,
+  };
+}
+
+// --- The whole house -----------------------------------------------------------------
+
+function houseInspector(store: Store): Inspector {
+  // Turning on screen: the plan shows +x to the left, so a turn that looks clockwise there
+  // is anticlockwise in plan coordinates.
+  const turn = (turns: 1 | -1) => () => store.edit((h) => rotateHouse(h, turns));
+  const left = button(m.ui.turnLeft, turn(-1));
+  const right = button(m.ui.turnRight, turn(1));
+  const move = button(`✋ ${m.ui.tools.move} (M)`, () => store.setTool("move"));
+  const empty = () => store.house.walls.length === 0;
+  const field: Field = {
+    el: el("div"),
+    update: () => [left, right, move].forEach((b) => (b.disabled = empty())),
+  };
+  return {
+    el: el("div", {}, el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, left, right, move), el("p", { className: "sub" }, m.ui.moveHint)),
+    fields: [field],
   };
 }

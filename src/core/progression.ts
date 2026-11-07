@@ -42,6 +42,7 @@ export const TECHNIQUE_IDS = [
   "twoStoreys",
   "threeStoreys",
   "balconies",
+  "basement",
   "prefab",
   "carpenters",
   "marketing",
@@ -68,6 +69,7 @@ export type Unlock =
   /** Trees, shrubs, flower beds and hedges in the garden. */
   | { kind: "garden" }
   | { kind: "balconies" }
+  | { kind: "basement" }
   /** Cheaper parts: a share off what they cost. */
   | { kind: "discount"; on: "walls" | "floors" | "all"; share: number }
   /** A larger fee: this many percentage points of the budget on top. */
@@ -100,6 +102,7 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "twoStoreys", branch: "structure", price: 9_000, unlocks: { kind: "storeys", count: 2 } },
   { id: "threeStoreys", branch: "structure", price: 40_000, requires: "twoStoreys", unlocks: { kind: "storeys", count: 3 } },
   { id: "balconies", branch: "structure", price: 12_000, requires: "twoStoreys", unlocks: { kind: "balconies" } },
+  { id: "basement", branch: "structure", price: 14_000, unlocks: { kind: "basement" } },
   { id: "prefab", branch: "business", price: 12_000, unlocks: { kind: "discount", on: "walls", share: 0.1 } },
   { id: "carpenters", branch: "business", price: 14_000, unlocks: { kind: "discount", on: "floors", share: 0.1 } },
   { id: "marketing", branch: "business", price: 25_000, unlocks: { kind: "fee", points: 2 } },
@@ -121,6 +124,7 @@ export interface Abilities {
   houseplants: boolean;
   garden: boolean;
   balconies: boolean;
+  basement: boolean;
   /** Price factors (1 = full price). */
   wallFactor: number;
   floorFactor: number;
@@ -153,6 +157,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       houseplants: true,
       garden: true,
       balconies: true,
+      basement: true,
       wallFactor: 1,
       floorFactor: 1,
       allFactor: 1,
@@ -164,7 +169,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
   const roofStyles = new Set(STARTER.roofStyles);
   const roofMaterials = new Set(STARTER.roofMaterials);
   const floors = new Set(STARTER.floors);
-  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
+  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
   for (const id of owned) {
     const u = technique(id)?.unlocks;
     if (!u) continue;
@@ -194,6 +199,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       case "houseplants":
       case "garden":
       case "balconies":
+      case "basement":
         a[u.kind] = true;
         break;
       case "discount":
@@ -237,6 +243,9 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     stairs: base.stairs * all,
     balconyM2: base.balconyM2 * all,
     paintM2: base.paintM2 * all,
+    earthM3: base.earthM3 * all,
+    basementDigM3: base.basementDigM3 * all,
+    basementWallM2: base.basementWallM2 * w,
     plants: scale(base.plants as Record<string, number>, all),
   };
 }
@@ -251,8 +260,10 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
   };
   for (const w of house.walls) {
     if (w.boundary) want(a.openPlan, { kind: "openPlan" });
-    else want(a.walls.has(w.material), { kind: "wall", material: w.material });
+    // (A basement's walls are concrete because they hold back the earth, not as a facade.)
+    else if (w.level >= 0) want(a.walls.has(w.material), { kind: "wall", material: w.material });
   }
+  if (house.basement) want(a.basement, { kind: "basement" });
   if (house.roof) {
     want(a.roofStyles.has(house.roof.style), { kind: "roofStyle", style: house.roof.style });
     want(a.roofMaterials.has(house.roof.material), { kind: "roofMaterial", material: house.roof.material });
@@ -346,6 +357,7 @@ export function canBuild(a: Abilities, u: Unlock): boolean {
     case "houseplants":
     case "garden":
     case "balconies":
+    case "basement":
       return a[u.kind];
     default:
       return a.all;

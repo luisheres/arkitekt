@@ -216,8 +216,10 @@ export interface StairLink {
 }
 
 export interface HouseAnalysis {
-  /** Each storey's analysis, or why its walls do not form rooms. */
+  /** Each storey's analysis above ground (index = level), or why its walls do not form rooms. */
   levels: Result<RoomAnalysis, FootprintError>[];
+  /** The basement's, when there is one. */
+  basement: Result<RoomAnalysis, FootprintError> | null;
   /** Rooms of every storey that could be analyzed. */
   rooms: Room[];
   stairs: StairLink[];
@@ -229,11 +231,12 @@ export interface HouseAnalysis {
  */
 export function analyzeHouse(house: House): HouseAnalysis {
   const levels = Array.from({ length: house.levels }, (_, k) => analyzeRooms(house, k));
+  const basement = house.basement ? analyzeRooms(house, -1) : null;
   const roomsOn = (k: number) => {
-    const a = levels[k];
+    const a = k < 0 ? basement : levels[k];
     return a?.ok ? a.value.rooms : [];
   };
-  const rooms = levels.flatMap((_, k) => roomsOn(k));
+  const rooms = [...roomsOn(-1), ...levels.flatMap((_, k) => roomsOn(k))];
   const stairs: StairLink[] = house.stairs.map((stair) => ({
     stair,
     from: roomAt(roomsOn(stair.level), stair.at),
@@ -259,5 +262,10 @@ export function analyzeHouse(house: House): HouseAnalysis {
       }
     }
   }
-  return { levels, rooms, stairs };
+  return { levels, basement, rooms, stairs };
+}
+
+/** A storey's analysis from the whole house's (the basement too). */
+export function levelAnalysis(a: HouseAnalysis, level: number): Result<RoomAnalysis, FootprintError> | undefined {
+  return level < 0 ? (a.basement ?? undefined) : a.levels[level];
 }

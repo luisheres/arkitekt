@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import { type Plot, STREET, type Scenery, type Surface, type Tree, sceneryFor, treeLook } from "../core";
+import { type Plot, STREET, type Scenery, type Surface, type Tree, groundHeight, sceneryFor, treeLook } from "../core";
 import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
@@ -30,8 +30,8 @@ export function buildWorld(plot: Plot): World {
   const center = new THREE.Vector3(plot.width / 2, 0, plot.depth / 2);
 
   root.add(sky(), clouds(center), ...lights(center, plot));
-  root.add(terrain(scenery, center));
-  root.add(lawn(plot), street(plot));
+  root.add(terrain(scenery, center, plot));
+  root.add(street(plot));
   if (scenery.lake) root.add(lake(scenery));
   if (scenery.jetty) root.add(jetty(scenery));
   for (const t of scenery.trees) root.add(tree(scenery, t));
@@ -101,7 +101,7 @@ function lights(center: THREE.Vector3, plot: Plot): THREE.Object3D[] {
 
 // --- Ground ----------------------------------------------------------------------------
 
-function terrain(s: Scenery, center: THREE.Vector3): THREE.Mesh {
+function terrain(s: Scenery, center: THREE.Vector3, plot: Plot): THREE.Mesh {
   const size = 320;
   const seg = 160;
   const geo = new THREE.PlaneGeometry(size, size, seg, seg);
@@ -124,8 +124,11 @@ function terrain(s: Scenery, center: THREE.Vector3): THREE.Mesh {
     const x = pos.getX(i) + center.x;
     const y = pos.getZ(i) + center.z;
     const h = s.height(x, y);
-    // Slight dip below the plot and street so the lawn and road sit on top cleanly.
-    pos.setXYZ(i, x, h - 0.02, y);
+    // Slight dip below the street so the road sits on top cleanly; well below the plot,
+    // where the lawn (shaped around the house, built with it) covers it. Only points a
+    // whole grid step inside the plot go down, so no trench opens just outside it.
+    const inside = x > 2.05 && x < plot.width - 2.05 && y > 2.05 && y < plot.depth - 2.05;
+    pos.setXYZ(i, x, inside ? h - 9 : h - 0.02, y);
     const slope = Math.hypot(s.height(x + 1, y) - h, s.height(x, y + 1) - h);
     c.copy(grass).lerp(meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
     if (h > 4) c.lerp(forest, Math.min((h - 4) / 8, 1));
@@ -139,15 +142,6 @@ function terrain(s: Scenery, center: THREE.Vector3): THREE.Mesh {
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, toon({ vertexColors: true }));
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-/** The plot's garden: a mowed lawn. */
-function lawn(plot: Plot): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(plot.width, plot.depth), worldMaterial(groundTexture("lawn")));
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(plot.width / 2, 0.01, plot.depth / 2);
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -402,7 +396,7 @@ function hedges(plot: Plot): THREE.Group {
     for (let y = 1; y < plot.depth - 0.5; y += 1.1) {
       const m = new THREE.Mesh(blob, mat);
       m.scale.set(0.55, 0.5, 0.65);
-      m.position.set(x, 0.4, y);
+      m.position.set(x, groundHeight(plot, x, y) + 0.4, y);
       m.castShadow = true;
       g.add(m);
     }
@@ -462,13 +456,22 @@ function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group
 function plotGuides(plot: Plot): THREE.Group {
   const guides = new THREE.Group();
   const outline = (inset: number, color: number) => {
-    const h = 0.05;
-    const pts = [
-      new THREE.Vector3(inset, h, inset),
-      new THREE.Vector3(plot.width - inset, h, inset),
-      new THREE.Vector3(plot.width - inset, h, plot.depth - inset),
-      new THREE.Vector3(inset, h, plot.depth - inset),
+    // Along the ground, a metre at a time, so the lines follow slopes.
+    const corners = [
+      [inset, inset],
+      [plot.width - inset, inset],
+      [plot.width - inset, plot.depth - inset],
+      [inset, plot.depth - inset],
     ];
+    const pts: THREE.Vector3[] = [];
+    corners.forEach(([x0, y0], k) => {
+      const [x1, y1] = corners[(k + 1) % 4];
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+      for (let i = 0; i < n; i++) {
+        const [x, y] = [x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n];
+        pts.push(new THREE.Vector3(x, groundHeight(plot, x, y) + 0.06, y));
+      }
+    });
     guides.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color })));
   };
   outline(0, 0xffffff);

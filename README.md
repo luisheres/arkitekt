@@ -14,7 +14,7 @@ sidebar brings it back):
   buys new techniques in the **🔨 Workshop**: more facades (Falu red, brick, stone,
   concrete), roofs (hip, flat, metal, tiles), floors (wood, stone), wall paint in eight
   colours, houseplants, garden design (trees, shrubs, flower beds and hedges), open plan,
-  garages, second and third storeys, balconies, and business techniques that make
+  garages, second and third storeys, balconies, basements, and business techniques that make
   building cheaper or raise your fee. Some
   build on others. Anything not learned yet shows a 🔒 and opens the Workshop when
   clicked. The stars clients give you are your reputation, and it opens four tiers of
@@ -35,7 +35,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -94,6 +94,28 @@ own seed, so no two look the same:
 Each plot is bought by certain client tiers, so better plots come with bigger clients; free
 play can build on any of them. In 3D the camera never sinks into a hillside: it rises to
 see over the land to the house.
+
+**Sloping ground.** Most of the newer plots are not flat: they rise towards the back,
+tilt to one side or fall towards the water, with bumps, always level with the street at
+the front. The plan shows contour lines every half metre. A house stands on a level
+platform at the average height of the ground under it: the ground is dug away where it is
+higher and filled in where it is lower, a metre's working space around the house too, and
+blends back to its natural lie over a couple of metres (you see this in 3D). The sidebar
+shows the platform's height and the earth moved; every cubic metre costs money
+(Groundworks), so where on the plot you build, and how big, matters. The original three
+plots stay flat.
+
+**Moving and turning the house.** **✋ Move house** (`M`) drags the whole house around the
+plot, rooms, stairs and furniture too (the garden's plants stay where they are). **Move &
+turn** in the sidebar turns it a quarter at a time about its middle. On a slope, moving it
+changes how much earth is dug.
+
+**Basements.** With the Basements technique, **+ Basement** on the floors card digs a
+storey under the house, with concrete walls along the ground floor's outline. Divide it
+into rooms like any storey; it needs stairs down to it, it has to fit under the house, and
+its outer walls cannot have doors or windows (they are under the ground), so it suits
+storage, utility rooms, bathrooms or a hall. Digging it out and its walls cost money; it
+does not count towards the floor area. In 3D, hide the ground floor to look into it.
 
 The plot itself and the street stay flat, so building is the same everywhere.
 
