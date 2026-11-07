@@ -2514,3 +2514,11 @@ button.locked::after,
   stroke: rgba(60, 95, 30, 0.5);
   stroke-width: 1.4;
 }
+
+/* An opening to the storey below: see-through, edged with a dashed line. */
+.plan .room.void {
+  fill-opacity: 0.35;
+  stroke: #5a8fb8;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}

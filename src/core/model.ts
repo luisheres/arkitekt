@@ -48,7 +48,8 @@ export type RoofMaterial = (typeof ROOF_MATERIALS)[number];
 export const OPENING_KINDS = ["Window", "Door", "GarageDoor"] as const;
 export type OpeningKind = (typeof OPENING_KINDS)[number];
 
-export const ROOM_TYPES = ["Living", "Kitchen", "Bedroom", "Bathroom", "WC", "Hall", "Office", "Utility", "Garage", "Storage"] as const;
+/** What rooms are for. "Void" is not a room: it is an opening in the floor, making the room below double height. */
+export const ROOM_TYPES = ["Living", "Kitchen", "Bedroom", "Bathroom", "WC", "Hall", "Office", "Utility", "Garage", "Storage", "Void"] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
 export type LabelId = number;

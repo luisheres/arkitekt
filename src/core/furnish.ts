@@ -108,6 +108,8 @@ function program(type: RoomType, area: number): Spec[] {
       return [spec("Car", 1.8, 4.4, 1.45, { at: "center", clearance: 0.45, alongLong: true }), spec("Workbench", [1.6, 1.2], 0.6, 0.9, { at: "wall" })];
     case "Storage":
       return [spec("Shelf", [1.2, 0.8], 0.4, 1.9, { at: "wall" }), spec("Shelf", [1.2, 0.8], 0.4, 1.9, { at: "wall" })];
+    case "Void":
+      return [];
   }
 }
 

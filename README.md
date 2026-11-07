@@ -14,7 +14,7 @@ sidebar brings it back):
   buys new techniques in the **🔨 Workshop**: more facades (Falu red, brick, stone,
   concrete), roofs (hip, flat, metal, tiles), floors (wood, stone), wall paint in eight
   colours, houseplants, garden design (trees, shrubs, flower beds and hedges), open plan,
-  garages, second and third storeys, balconies, basements, and business techniques that make
+  garages, second and third storeys, balconies, basements, double-height rooms, and business techniques that make
   building cheaper or raise your fee. Some
   build on others. Anything not learned yet shows a 🔒 and opens the Workshop when
   clicked. The stars clients give you are your reputation, and it opens four tiers of
@@ -109,6 +109,15 @@ plots stay flat.
 plot, rooms, stairs and furniture too (the garden's plants stay where they are). **Move &
 turn** in the sidebar turns it a quarter at a time about its middle. On a slope, moving it
 changes how much earth is dug.
+
+**Double height.** With the Double height technique (after two storeys), a room's menu
+has **⬍ Double height**: the floor above it opens up, so the room is two storeys high.
+Upstairs, the space over it becomes "Open to below" (open room boundaries go along its
+sides where there are no walls), with a glass railing along its open edges, so the rooms
+around it look down into it like a gallery. There is no floor (and no floor cost) over it,
+and it does not count as floor area. **Close the floor above** puts it back. On an upper
+floor a room can also be set to "Open to below" directly. Some clients wish for a
+double-height living room, office or kitchen.
 
 **Basements.** With the Basements technique, **+ Basement** on the floors card digs a
 storey under the house, with concrete walls along the ground floor's outline. Divide it

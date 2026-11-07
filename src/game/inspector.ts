@@ -52,6 +52,9 @@ import {
   clampBalcony,
   placeBalcony,
   rotateHouse,
+  clearDoubleHeight,
+  makeDoubleHeight,
+  openingAbove,
   setRoomType,
   PAINT_COLORS,
   INDOOR_PLANTS,
@@ -96,7 +99,7 @@ export function inspectorKey(store: Store): string {
     const room = a.ok ? roomAt(a.value.rooms, sel.at) : undefined;
     if (!room) return "room:none";
     const furniture = furnitureIn(house, room).map((f) => f.id).join(",");
-    return `room:${level}:${room.type}:${room.labels.length}:${furniture}:${room.polygon.map((p) => `${p.x},${p.y}`).join(";")}`;
+    return `room:${level}:${room.type}:${room.labels.length}:${furniture}:${room.polygon.map((p) => `${p.x},${p.y}`).join(";")}:${house.levels}`;
   }
   if (sel.kind === "wall") {
     const w = house.wall(sel.id);
@@ -158,7 +161,16 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
   const room = current();
   if (!room) return null;
 
-  const types = [{ value: "none" as const, label: m.ui.notSet, color: "#f7f3ea" }, ...ROOM_TYPES.map((t) => ({ value: t, label: m.rooms[t].name, color: ROOM_INFO[t].color }))];
+  // "Open to below" only on upper floors, once double height has been learned.
+  const types = [
+    { value: "none" as const, label: m.ui.notSet, color: "#f7f3ea" },
+    ...ROOM_TYPES.filter((t) => t !== "Void" || level > 0).map((t) => ({
+      value: t,
+      label: m.rooms[t].name,
+      color: ROOM_INFO[t].color,
+      lock: t === "Void" ? () => store.lockOf({ kind: "doubleHeight" }) : undefined,
+    })),
+  ];
   const use = choices<RoomType | "none">(
     m.ui.usedAs,
     types,
@@ -175,6 +187,7 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
         else clearRoomFurnitureAt(h, at, level);
       }),
     "rooms",
+    store.onLocked,
   );
   const floor = choices(
     m.ui.floor,
@@ -192,6 +205,17 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
     "paints",
     store.onLocked,
   );
+  // Double height: open the floor above this room (or close it again).
+  const tall = () => !!openingAbove(store.house, at, level);
+  const { button: tallBtn, field: tallField } = lockable(store, "", { kind: "doubleHeight" }, () =>
+    store.edit((h) => void (tall() ? clearDoubleHeight(h, at, level) : makeDoubleHeight(h, at, level))),
+  );
+  const tallLabel = { el: tallBtn, update: () => {
+    tallField.update();
+    tallBtn.textContent = tall() ? m.ui.closeDoubleHeight : `⬍ ${m.ui.doubleHeight}`;
+    tallBtn.title = tall() ? m.ui.closeDoubleHeightTitle : tallBtn.classList.contains("locked") ? tallBtn.title : m.ui.doubleHeightTitle;
+  } };
+  const canBeTall = room.type !== "Void" && level + 1 < store.house.levels;
   const facts = readout(m.ui.area, () => {
     const r = current();
     return r ? `${area(m, r.area)} · ${m.ui.openingsSummary(r.doors.length, r.doors.some((d) => d.to === OUTSIDE), r.windows.length)}` : "";
@@ -233,7 +257,7 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
   if (furnitureIn(store.house, room).length) actions.append(button(m.ui.clearFurniture, () => store.edit((h) => clearRoomFurnitureAt(h, at, level))));
 
   const info = room.type && ROOM_INFO[room.type];
-  const note = el("p", { className: "sub" }, room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : m.ui.chooseRoomUse);
+  const note = el("p", { className: "sub" }, room.type === "Void" ? m.ui.voidNote : room.type && info ? m.ui.roomNeeds(room.type, `${num(m, info.minArea)} m²`, info.needsWindow) : m.ui.chooseRoomUse);
   return {
     el: el(
       "div",
@@ -241,13 +265,13 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
       el("h2", {}, roomName(room, m)),
       use.el,
       note,
-      floor.el,
-      paint.el,
+      ...(room.type === "Void" ? [] : [floor.el, paint.el]),
       facts.el,
-      section(m.ui.furniture, list, actions),
+      ...(canBeTall ? [el("div", { className: "row" }, tallBtn)] : []),
+      ...(room.type === "Void" ? [] : [section(m.ui.furniture, list, actions)]),
       el("div", { className: "row" }, deleteButton(store)),
     ),
-    fields: [use, floor, paint, facts],
+    fields: [use, floor, paint, facts, ...(canBeTall ? [tallLabel] : [])],
   };
 }
 

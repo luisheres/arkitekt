@@ -135,4 +135,5 @@ export const SUGGESTED_FURNITURE: Record<RoomType, readonly FurnitureKind[]> = {
   Utility: ["Washer", "Sink", "Shelf"],
   Garage: ["Car", "Workbench", "Shelf"],
   Storage: ["Shelf"],
+  Void: [],
 };

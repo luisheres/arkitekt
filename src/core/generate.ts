@@ -40,6 +40,7 @@ const TYPICAL_AREA: Record<RoomType, number> = {
   Utility: 4,
   Garage: 18,
   Storage: 3,
+  Void: 0,
 };
 
 type Archetype =
@@ -281,6 +282,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "floorFinish", finish: "Stone", room: "Hall" },
           { kind: "balcony" },
           { kind: "gardenPlants", min: 8 },
+          { kind: "doubleHeight", room: "Living" },
         ],
       };
     case "signature":
@@ -319,6 +321,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "underBudget", share: 0.9 },
           { kind: "balcony" },
           { kind: "indoorPlants", min: 6 },
+          { kind: "doubleHeight", room: "Living" },
         ],
       };
     case "student":
@@ -531,6 +534,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "indoorPlants", min: 4 },
           { kind: "floorFinish", finish: "Wood", room: "Office" },
           { kind: "gardenPlants", min: 6 },
+          { kind: "doubleHeight", room: "Office" },
         ],
       };
     case "sporty":
@@ -596,6 +600,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "storeys", min: 3 },
           { kind: "floorFinish", finish: "Stone", room: "Living" },
           { kind: "gardenPlants", min: 8 },
+          { kind: "doubleHeight", room: "Living" },
         ],
       };
     case "chef":
@@ -630,6 +635,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "indoorPlants", min: 5 },
           { kind: "roofMaterial", material: "Tiles" },
           { kind: "everyFloor", room: "Bathroom" },
+          { kind: "doubleHeight", room: "Kitchen" },
         ],
       };
   }

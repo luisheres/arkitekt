@@ -8,7 +8,7 @@ import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
 import { isGardenPlant } from "./furniture";
 import { analyzeLayout } from "./layout";
 import { BALCONY_LIMITS, type Balcony, type BalconyId, type FloorFinish, House, type LabelId, type PaintColor, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
-import { analyzeRooms, roomAt } from "./rooms";
+import { type Room, analyzeRooms, roomAt } from "./rooms";
 import { DOOR_WIDTH, GARAGE_DOOR_WIDTH, MIN_LINTEL, MIN_OPENING_SIZE, MIN_WALL_LENGTH, OPENING_END_MARGIN } from "./rules";
 
 /** Grid spacing for snapping, in meters. */
@@ -446,4 +446,57 @@ export function rotateHouse(house: House, turns: 1 | -1): void {
     const v = turn(f.facing);
     f.facing = new Vec2(clean(v.x), clean(v.y));
   }
+}
+
+// --- Double height ------------------------------------------------------------------------
+
+/** The opening in the floor above the room at `at` on `level`, if it has one. */
+export function openingAbove(house: House, at: Vec2, level: number): Room | null {
+  const below = analyzeRooms(house, level);
+  const room = below.ok ? roomAt(below.value.rooms, at) : undefined;
+  const above = analyzeRooms(house, level + 1);
+  if (!room || !above.ok) return null;
+  return above.value.rooms.find((r) => r.type === "Void" && pointInPolygon(room.anchor, r.polygon)) ?? null;
+}
+
+/** Whether the segment a-b lies along a wall of a storey (so needs no new boundary). */
+function alongWall(house: House, level: number, a: Vec2, b: Vec2): boolean {
+  const on = (p: Vec2, w: Wall) => {
+    const d = w.direction();
+    const t = p.sub(w.start).dot(d);
+    return t >= -SNAP_EPS && t <= w.length() + SNAP_EPS && w.start.add(d.scale(t)).distance(p) < SNAP_EPS;
+  };
+  return house.wallsOn(level).some((w) => on(a, w) && on(b, w));
+}
+
+/**
+ * Make the room at `at` on `level` double height: open the floor above it. Upstairs, open
+ * room boundaries go along its sides where there are no walls, and the space they enclose
+ * becomes an opening to below. False when there is no storey above or no room here.
+ */
+export function makeDoubleHeight(house: House, at: Vec2, level: number): boolean {
+  if (level + 1 >= house.levels) return false;
+  const below = analyzeRooms(house, level);
+  const room = below.ok ? roomAt(below.value.rooms, at) : undefined;
+  if (!room) return false;
+  const up = level + 1;
+  room.polygon.forEach((a, i) => {
+    const b = room.polygon[(i + 1) % room.polygon.length];
+    if (!alongWall(house, up, a, b)) house.addBoundary(a, b, up);
+  });
+  const above = analyzeRooms(house, up);
+  const target = above.ok ? roomAt(above.value.rooms, room.anchor) : undefined;
+  if (!target) return false;
+  setRoomType(house, target.anchor, "Void", up);
+  // Nothing stays standing in mid-air.
+  house.furniture = house.furniture.filter((f) => f.level !== up || !pointInPolygon(f.at, target.polygon));
+  return true;
+}
+
+/** Close the floor above the room at `at` again (the boundaries upstairs stay). */
+export function clearDoubleHeight(house: House, at: Vec2, level: number): boolean {
+  const opening = openingAbove(house, at, level);
+  if (!opening) return false;
+  setRoomType(house, opening.anchor, null, level + 1);
+  return true;
 }

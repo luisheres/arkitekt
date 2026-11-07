@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { costLines, defaultPrices } from "./cost";
-import { Vec2 } from "./geometry";
+import { Vec2, pointInPolygon } from "./geometry";
 import { House } from "./model";
 import { groundHeight, plotById, starterPlots } from "./plot";
 import { earthworks, shapedGround, siteLevel } from "./site";
@@ -173,5 +173,67 @@ describe("basements", async () => {
     h.removeBasement();
     expect(h.wallsOn(-1)).toHaveLength(0);
     expect(h.basement).toBe(false);
+  });
+});
+
+describe("double height", async () => {
+  const { addStoreyAbove, clearDoubleHeight, makeDoubleHeight, openingAbove, setRoomType } = await import("./edit");
+  const { validate } = await import("./validate");
+  const { evaluateBrief } = await import("./brief");
+  const { abilities, missingTechniques } = await import("./progression");
+  const { freePlayClient } = await import("./clients");
+  const { voidArea, analyzeHouse } = await import("./rooms");
+  const flat = starterPlots()[0];
+  /** Two storeys; downstairs a living room (left) and a kitchen (right). */
+  const make = () => {
+    const h = new House();
+    const ids = box(h, 5, 6, 15, 14);
+    h.addWall(v(10, 6), v(10, 14), 2.7, "Plaster");
+    h.addDoor(ids[0], 2, 1, 2.1);
+    setRoomType(h, v(7, 10), "Living", 0);
+    setRoomType(h, v(12, 10), "Kitchen", 0);
+    addStoreyAbove(h);
+    setRoomType(h, v(10, 10), "Bedroom", 1);
+    return h;
+  };
+
+  it("opens the floor above a room, splitting the storey above along its sides", () => {
+    const h = make();
+    expect(makeDoubleHeight(h, v(7, 10), 0)).toBe(true);
+    const opening = openingAbove(h, v(7, 10), 0)!;
+    expect(opening.level).toBe(1);
+    expect(opening.area).toBeCloseTo(40, 6);
+    expect(openingAbove(h, v(12, 10), 0)).toBeNull();
+    expect(h.wallsOn(1).filter((w) => w.boundary)).toHaveLength(1);
+    expect(voidArea(h, 1)).toBeCloseTo(40, 6);
+    // The rest of the upper floor is still a bedroom.
+    expect(analyzeHouse(h).rooms.filter((r) => r.level === 1).map((r) => r.type).sort()).toEqual(["Bedroom", "Void"]);
+  });
+
+  it("leaves out the floor over it, and is not floor area", () => {
+    const h = make();
+    const floorsBefore = costLines(h, defaultPrices(), flat).find((l) => l.what.kind === "upperFloors")!.quantity;
+    makeDoubleHeight(h, v(7, 10), 0);
+    expect(costLines(h, defaultPrices(), flat).find((l) => l.what.kind === "upperFloors")!.quantity).toBeCloseTo(floorsBefore - 40, 6);
+    const client = { ...freePlayClient("suburban"), items: [{ must: false, req: { kind: "floorArea" as const, max: 125 } }, { must: false, req: { kind: "doubleHeight" as const, room: "Living" as const } }] };
+    expect(evaluateBrief(h, client, defaultPrices()).map((r) => r.met)).toEqual([true, true]);
+  });
+
+  it("is a technique to learn, belongs on upper floors, and can be closed again", () => {
+    const h = make();
+    makeDoubleHeight(h, v(7, 10), 0);
+    expect(missingTechniques(h, abilities(["twoStoreys", "woodFloor"]))).toEqual(["doubleHeight"]);
+    const kinds = () => validate(h, flat, Infinity, defaultPrices()).map((i) => i.kind);
+    expect(kinds()).not.toContain("VoidOnGroundFloor");
+    // The opening is not a room: no room rules for it.
+    const opening = openingAbove(h, v(7, 10), 0)!;
+    const aboutOpening = validate(h, flat, Infinity, defaultPrices()).filter((i) => "room" in i && i.room.level === 1 && pointInPolygon(i.room.at, opening.polygon));
+    expect(aboutOpening).toEqual([]);
+    setRoomType(h, v(12, 10), "Void", 0);
+    expect(kinds()).toContain("VoidOnGroundFloor");
+    setRoomType(h, v(12, 10), "Kitchen", 0);
+    expect(clearDoubleHeight(h, v(7, 10), 0)).toBe(true);
+    expect(openingAbove(h, v(7, 10), 0)).toBeNull();
+    expect(voidArea(h)).toBe(0);
   });
 });

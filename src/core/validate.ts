@@ -71,6 +71,8 @@ export type Issue =
   | { kind: "BalconyNotOnOuterWall"; balcony: BalconyId }
   | { kind: "BalconyNeedsDoor"; balcony: BalconyId }
   | { kind: "BalconyOutsidePlot"; balcony: BalconyId }
+  /** An "open to below" on the ground floor or in the basement: there is nothing below to open to. */
+  | { kind: "VoidOnGroundFloor"; room: RoomRef }
   /** The basement reaches beyond the ground floor above it. */
   | { kind: "BasementOutsideHouse" }
   /** No stairs lead down to the basement. */
@@ -182,6 +184,11 @@ function checkRooms(house: House, analysis: RoomAnalysis, level: number, issues:
   for (const room of rooms) {
     const ref = roomRef(room);
     if (room.labels.length > 1) issues.push({ kind: "RoomHasTwoLabels", room: ref });
+    // An opening to the floor below is not a room: no rules but that it is above one.
+    if (room.type === "Void") {
+      if (level <= 0) issues.push({ kind: "VoidOnGroundFloor", room: ref });
+      continue;
+    }
     if (!room.reachable) issues.push({ kind: "RoomUnreachable", room: ref });
     if (!room.type) continue;
     const info = ROOM_INFO[room.type];

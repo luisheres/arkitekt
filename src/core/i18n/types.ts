@@ -321,6 +321,11 @@ export interface Messages {
       /** "3 ×" in front of a count of windows or doors. */
       count(n: number): string;
     };
+    voidNote: string;
+    doubleHeight: string;
+    doubleHeightTitle: string;
+    closeDoubleHeight: string;
+    closeDoubleHeightTitle: string;
     addBasement: string;
     addBasementTitle: string;
     removeBasement: string;

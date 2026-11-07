@@ -237,7 +237,7 @@ describe("client variety", () => {
         for (const i of c.items) wishes.add(i.req.kind);
       }
     expect(whos.size).toBeGreaterThanOrEqual(14);
-    for (const kind of ["balcony", "gardenPlants", "indoorPlants", "paint", "wallMaterial", "windowArea", "connected"]) expect(wishes, kind).toContain(kind);
+    for (const kind of ["balcony", "gardenPlants", "indoorPlants", "paint", "wallMaterial", "windowArea", "connected", "doubleHeight"]) expect(wishes, kind).toContain(kind);
   });
 
   it("keeps clients from before tiers exactly as they were", () => {

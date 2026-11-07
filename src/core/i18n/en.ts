@@ -24,6 +24,7 @@ export const en: Messages = {
     Utility: { name: "Utility room", short: "Utility", one: "a utility room", many: "utility rooms", the: "the utility room" },
     Garage: { name: "Garage", short: "Garage", one: "a garage", many: "garages", the: "the garage" },
     Storage: { name: "Storage", short: "Store", one: "a storage room", many: "storage rooms", the: "the storage room" },
+    Void: { name: "Open to below", short: "Open", one: "an opening to the floor below", many: "openings to the floor below", the: "the opening" },
   },
   wallMaterial: { Wood: "Wood", FaluRed: "Falu red", Brick: "Brick", Plaster: "Plaster", Stone: "Stone", Concrete: "Concrete" },
   paintColor: { White: "White", Cream: "Cream", Sky: "Sky blue", Mint: "Mint green", Blush: "Pink", Sunny: "Sunny yellow", Lavender: "Lavender", Sage: "Sage green" },
@@ -84,6 +85,7 @@ export const en: Messages = {
     paint: { name: "Paint colours", text: "Paint rooms in any of eight colours instead of white." },
     houseplants: { name: "Houseplants", text: "Plants in pots to make rooms cosy." },
     landscaping: { name: "Garden design", text: "Plant trees, shrubs, flower beds and hedges in the garden." },
+    doubleHeight: { name: "Double height", text: "Open up part of an upper floor, so the room below is two storeys high, with a gallery round it." },
     basement: { name: "Basements", text: "Dig a storey below the house, for storage, a utility room or a workshop." },
     balconies: { name: "Balconies", text: "Balconies on the upper floors, with a door out." },
     woodFloor: { name: "Wooden floors", text: "Warm wooden floorboards." },
@@ -291,6 +293,8 @@ export const en: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
+      case "VoidOnGroundFloor":
+        return "An opening to the floor below is on the ground floor; there is nothing below it to open to";
       case "BasementOutsideHouse":
         return "The basement reaches beyond the ground floor; it has to fit under the house";
       case "NoStairsToBasement":
@@ -361,6 +365,8 @@ export const en: Messages = {
         return `At least ${r.min} trees, shrubs or flower beds in the garden`;
       case "indoorPlants":
         return `At least ${r.min} plants indoors`;
+      case "doubleHeight":
+        return `${cap(this.rooms[r.room].one)} with double height`;
       case "paint":
         return `${cap(this.rooms[r.room].one)} painted ${this.paintColor[r.color].toLowerCase()}`;
     }
@@ -510,6 +516,11 @@ export const en: Messages = {
       empty: "Nothing is built yet, so nothing costs anything.",
       count: (n) => `${n} ×`,
     },
+    voidNote: "Open to the floor below: there is no floor here, so the room below is double height. Its open edges get a railing.",
+    doubleHeight: "Double height",
+    doubleHeightTitle: "Open the floor above this room, so it is two storeys high (with a railing upstairs)",
+    closeDoubleHeight: "Close the floor above",
+    closeDoubleHeightTitle: "Put the floor above this room back",
     addBasement: "Basement",
     addBasementTitle: "Dig a basement under the house: its outer walls follow the ground floor's",
     removeBasement: "Remove basement",

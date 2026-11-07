@@ -4,7 +4,7 @@ import { analyzeLayout } from "./layout";
 import { type FurnitureKind, PLANT_PRICE } from "./furniture";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
-import { analyzeHouse } from "./rooms";
+import { analyzeHouse, voidArea } from "./rooms";
 import { earthworks } from "./site";
 import { buildRoof, coveringArea } from "./roof";
 
@@ -176,13 +176,20 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   const lowest = house.lowestLevel();
   const ground = house.floorArea(lowest);
   add("floors", { kind: "foundation" }, ground, "m2", ground * prices.foundationM2);
-  for (let k = lowest + 1; k < house.levels; k++) add("floors", { kind: "upperFloors" }, house.floorArea(k), "m2", house.floorArea(k) * prices.upperFloorM2);
+  // (No floor where a storey opens up to the one below.)
+  for (let k = lowest + 1; k < house.levels; k++) {
+    const area = Math.max(house.floorArea(k) - voidArea(house, k), 0);
+    add("floors", { kind: "upperFloors" }, area, "m2", area * prices.upperFloorM2);
+  }
 
   // Levelling the ground for the house, and digging out the basement.
   const earth = plot ? earthworks(house, plot) : { cut: 0, fill: 0, basement: house.basement ? house.floorArea(-1) * house.basementDepth() : 0 };
   if (earth.cut + earth.fill > 0.05) add("groundworks", { kind: "earthworks" }, earth.cut + earth.fill, "m3", (earth.cut + earth.fill) * prices.earthM3);
   if (earth.basement > 0) add("groundworks", { kind: "basementDig" }, earth.basement, "m3", earth.basement * prices.basementDigM3);
-  for (const room of analyzeHouse(house).rooms) add("floors", { kind: "finish", finish: room.floor }, room.area, "m2", room.area * prices.floorM2[room.floor]);
+  for (const room of analyzeHouse(house).rooms) {
+    if (room.type === "Void") continue;
+    add("floors", { kind: "finish", finish: room.floor }, room.area, "m2", room.area * prices.floorM2[room.floor]);
+  }
   if (house.stairs.length) add("stairs", { kind: "stairs" }, house.stairs.length, "pieces", house.stairs.length * prices.stairs);
 
   // Balconies, plants, and paint on the walls of coloured rooms.

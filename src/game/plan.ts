@@ -796,7 +796,7 @@ export class PlanView {
     if (fp.ok) out.push(`<polygon class="floor" points="${this.pts(fp.value)}"/>`);
     for (const room of this.rooms) {
       const fill = room.type ? ROOM_INFO[room.type].color : "#f7f3ea";
-      const cls = ["room", badRooms.has(room) && "bad", hoverRoom === room && "hover"].filter(Boolean).join(" ");
+      const cls = ["room", room.type === "Void" && "void", badRooms.has(room) && "bad", hoverRoom === room && "hover"].filter(Boolean).join(" ");
       out.push(`<polygon class="${cls}" style="fill:${fill}" points="${this.pts(room.polygon)}"/>`);
     }
 

@@ -30,6 +30,7 @@ import {
   Vec2 as Vec2Class,
   pointInPolygon,
   slabOutline,
+  offsetPolygon,
   stairDirection,
   stairOutline,
   analyzeRooms,
@@ -146,6 +147,28 @@ export interface HouseViewOptions {
    * it (dug out and filled), and garden plants stand on the ground.
    */
   plot?: Plot;
+}
+
+/** A glass railing with a handrail and posts, from a to b, standing at height y. */
+function railing(group: THREE.Group, a: Vec2, b: Vec2, y: number): void {
+  const length = a.distance(b);
+  if (length < 0.05) return;
+  const g = new THREE.Group();
+  g.position.set((a.x + b.x) / 2, y, (a.y + b.y) / 2);
+  const d = b.sub(a);
+  g.rotation.y = Math.atan2(-d.y, d.x);
+  const part = (mat: THREE.Material, x: number, py: number, sx: number, sy: number, sz: number) => {
+    const mesh = solid(unitBox, mat);
+    mesh.position.set(x, py, 0);
+    mesh.scale.set(sx, sy, sz);
+    g.add(mesh);
+  };
+  const h = 1.0;
+  part(palette.frame, 0, h, length, 0.05, 0.07);
+  part(palette.glass, 0, h / 2, length - 0.04, h * 0.8, 0.02);
+  const posts = Math.max(1, Math.round(length / 1.2));
+  for (let i = 0; i <= posts; i++) part(palette.frame, -length / 2 + (length * i) / posts, h / 2, 0.05, h, 0.05);
+  group.add(g);
 }
 
 /** The garden's lawn, shared by every build. */
@@ -301,6 +324,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
     const wells = house.stairs.filter((s) => s.level + 1 === level).map(stairOutline);
     for (const room of analysis.value.rooms) {
+      if (room.type === "Void") continue; // open to the storey below: no floor
       const holes = wells.filter((w) => pointInPolygon(w[0].add(w[2]).scale(0.5), room.polygon));
       const y = level === 0 ? FLOOR_SLAB_HEIGHT : base(level) + 0.01;
       const floor = flat(room.polygon, holes, y, palette.floor[room.floor]);
@@ -309,6 +333,21 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
   });
 
+  // Railings round openings to below, along their open edges.
+  for (const [level, analysis] of analyses) {
+    if (level < 1 || !visible(level) || !analysis.ok) continue;
+    const voids = analysis.value.rooms.filter((r) => r.type === "Void");
+    if (!voids.length) continue;
+    pick = null;
+    for (const w of house.wallsOn(level)) {
+      if (!w.boundary) continue;
+      const mid = w.start.add(w.end).scale(0.5);
+      const n = leftNormal(w).scale(0.1);
+      if (!voids.some((r) => pointInPolygon(mid.add(n), r.polygon) || pointInPolygon(mid.sub(n), r.polygon))) continue;
+      railing(group, w.start, w.end, base(level) + FLOOR_SLAB_HEIGHT);
+    }
+  }
+
   // Floor structure between storeys (above the basement too); where the storey above is
   // smaller it is a terrace.
   for (let level = house.lowestLevel(); level < top; level++) {
@@ -316,7 +355,12 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     const outline = slabOutline(house, level);
     if (!outline) continue;
     const wells = house.stairs.filter((s) => s.level === level).map(stairOutline);
-    const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shapeOf(outline, wells), { depth: FLOOR_STRUCTURE, bevelEnabled: false }), palette.slab);
+    // Openings in the floor above (double-height rooms below) go right through it.
+    const above = analyses.get(level + 1);
+    // (Shrunk by half a wall so each hole lies inside the slab: holes touching its edge are ignored.)
+    const inset = house.wallsOn(level).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) / 2 + 0.02;
+    const voids = above?.ok ? above.value.rooms.filter((r) => r.type === "Void").map((r) => offsetPolygon(r.polygon, -inset)) : [];
+    const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shapeOf(outline, [...wells, ...voids]), { depth: FLOOR_STRUCTURE, bevelEnabled: false }), palette.slab);
     slab.rotation.x = -Math.PI / 2;
     slab.position.y = base(level) + house.storeyHeight(level);
     slab.castShadow = slab.receiveShadow = true;

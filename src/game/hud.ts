@@ -1,6 +1,6 @@
 /** Read-only sidebar sections: the client's brief checklist, costs and issues. */
 
-import { type Issue, area, earthworks, estimate, evaluateBrief, fixed, money as formatMoney, num, siteLevel, totalCost, validate } from "../core";
+import { type Issue, area, earthworks, estimate, evaluateBrief, fixed, money as formatMoney, num, siteLevel, totalCost, validate, voidArea } from "../core";
 import { m } from "./i18n";
 import type { Selection, Store } from "./store";
 
@@ -74,7 +74,7 @@ export function renderStatus(el: HTMLElement, store: Store): void {
   const row = (label: string, v: number, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="amount">${money(v)}</td></tr>`;
   const left = budget - total;
   el.innerHTML = `
-    <div class="sub">${esc(m.ui.floorArea(area(m, house.floorArea())))}</div>
+    <div class="sub">${esc(m.ui.floorArea(area(m, house.floorArea() - voidArea(house))))}</div>
     ${plot.terrain && house.walls.length ? `<div class="sub">${esc(groundLine(store))}</div>` : ""}
     <table>
       ${row(rows.walls, cost.walls)}

@@ -27,6 +27,7 @@ export const sv: Messages = {
     Utility: { name: "Tvättstuga", short: "Tvätt", one: "en tvättstuga", many: "tvättstugor", the: "tvättstugan" },
     Garage: { name: "Garage", short: "Garage", one: "ett garage", many: "garage", the: "garaget" },
     Storage: { name: "Förråd", short: "Förråd", one: "ett förråd", many: "förråd", the: "förrådet" },
+    Void: { name: "Öppet ner", short: "Öppet", one: "en öppning ner till våningen under", many: "öppningar ner till våningen under", the: "öppningen" },
   },
   wallMaterial: { Wood: "Trä", FaluRed: "Faluröd", Brick: "Tegel", Plaster: "Puts", Stone: "Natursten", Concrete: "Betong" },
   paintColor: { White: "Vit", Cream: "Gräddvit", Sky: "Himmelsblå", Mint: "Mintgrön", Blush: "Rosa", Sunny: "Solgul", Lavender: "Lavendel", Sage: "Salviagrön" },
@@ -87,6 +88,7 @@ export const sv: Messages = {
     paint: { name: "Målarfärger", text: "Måla rummen i åtta färger i stället för vitt." },
     houseplants: { name: "Krukväxter", text: "Växter i kruka som gör rummen mysiga." },
     landscaping: { name: "Trädgårdsdesign", text: "Plantera träd, buskar, rabatter och häckar i trädgården." },
+    doubleHeight: { name: "Dubbel takhöjd", text: "Öppna upp en del av en övre våning, så att rummet under blir två våningar högt, med ett galleri runt." },
     basement: { name: "Källare", text: "Gräv ut en våning under huset, för förråd, tvättstuga eller verkstad." },
     balconies: { name: "Balkonger", text: "Balkonger på övervåningarna, med en dörr ut." },
     woodFloor: { name: "Trägolv", text: "Varma golv av trä." },
@@ -294,6 +296,8 @@ export const sv: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
+      case "VoidOnGroundFloor":
+        return "En öppning ner ligger på bottenvåningen; det finns ingenting under att öppna ner till";
       case "BasementOutsideHouse":
         return "Källaren sträcker sig utanför bottenvåningen; den måste rymmas under huset";
       case "NoStairsToBasement":
@@ -369,6 +373,8 @@ export const sv: Messages = {
         return `Minst ${r.min} träd, buskar eller rabatter i trädgården`;
       case "indoorPlants":
         return `Minst ${r.min} krukväxter inomhus`;
+      case "doubleHeight":
+        return `${cap(this.rooms[r.room].one)} med dubbel takhöjd`;
       case "paint":
         return `${cap(this.rooms[r.room].one)} målat i ${this.paintColor[r.color].toLowerCase()}`;
     }
@@ -518,6 +524,11 @@ export const sv: Messages = {
       empty: "Inget är byggt än, så inget kostar något.",
       count: (n) => `${n} st`,
     },
+    voidNote: "Öppet ner till våningen under: här finns inget golv, så rummet under får dubbel takhöjd. De öppna kanterna får ett räcke.",
+    doubleHeight: "Dubbel takhöjd",
+    doubleHeightTitle: "Öppna golvet ovanför rummet, så att det blir två våningar högt (med ett räcke på övervåningen)",
+    closeDoubleHeight: "Stäng golvet ovanför",
+    closeDoubleHeightTitle: "Lägg tillbaka golvet ovanför rummet",
     addBasement: "Källare",
     addBasementTitle: "Gräv en källare under huset: ytterväggarna följer bottenvåningens",
     removeBasement: "Ta bort källaren",

@@ -10,8 +10,9 @@ import type { Plot } from "./plot";
 import { area, percent } from "./i18n/format";
 import { en } from "./i18n/en";
 import type { Lang, Messages } from "./i18n/types";
-import { ROOM_INFO, type Room, analyzeHouse } from "./rooms";
+import { ROOM_INFO, type Room, analyzeHouse, voidArea } from "./rooms";
 import { validate } from "./validate";
+import { openingAbove } from "./edit";
 import type { Abilities } from "./progression";
 
 export type Requirement =
@@ -42,7 +43,9 @@ export type Requirement =
   /** At least this many plants in pots indoors. */
   | { kind: "indoorPlants"; min: number }
   /** A room of this type painted this colour. */
-  | { kind: "paint"; room: RoomType; color: PaintColor };
+  | { kind: "paint"; room: RoomType; color: PaintColor }
+  /** A room of this type with the floor above opened up: double height. */
+  | { kind: "doubleHeight"; room: RoomType };
 
 export interface BriefItem {
   req: Requirement;
@@ -100,7 +103,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [n >= r.count, m.brief.countOf(Math.min(n, r.count), r.count)];
       }
       case "floorArea": {
-        const a = house.floorArea();
+        const a = house.floorArea() - voidArea(house);
         return [a > 0 && a >= (r.min ?? 0) - 1e-6 && a <= (r.max ?? Infinity) + 1e-6, area(m, a)];
       }
       case "wallMaterial": {
@@ -153,6 +156,10 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "indoorPlants": {
         const n = house.furniture.filter((f) => INDOOR_PLANTS.includes(f.kind)).length;
         return [n >= r.min, m.brief.countOf(Math.min(n, r.min), r.min)];
+      }
+      case "doubleHeight": {
+        const tall = ofType(r.room).some((x) => !!openingAbove(house, x.anchor, x.level));
+        return [tall, tall ? m.brief.yes : m.brief.no];
       }
       case "paint": {
         const these = ofType(r.room);

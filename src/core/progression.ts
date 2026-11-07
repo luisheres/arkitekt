@@ -21,6 +21,7 @@ import {
   type WallMaterial,
 } from "./model";
 import { GARDEN_PLANTS, INDOOR_PLANTS } from "./furniture";
+import { Vec2, pointInPolygon } from "./geometry";
 import { analyzeHouse } from "./rooms";
 
 export const TECHNIQUE_IDS = [
@@ -43,6 +44,7 @@ export const TECHNIQUE_IDS = [
   "threeStoreys",
   "balconies",
   "basement",
+  "doubleHeight",
   "prefab",
   "carpenters",
   "marketing",
@@ -70,6 +72,8 @@ export type Unlock =
   | { kind: "garden" }
   | { kind: "balconies" }
   | { kind: "basement" }
+  /** Openings in a floor, for double-height rooms below. */
+  | { kind: "doubleHeight" }
   /** Cheaper parts: a share off what they cost. */
   | { kind: "discount"; on: "walls" | "floors" | "all"; share: number }
   /** A larger fee: this many percentage points of the budget on top. */
@@ -103,6 +107,7 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "threeStoreys", branch: "structure", price: 40_000, requires: "twoStoreys", unlocks: { kind: "storeys", count: 3 } },
   { id: "balconies", branch: "structure", price: 12_000, requires: "twoStoreys", unlocks: { kind: "balconies" } },
   { id: "basement", branch: "structure", price: 14_000, unlocks: { kind: "basement" } },
+  { id: "doubleHeight", branch: "structure", price: 10_000, requires: "twoStoreys", unlocks: { kind: "doubleHeight" } },
   { id: "prefab", branch: "business", price: 12_000, unlocks: { kind: "discount", on: "walls", share: 0.1 } },
   { id: "carpenters", branch: "business", price: 14_000, unlocks: { kind: "discount", on: "floors", share: 0.1 } },
   { id: "marketing", branch: "business", price: 25_000, unlocks: { kind: "fee", points: 2 } },
@@ -125,6 +130,7 @@ export interface Abilities {
   garden: boolean;
   balconies: boolean;
   basement: boolean;
+  doubleHeight: boolean;
   /** Price factors (1 = full price). */
   wallFactor: number;
   floorFactor: number;
@@ -158,6 +164,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       garden: true,
       balconies: true,
       basement: true,
+      doubleHeight: true,
       wallFactor: 1,
       floorFactor: 1,
       allFactor: 1,
@@ -169,7 +176,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
   const roofStyles = new Set(STARTER.roofStyles);
   const roofMaterials = new Set(STARTER.roofMaterials);
   const floors = new Set(STARTER.floors);
-  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
+  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, doubleHeight: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
   for (const id of owned) {
     const u = technique(id)?.unlocks;
     if (!u) continue;
@@ -200,6 +207,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       case "garden":
       case "balconies":
       case "basement":
+      case "doubleHeight":
         a[u.kind] = true;
         break;
       case "discount":
@@ -258,8 +266,16 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
     const t = techniqueFor(u);
     if (!ok && t) need.add(t);
   };
+  // The open edges round an opening to below come with double height, not open plan.
+  const rooms = analyzeHouse(house).rooms;
+  const edgesAnOpening = (w: { start: Vec2; end: Vec2; level: number }) => {
+    const mid = w.start.add(w.end).scale(0.5);
+    const d = w.end.sub(w.start).normalize();
+    const n = new Vec2(-d.y, d.x).scale(0.1);
+    return [mid.add(n), mid.sub(n)].some((p) => rooms.some((r) => r.level === w.level && r.type === "Void" && pointInPolygon(p, r.polygon)));
+  };
   for (const w of house.walls) {
-    if (w.boundary) want(a.openPlan, { kind: "openPlan" });
+    if (w.boundary) want(a.openPlan || edgesAnOpening(w), { kind: "openPlan" });
     // (A basement's walls are concrete because they hold back the earth, not as a facade.)
     else if (w.level >= 0) want(a.walls.has(w.material), { kind: "wall", material: w.material });
   }
@@ -270,6 +286,10 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
   }
   for (const o of house.openings) if (o.kind === "GarageDoor") want(a.garageDoors, { kind: "garageDoors" });
   for (const r of analyzeHouse(house).rooms) {
+    if (r.type === "Void") {
+      want(a.doubleHeight, { kind: "doubleHeight" });
+      continue;
+    }
     want(a.floors.has(r.floor), { kind: "floor", finish: r.floor });
     if (r.paint !== "White") want(a.paint, { kind: "paint" });
   }
@@ -318,6 +338,10 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
     case "paint":
       if (r.color !== "White" && !a.paint) needs.push({ kind: "paint" });
       break;
+    case "doubleHeight":
+      if (!a.doubleHeight) needs.push({ kind: "doubleHeight" });
+      if (a.maxStoreys < 2) needs.push({ kind: "storeys", count: 2 });
+      break;
     default:
       break;
   }
@@ -358,6 +382,7 @@ export function canBuild(a: Abilities, u: Unlock): boolean {
     case "garden":
     case "balconies":
     case "basement":
+    case "doubleHeight":
       return a[u.kind];
     default:
       return a.all;

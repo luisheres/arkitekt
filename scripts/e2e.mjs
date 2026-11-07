@@ -483,6 +483,28 @@ try {
   await page.click(".level-switch button[data-level='0']");
   await shot("two-storeys");
 
+  // Double height: open the floor above the living room.
+  await page.click(".level-switch button[data-level='0']");
+  await page.click("#view-toggles input[data-toggle='furniture']");
+  await click(12.5, 6.2);
+  assert.match(await page.locator(".popover h2").textContent(), /Living room/);
+  await page.click('.popover button:has-text("Double height")');
+  await page.keyboard.press("Escape");
+  await page.click("#view-toggles input[data-toggle='furniture']");
+  const opened = () => page.evaluate(() => window.architect.store.house.labels.filter((l) => l.type === "Void" && l.level === 1).length);
+  assert.equal(await opened(), 1, "the floor above the living room is open");
+  assert.match(await page.locator(".plan-hint").textContent(), /./);
+  await shot("double-height");
+  await click(12.5, 6.2);
+  await page.click('.popover button:has-text("Close the floor above")');
+  await page.keyboard.press("Escape");
+  assert.equal(await opened(), 0);
+  await page.keyboard.press("Control+z");
+  assert.equal(await opened(), 1, "undo opens it again");
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("Control+z");
+  assert.equal(await opened(), 0, "and undo again closes it");
+
   // The 3D view can leave out the roof and any floor, and shows furniture.
   assert.ok((await page.evaluate(() => window.architect.core.furnish(window.architect.store.house).length)) >= 8, "rooms are furnished");
   await page.click("#view-toggles input[data-toggle='roof']");

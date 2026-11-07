@@ -40,7 +40,15 @@ export const ROOM_INFO: Record<RoomType, RoomInfo> = {
   Utility: { minArea: 2, needsWindow: false, color: "#dde3cf", floor: "Tiles", floors: WET_FLOORS },
   Garage: { minArea: 15, needsWindow: false, color: "#d6d6d6", floor: "Concrete", floors: WET_FLOORS },
   Storage: { minArea: 1, needsWindow: false, color: "#e6dfd0", floor: "Concrete", floors: ANY_FLOOR },
+  Void: { minArea: 0, needsWindow: false, color: "#dcecf8", floor: "Concrete", floors: ANY_FLOOR },
 };
+
+/** The floor area opened up to the storey below on a storey (or on every storey). */
+export function voidArea(house: House, level?: number): number {
+  return analyzeHouse(house)
+    .rooms.filter((r) => r.type === "Void" && (level === undefined || r.level === level))
+    .reduce((s, r) => s + r.area, 0);
+}
 
 export interface DoorLink {
   opening: Opening;
