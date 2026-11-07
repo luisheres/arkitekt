@@ -564,12 +564,23 @@ try {
   await page.keyboard.press("v");
   await page.click('#sidebar .house button:has-text("Move & turn")');
   await page.click('.popover button:has-text("Turn right")');
+  const spanX = () =>
+    page.evaluate(() => {
+      const xs = window.architect.store.house.walls.flatMap((w) => [w.start.x, w.end.x]);
+      return Math.max(...xs) - Math.min(...xs);
+    });
+  assert.equal(await spanX(), 8);
+  // A little turn takes the walls off the grid; turning back puts them on it again.
+  await page.click('.popover button:has-text("⟳ 15°")');
+  assert.ok(Math.abs((await spanX()) - 8) > 0.5, "turned by 15°");
+  await page.click('.popover button:has-text("⟲ 15°")');
+  assert.equal(await spanX(), 8);
+  // The platform can stand higher (more filling) or lower (more digging).
+  const platformText = async () => /platform at \+(\d+\.\d+) m/.exec(await status())[1];
+  const platformBefore = Number(await platformText());
+  await page.locator(".popover input[type=range]").fill("0.5");
+  assert.ok(Math.abs(Number(await platformText()) - platformBefore - 0.5) < 0.06, "half a metre higher");
   await page.keyboard.press("Escape");
-  const span = await page.evaluate(() => {
-    const xs = window.architect.store.house.walls.flatMap((w) => [w.start.x, w.end.x]);
-    return Math.max(...xs) - Math.min(...xs);
-  });
-  assert.equal(span, 8);
   // A basement: dug under the house, with stairs needed down to it.
   await page.click(".level-switch button[data-action=basement]");
   assert.equal(await page.evaluate(() => window.architect.store.level), -1);

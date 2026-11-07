@@ -316,6 +316,8 @@ export interface Messages {
       earthworks: string;
       basementDig: string;
       basementWalls: string;
+      retainingWalls: string;
+      lightWells: string;
       paint(color: string): string;
       empty: string;
       /** "3 ×" in front of a count of windows or doors. */
@@ -335,6 +337,9 @@ export interface Messages {
     wholeHouse: string;
     turnLeft: string;
     turnRight: string;
+    turnLittle: string;
+    platformHeight: string;
+    platformHint: string;
     moveHint: string;
     /** On sloping ground: the platform's height and the earth moved. */
     platform(height: string, dug: string, filled: string): string;

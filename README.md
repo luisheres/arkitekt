@@ -105,10 +105,16 @@ shows the platform's height and the earth moved; every cubic metre costs money
 (Groundworks), so where on the plot you build, and how big, matters. The original three
 plots stay flat.
 
+Under **Move & turn**, **Platform height** raises the platform above the ground's average
+(more earth filled in) or lowers it (more dug out), up to 1.5 m either way. Where the
+ground at the edge of the working space is cut or filled more than 0.8 m deep, a stone
+retaining wall holds it instead of a slope; it is drawn in 3D and priced per m².
+
 **Moving and turning the house.** **✋ Move house** (`M`) drags the whole house around the
 plot, rooms, stairs and furniture too (the garden's plants stay where they are). **Move &
-turn** in the sidebar turns it a quarter at a time about its middle. On a slope, moving it
-changes how much earth is dug.
+turn** in the sidebar turns it a quarter at a time, or 15° at a time, about its middle;
+roofs still fit at any angle, and turning back puts the walls on the grid again. On a
+slope, moving it changes how much earth is dug.
 
 **Double height.** With the Double height technique (after two storeys), a room's menu
 has **⬍ Double height**: the floor above it opens up, so the room is two storeys high.
@@ -122,8 +128,9 @@ double-height living room, office or kitchen.
 **Basements.** With the Basements technique, **+ Basement** on the floors card digs a
 storey under the house, with concrete walls along the ground floor's outline. Divide it
 into rooms like any storey; it needs stairs down to it, it has to fit under the house, and
-its outer walls cannot have doors or windows (they are under the ground), so it suits
-storage, utility rooms, bathrooms or a hall. Digging it out and its walls cost money; it
+its outer walls cannot have doors (they are under the ground). Windows look out into a
+light well, a grated pit dug beside them (priced per window), so with windows a basement
+can have bedrooms or an office too. Digging it out and its walls cost money; it
 does not count towards the floor area. In 3D, hide the ground floor to look into it.
 
 The plot itself and the street stay flat, so building is the same everywhere.

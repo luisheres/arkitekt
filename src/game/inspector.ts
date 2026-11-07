@@ -52,6 +52,7 @@ import {
   clampBalcony,
   placeBalcony,
   rotateHouse,
+  PLATFORM_RANGE,
   clearDoubleHeight,
   makeDoubleHeight,
   openingAbove,
@@ -570,17 +571,28 @@ function balconyInspector(store: Store, id: number): Inspector | null {
 function houseInspector(store: Store): Inspector {
   // Turning on screen: the plan shows +x to the left, so a turn that looks clockwise there
   // is anticlockwise in plan coordinates.
-  const turn = (turns: 1 | -1) => () => store.edit((h) => rotateHouse(h, turns));
-  const left = button(m.ui.turnLeft, turn(-1));
-  const right = button(m.ui.turnRight, turn(1));
+  const turn = (degrees: number) => () => store.edit((h) => rotateHouse(h, degrees));
+  const turns = [
+    button(m.ui.turnLeft, turn(-90)),
+    button(m.ui.turnRight, turn(90)),
+    button("⟲ 15°", turn(-15), { title: m.ui.turnLittle }),
+    button("⟳ 15°", turn(15), { title: m.ui.turnLittle }),
+  ];
   const move = button(`✋ ${m.ui.tools.move} (M)`, () => store.setTool("move"));
   const empty = () => store.house.walls.length === 0;
-  const field: Field = {
-    el: el("div"),
-    update: () => [left, right, move].forEach((b) => (b.disabled = empty())),
-  };
-  return {
-    el: el("div", {}, el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, left, right, move), el("p", { className: "sub" }, m.ui.moveHint)),
-    fields: [field],
-  };
+  const buttons: Field = { el: el("div"), update: () => [...turns, move].forEach((b) => (b.disabled = empty())) };
+  const fields: Field[] = [buttons];
+  const parts: Node[] = [el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, ...turns), el("div", { className: "row" }, move), el("p", { className: "sub" }, m.ui.moveHint)];
+  // On sloping ground: how high the platform stands, from digging more to filling more.
+  if (store.plot.terrain) {
+    const platform = slider(
+      m.ui.platformHeight,
+      { min: -PLATFORM_RANGE, max: PLATFORM_RANGE, step: 0.05, unit: " m", digits: 2 },
+      () => (empty() ? null : store.house.platformOffset),
+      (v) => store.edit((h) => void (h.platformOffset = Math.round(v * 20) / 20 + 0), "platform"),
+    );
+    fields.push(platform);
+    parts.push(platform.el, el("p", { className: "sub" }, m.ui.platformHint));
+  }
+  return { el: el("div", {}, ...parts), fields };
 }

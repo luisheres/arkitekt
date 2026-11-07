@@ -84,19 +84,19 @@ describe("moving and turning the house", async () => {
     const before = JSON.stringify(h.toJSON());
     const problems = () => validate(h, starterPlots()[0], Infinity, defaultPrices()).map((i) => i.kind).sort();
     const problemsBefore = problems();
-    rotateHouse(h, 1);
+    rotateHouse(h, 90);
     // A 10 x 6 house becomes 6 x 10 about the same middle.
     const xs = h.walls.flatMap((w) => [w.start.x, w.end.x]);
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(6, 9);
     expect(h.stairs[0].facing).toBe(1);
     expect(analyzeHouse(h).rooms.map((r) => r.type).sort()).toEqual(["Bedroom", "Living"]);
     expect(problems()).toEqual(problemsBefore);
-    rotateHouse(h, 1);
-    rotateHouse(h, 1);
-    rotateHouse(h, 1);
+    rotateHouse(h, 90);
+    rotateHouse(h, 90);
+    rotateHouse(h, 90);
     expect(JSON.stringify(h.toJSON())).toBe(before);
-    rotateHouse(h, -1);
-    rotateHouse(h, 1);
+    rotateHouse(h, -90);
+    rotateHouse(h, 90);
     expect(JSON.stringify(h.toJSON())).toBe(before);
   });
 
@@ -149,9 +149,13 @@ describe("basements", async () => {
     expect(kinds(h)).toContain("NoStairsToBasement");
     h.addStair(-1, v(7, 8), 0);
     expect(kinds(h)).not.toContain("NoStairsToBasement");
+    // A window looks out into a light well (and costs one); a door would open into the earth.
     h.addWindow(h.wallsOn(-1)[0].id, 5, 1, 0.6, 1.5);
+    expect(kinds(h)).not.toContain("OpeningBelowGround");
+    expect(costLines(h, defaultPrices(), flat).find((l) => l.what.kind === "lightWells")?.quantity).toBe(1);
+    h.addDoor(h.wallsOn(-1)[1].id, 3, 0.9, 2.0);
     expect(kinds(h)).toContain("OpeningBelowGround");
-    h.removeOpening(h.openings.find((o) => h.levelOf(o.wall) === -1)!.id);
+    for (const o of h.openings.filter((o) => h.levelOf(o.wall) === -1)) h.removeOpening(o.id);
     expect(kinds(h)).not.toContain("BasementOutsideHouse");
     // A basement bigger than the house above.
     const big = make();
@@ -235,5 +239,61 @@ describe("double height", async () => {
     expect(clearDoubleHeight(h, v(7, 10), 0)).toBe(true);
     expect(openingAbove(h, v(7, 10), 0)).toBeNull();
     expect(voidArea(h)).toBe(0);
+  });
+});
+
+describe("the ideas: platform height, retaining walls, any angle", async () => {
+  const { rotateHouse } = await import("./edit");
+  const { retainingArea, retainingWalls, averageGround } = await import("./site");
+  const { stairDirection } = await import("./model");
+  const steep = plotById("skislope")!;
+
+  it("raises or lowers the platform, trading digging for filling", () => {
+    const h = new House();
+    box(h, 8, 10, 18, 18);
+    const middle = earthworks(h, steep);
+    h.platformOffset = 0.5;
+    expect(siteLevel(h, steep)).toBeCloseTo(Math.round((averageGround(h, steep) + 0.5) * 20) / 20, 9);
+    const higher = earthworks(h, steep);
+    expect(higher.fill).toBeGreaterThan(middle.fill);
+    expect(higher.cut).toBeLessThan(middle.cut);
+    h.platformOffset = 9;
+    expect(siteLevel(h, steep)).toBeCloseTo(Math.round((averageGround(h, steep) + 1.5) * 20) / 20, 9);
+    expect(House.fromJSON(JSON.parse(JSON.stringify(h.toJSON()))).platformOffset).toBe(9);
+  });
+
+  it("holds deep cuts and fills with retaining walls, at a price", () => {
+    const h = new House();
+    box(h, 8, 10, 20, 26);
+    const walls = retainingWalls(h, steep);
+    expect(walls.length).toBeGreaterThan(0);
+    const line = costLines(h, defaultPrices(), steep).find((l) => l.what.kind === "retainingWalls")!;
+    expect(line.amount).toBeCloseTo(retainingArea(h, steep) * 180, 6);
+    // Behind the wall, the ground keeps its natural height.
+    const ground = shapedGround(h, steep);
+    const w = walls[0];
+    const mid = w.a.add(w.b).scale(0.5);
+    const out = mid.sub(v(14, 18)).normalize().scale(0.4);
+    const p = mid.add(out);
+    expect(ground(p.x, p.y)).toBeCloseTo(groundHeight(steep, p.x, p.y), 6);
+    // Gentle slopes need none.
+    const gentle = new House();
+    box(gentle, 8, 6, 14, 10);
+    expect(retainingWalls(gentle, plotById("corner")!)).toEqual([]);
+  });
+
+  it("turns by any angle, and back again", () => {
+    const h = new House();
+    box(h, 6, 6, 16, 12);
+    h.addStair(0, v(8, 8), 0);
+    const before = JSON.stringify(h.toJSON());
+    rotateHouse(h, 15);
+    expect(h.stairs[0].facing).toBeCloseTo(1 / 6, 8);
+    const dir = stairDirection(h.stairs[0]);
+    expect(dir.x).toBeCloseTo(-Math.sin(Math.PI / 12), 7);
+    expect(dir.y).toBeCloseTo(Math.cos(Math.PI / 12), 7);
+    expect(h.floorArea()).toBeCloseTo(60, 4);
+    for (let i = 0; i < 23; i++) rotateHouse(h, 15);
+    expect(JSON.stringify(h.toJSON())).toBe(before);
   });
 });

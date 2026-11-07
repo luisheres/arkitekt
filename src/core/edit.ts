@@ -401,8 +401,15 @@ export function placeBalcony(house: House, wallId: WallId): BalconyId | null {
 /** A basement's walls are a little lower than the storeys above. */
 export const BASEMENT_HEIGHT = 2.4;
 
-/** A coordinate without floating-point dust (and without -0, which JSON loses). */
-const clean = (x: number): number => Number(x.toFixed(6)) + 0;
+/**
+ * A coordinate without floating-point dust (and without -0, which JSON loses). Points that
+ * land within a tenth of a millimetre of the 5 cm grid go onto it, so turning back and
+ * forth does not drift.
+ */
+const clean = (x: number): number => {
+  const grid = Math.round(x * 20) / 20;
+  return (Math.abs(x - grid) < 1e-4 ? grid : Number(x.toFixed(6))) + 0;
+};
 
 /** Move the whole house (walls, rooms, stairs and furniture; not the garden's plants). */
 export function moveHouse(house: House, delta: Vec2): void {
@@ -423,13 +430,18 @@ export function houseCentre(house: House): Vec2 | null {
 }
 
 /**
- * Turn the whole house a quarter turn about its middle: `turns` = 1 turns +x towards +y
- * (anticlockwise in plan coordinates). Walls stay on the grid; stairs and furniture turn with it.
+ * Turn the whole house about its middle by `degrees` (positive turns +x towards +y,
+ * anticlockwise in plan coordinates). Quarter turns keep walls on the grid; stairs and
+ * furniture turn with it.
  */
-export function rotateHouse(house: House, turns: 1 | -1): void {
+export function rotateHouse(house: House, degrees: number): void {
   const c = houseCentre(house);
   if (!c) return;
-  const turn = (v: Vec2) => (turns === 1 ? new Vec2(-v.y, v.x) : new Vec2(v.y, -v.x));
+  const quarter = degrees / 90;
+  const a = (degrees * Math.PI) / 180;
+  // Exact for quarter turns, so walls stay where they were on the grid.
+  const [cos, sin] = Number.isInteger(quarter) ? [[1, 0, -1, 0][((quarter % 4) + 4) % 4], [0, 1, 0, -1][((quarter % 4) + 4) % 4]] : [Math.cos(a), Math.sin(a)];
+  const turn = (v: Vec2) => new Vec2(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
   const about = (p: Vec2) => {
     const q = c.add(turn(p.sub(c)));
     return new Vec2(clean(q.x), clean(q.y));
@@ -438,7 +450,8 @@ export function rotateHouse(house: House, turns: 1 | -1): void {
   for (const l of house.labels) l.at = about(l.at);
   for (const s of house.stairs) {
     s.at = about(s.at);
-    s.facing = (((s.facing + turns) % 4) + 4) % 4;
+    const facing = (((s.facing + quarter) % 4) + 4) % 4;
+    s.facing = Math.abs(facing - Math.round(facing)) < 1e-6 ? Math.round(facing) % 4 : Number(facing.toFixed(9));
   }
   for (const f of house.furniture) {
     if (isGardenPlant(f.kind)) continue;

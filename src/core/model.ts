@@ -97,7 +97,11 @@ export interface Stair {
 
 /** Unit vector in the direction you walk when climbing the stairs. */
 export function stairDirection(s: Pick<Stair, "facing">): Vec2 {
-  return [new Vec2(0, 1), new Vec2(-1, 0), new Vec2(0, -1), new Vec2(1, 0)][((s.facing % 4) + 4) % 4];
+  const q = ((s.facing % 4) + 4) % 4;
+  // Exact for whole quarter turns; stairs in a house turned by another angle face between.
+  if (Number.isInteger(q)) return [new Vec2(0, 1), new Vec2(-1, 0), new Vec2(0, -1), new Vec2(1, 0)][q];
+  const a = (q * Math.PI) / 2;
+  return new Vec2(-Math.sin(a), Math.cos(a));
 }
 
 /** The stairs' footprint, counter-clockwise, starting at the bottom step. */
@@ -209,6 +213,7 @@ export interface HouseJson {
   labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish; paint?: PaintColor }[];
   levels?: number;
   basement?: boolean;
+  platformOffset?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
   /** Missing in saves from before furniture could be edited. */
@@ -320,6 +325,12 @@ export class House {
   levelList(): number[] {
     return Array.from({ length: this.levels - this.lowestLevel() }, (_, i) => this.lowestLevel() + i);
   }
+
+  /**
+   * How far the platform the house stands on is raised (+) or lowered (-) from the average
+   * height of the ground under it, on sloping plots.
+   */
+  platformOffset = 0;
 
   /** Remove the basement with everything in it, and the stairs up from it. */
   removeBasement(): void {
@@ -470,6 +481,7 @@ export class House {
       labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) })),
       levels: this.levels,
       ...(this.basement ? { basement: true } : {}),
+      ...(this.platformOffset ? { platformOffset: this.platformOffset } : {}),
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
@@ -485,6 +497,7 @@ export class House {
     h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) }));
     h.levels = j.levels ?? 1;
     h.basement = j.basement ?? false;
+    h.platformOffset = j.platformOffset ?? 0;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));

@@ -289,6 +289,7 @@ function checkBasement(house: House, analysis: HouseAnalysis, issues: Issue[]): 
   if (!house.stairs.some((s) => s.level === -1)) issues.push({ kind: "NoStairsToBasement" });
   for (const o of house.openings) {
     const wall = house.wall(o.wall);
-    if (wall?.level === -1 && basement.value.layout.exterior.has(wall.id)) issues.push({ kind: "OpeningBelowGround", opening: o.id });
+    // (Windows look out into a light well; doors would open into the earth.)
+    if (o.kind !== "Window" && wall?.level === -1 && basement.value.layout.exterior.has(wall.id)) issues.push({ kind: "OpeningBelowGround", opening: o.id });
   }
 }

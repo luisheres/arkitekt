@@ -5,7 +5,7 @@ import { type FurnitureKind, PLANT_PRICE } from "./furniture";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
-import { earthworks } from "./site";
+import { earthworks, retainingArea } from "./site";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -40,6 +40,10 @@ export interface PriceList {
   basementDigM3: number;
   /** Per m² of a basement's outer walls (waterproof concrete). */
   basementWallM2: number;
+  /** Per m² of stone retaining wall where the ground is cut or filled deep. */
+  retainingWallM2: number;
+  /** Per light well outside a basement window. */
+  lightWell: number;
   /** Per plant, by kind. */
   plants: Partial<Record<FurnitureKind, number>>;
 }
@@ -64,6 +68,8 @@ export function defaultPrices(): PriceList {
     earthM3: 55,
     basementDigM3: 45,
     basementWallM2: 160,
+    retainingWallM2: 180,
+    lightWell: 1_100,
     plants: { ...PLANT_PRICE },
   };
 }
@@ -108,6 +114,8 @@ export type CostWhat =
   | { kind: "earthworks" }
   | { kind: "basementDig" }
   | { kind: "basementWalls" }
+  | { kind: "retainingWalls" }
+  | { kind: "lightWells" }
   | { kind: "plant"; plant: FurnitureKind }
   | { kind: "paint"; color: PaintColor };
 
@@ -186,6 +194,12 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   const earth = plot ? earthworks(house, plot) : { cut: 0, fill: 0, basement: house.basement ? house.floorArea(-1) * house.basementDepth() : 0 };
   if (earth.cut + earth.fill > 0.05) add("groundworks", { kind: "earthworks" }, earth.cut + earth.fill, "m3", (earth.cut + earth.fill) * prices.earthM3);
   if (earth.basement > 0) add("groundworks", { kind: "basementDig" }, earth.basement, "m3", earth.basement * prices.basementDigM3);
+  const retaining = plot ? retainingArea(house, plot) : 0;
+  if (retaining > 0.05) add("groundworks", { kind: "retainingWalls" }, retaining, "m2", retaining * prices.retainingWallM2);
+  // A window in a basement's outer wall looks out into a light well dug beside it.
+  const basementLayout = layouts.get(-1);
+  const wells = house.openings.filter((o) => o.kind === "Window" && house.levelOf(o.wall) === -1 && basementLayout?.ok && basementLayout.value.exterior.has(o.wall)).length;
+  if (wells) add("groundworks", { kind: "lightWells" }, wells, "pieces", wells * prices.lightWell);
   for (const room of analyzeHouse(house).rooms) {
     if (room.type === "Void") continue;
     add("floors", { kind: "finish", finish: room.floor }, room.area, "m2", room.area * prices.floorM2[room.floor]);
@@ -227,6 +241,8 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     earthworks: "groundworks",
     basementDig: "groundworks",
     basementWalls: "groundworks",
+    retainingWalls: "groundworks",
+    lightWells: "groundworks",
   };
   for (const l of costLines(house, prices, plot)) {
     c[l.what.kind === "opening" && l.what.opening === "Window" ? "windows" : field[l.what.kind]] += l.amount;

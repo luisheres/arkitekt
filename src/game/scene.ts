@@ -16,6 +16,7 @@ import {
   type Plot,
   shapedGround,
   siteLevel,
+  retainingWalls,
   standingOutline,
   isGardenPlant,
   FLOOR_STRUCTURE,
@@ -170,6 +171,10 @@ function railing(group: THREE.Group, a: Vec2, b: Vec2, y: number): void {
   for (let i = 0; i <= posts; i++) part(palette.frame, -length / 2 + (length * i) / posts, h / 2, 0.05, h, 0.05);
   group.add(g);
 }
+
+/** Stone for retaining walls, and dark metal for light-well gratings. */
+const retainingMaterial = worldMaterial(wallTexture("Stone"), { side: THREE.DoubleSide });
+const gratingMaterial = toon({ color: "#3a3d42" });
 
 /** The garden's lawn, shared by every build. */
 const lawnMaterial = worldMaterial(groundTexture("lawn"));
@@ -460,6 +465,54 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       group.add(gables);
     }
   }
+  if (options.plot) {
+    // Retaining walls where the ground is cut or filled deep: from the platform up (or down)
+    // to the natural ground behind them.
+    const walls = retainingWalls(house, options.plot);
+    if (walls.length) {
+      const positions: number[] = [];
+      for (const w of walls) {
+        const [a, b] = [w.a, w.b];
+        const quad = [
+          [a.x, platform, a.y],
+          [b.x, platform, b.y],
+          [b.x, w.groundB + 0.05, b.y],
+          [a.x, w.groundA + 0.05, a.y],
+        ];
+        positions.push(...quad[0], ...quad[1], ...quad[2], ...quad[0], ...quad[2], ...quad[3]);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((positions.length / 3) * 2), 2));
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, retainingMaterial);
+      mesh.castShadow = mesh.receiveShadow = true;
+      outside.push(mesh);
+    }
+    // A light well outside each basement window: a grating at ground level.
+    const basement = analyses.get(-1);
+    for (const o of house.openings) {
+      const wall = house.wall(o.wall);
+      if (o.kind !== "Window" || !wall || wall.level !== -1 || !basement?.ok || !basement.value.layout.exterior.has(wall.id)) continue;
+      const d = wall.direction();
+      const out = outwardNormal(house, wall);
+      const c = wall.start.add(d.scale(o.offset)).add(out.scale(wall.thickness / 2 + 0.5));
+      const grate = new THREE.Group();
+      grate.position.set(c.x, ground(c.x, c.y) + 0.03, c.y);
+      grate.rotation.y = Math.atan2(-d.y, d.x);
+      const bar = (x: number, z: number, sx: number, sz: number, mat: THREE.Material) => {
+        const mesh = solid(unitBox, mat);
+        mesh.position.set(x, 0, z);
+        mesh.scale.set(sx, 0.06, sz);
+        grate.add(mesh);
+      };
+      const [gw, gd] = [o.width + 0.3, 0.9];
+      bar(0, 0, gw + 0.12, gd + 0.12, palette.slab);
+      for (let x = -gw / 2 + 0.06; x < gw / 2; x += 0.12) bar(x, 0, 0.03, gd, gratingMaterial);
+      outside.push(grate);
+    }
+  }
+
   // The house on its platform; the lawn and the garden around it, on the ground.
   group.position.y = platform;
   const site = new THREE.Group();
