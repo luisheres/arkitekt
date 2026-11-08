@@ -22,6 +22,8 @@ export interface World {
   guides: THREE.Object3D;
   /** Put the sun where it is at a time of day and season. */
   setSun(sun: SunPosition): void;
+  /** Move what moves (trees in the wind, clouds, ripples) to time `t` seconds. */
+  update(t: number): void;
 }
 
 /** Plan point at ground height to world space. */
@@ -35,12 +37,21 @@ export function buildWorld(plot: Plot): World {
   const [hemi, sun, target] = lights(center, plot);
   const baseExtent = Math.max(plot.width, plot.depth) * 0.8 + 10;
   const skyMesh = sky();
-  root.add(skyMesh, clouds(center), hemi, sun, target);
+  const cloudGroup = clouds(center);
+  root.add(skyMesh, cloudGroup, hemi, sun, target);
   root.add(terrain(scenery, center, plot));
   root.add(roads(scenery));
-  if (scenery.water) root.add(water(scenery));
+  const waterGroup = scenery.water ? water(scenery) : null;
+  if (waterGroup) root.add(waterGroup);
   if (scenery.jetty) root.add(jetty(scenery));
-  for (const t of scenery.trees) root.add(tree(scenery, t));
+  // Trees sway in the wind, each a little differently; the further, the less (unseen).
+  const swaying: { g: THREE.Object3D; phase: number; amount: number }[] = [];
+  for (const t of scenery.trees) {
+    const g = tree(scenery, t);
+    root.add(g);
+    const far = Math.hypot(t.at.x - center.x, t.at.y - center.z);
+    if (far < 140) swaying.push({ g, phase: t.at.x * 0.37 + t.at.y * 0.21, amount: (t.kind === "birch" ? 0.035 : t.kind === "bush" ? 0.012 : 0.022) / Math.max(1, t.size) });
+  }
   for (const r of scenery.rocks) root.add(rock(scenery, r.at.x, r.at.y, r.size));
   for (const n of scenery.neighbors) root.add(neighborHouse(scenery, n));
   for (const l of scenery.landmarks) root.add(landmark(scenery, l));
@@ -70,7 +81,30 @@ export function buildWorld(plot: Plot): World {
     u.top.value.copy(SKY_TOP).lerp(new THREE.Color("#22306b"), (1 - day) * 0.8);
     u.horizon.value.copy(HAZE).lerp(new THREE.Color("#ffb38a"), golden * 0.55);
   };
-  return { root, guides, setSun };
+  const cloudStart = cloudGroup.children.map((c) => c.position.clone());
+  const reeds = waterGroup?.userData.reeds as THREE.Object3D[] | undefined;
+  const ripples = waterGroup?.userData.ripples as THREE.Mesh[] | undefined;
+  const update = (t: number) => {
+    // Gusts: a slow swell, with a quicker flutter on top.
+    const gust = 0.6 + 0.4 * Math.sin(t * 0.31);
+    for (const s of swaying) {
+      s.g.rotation.x = Math.sin(t * 1.3 + s.phase) * s.amount * gust;
+      s.g.rotation.z = Math.cos(t * 1.1 + s.phase * 1.7) * s.amount * gust * 0.7;
+    }
+    for (const r of reeds ?? []) r.rotation.x = Math.sin(t * 2 + r.position.x) * 0.12 * gust;
+    // Clouds drift slowly across, and come round again.
+    cloudGroup.children.forEach((c, i) => {
+      const x = cloudStart[i].x + ((t * 1.6 + i * 40) % 600) - 300;
+      c.position.x = center.x + ((x - center.x + 900) % 600) - 300;
+    });
+    // Ripples on the water grow and fade, and start again somewhere else.
+    ripples?.forEach((r, i) => {
+      const life = ((t * 0.35 + i * 0.37) % 1 + 1) % 1;
+      r.scale.setScalar(0.4 + life * 1.6);
+      (r.material as THREE.MeshBasicMaterial).opacity = 0.55 * Math.sin(life * Math.PI);
+    });
+  };
+  return { root, guides, setSun, update };
 }
 
 // --- Sky -------------------------------------------------------------------------------
@@ -126,6 +160,7 @@ function lights(center: THREE.Vector3, plot: Plot): [THREE.HemisphereLight, THRE
   Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 260 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
   return [hemi, sun, sun.target];
 }
 
@@ -366,6 +401,23 @@ function water(s: Scenery): THREE.Group {
   const colour = w.kind === "sea" ? "#2f9fe0" : w.kind === "river" ? "#4fb6e0" : "#3fb3e8";
   const surface = toon({ color: colour, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
   const foam = toon({ color: "#ffffff", side: THREE.DoubleSide });
+  // Ripples: rings that grow and fade on the water near the plot.
+  const ripples: THREE.Mesh[] = [];
+  const ring = new THREE.RingGeometry(0.85, 1, 24);
+  ring.rotateX(-Math.PI / 2);
+  for (let i = 0, tries = 0; i < 26 && tries < 2000; tries++) {
+    const k = tries * 2.399;
+    const p = new Vec2(Math.cos(k) * (6 + tries * 0.4), Math.sin(k) * (6 + tries * 0.4)).add(new Vec2(0, 0));
+    const at = (w.river ? w.river.points[Math.floor((tries * 7) % w.river.points.length)] : w.outline[Math.floor((tries * 5) % w.outline.length)]).add(p.scale(0.15));
+    if (s.waterDistance(at.x, at.y) > -1.5) continue;
+    const r = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0, depthWrite: false }));
+    r.position.set(at.x, w.level + 0.03, at.y);
+    g.add(r);
+    ripples.push(r);
+    i++;
+  }
+  g.userData.ripples = ripples;
+  g.userData.reeds = [];
   if (w.river) {
     g.add(ribbon(s, w.river.points, w.river.widths.map((x) => x / 2 + 0.8), 0, surface, w.level));
     return g;
@@ -382,6 +434,14 @@ function water(s: Scenery): THREE.Group {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = w.level;
   g.add(mesh);
+  // Deeper water further out: a darker area a few metres in from the shore.
+  if (w.kind === "lake") {
+    const deepShape = new THREE.Shape(grow(w.outline, -4).map((p) => new THREE.Vector2(p.x, -p.y)));
+    const deep = new THREE.Mesh(new THREE.ShapeGeometry(deepShape, 4), toon({ color: "#2a8fce", transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+    deep.rotation.x = -Math.PI / 2;
+    deep.position.y = w.level + 0.01;
+    g.add(deep);
+  }
   // Foam along the shore (the coast only, for the sea).
   const shore = w.kind === "sea" ? w.outline.slice(0, -2) : [...w.outline, w.outline[0]];
   if (!w.cliff) g.add(ribbon(s, shore, 0.35, 0.02, foam, w.level));
@@ -397,6 +457,7 @@ function water(s: Scenery): THREE.Group {
         m.position.set(p.x + Math.sin(i * 7 + k) * 0.6, w.level + 0.6, p.y + Math.cos(i * 5 + k) * 0.6);
         m.rotation.z = Math.sin(i + k) * 0.15;
         g.add(m);
+        (g.userData.reeds as THREE.Object3D[]).push(m);
       }
     });
   }

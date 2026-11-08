@@ -706,6 +706,9 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   const site = new THREE.Group();
   site.add(group, ...outside);
   if (options.plot) site.add(buildLawn(options.plot, siteOf(house, options.plot), ground));
+  // A soft shade on the ground round the foot of the house, where little sky light reaches.
+  const foot = standingOutlineOf(house);
+  if (options.plot && foot) site.add(contactShade(foot, ground));
   return site;
 }
 
@@ -747,4 +750,44 @@ export function buildShadowCaster(house: House, options: HouseViewOptions): THRE
   });
   ghost.userData.shadowOnly = true;
   return ghost;
+}
+
+/** The outline the house stands on, grown to its outer faces. */
+function standingOutlineOf(house: House): Vec2[] | null {
+  const fp = house.footprint(0);
+  if (!fp.ok) return null;
+  const half = house.wallsOn(0).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) / 2;
+  return offsetPolygon(fp.value, half);
+}
+
+const shadeMaterial = new THREE.MeshBasicMaterial({ color: "#1e2a14", transparent: true, depthWrite: false, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 });
+
+/** A band round the house's foot fading from a soft shade at the wall to nothing 1.4 m out. */
+function contactShade(outline: readonly Vec2[], ground: (x: number, y: number) => number): THREE.Mesh {
+  const outer = offsetPolygon(outline, 1.4);
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const n = outline.length;
+  const push = (p: Vec2, alpha: number) => {
+    positions.push(p.x, ground(p.x, p.y) + 0.025, p.y);
+    colors.push(alpha, alpha, alpha, alpha);
+  };
+  for (let i = 0; i < n; i++) {
+    const [a, b, c, d] = [outline[i], outline[(i + 1) % n], outer[(i + 1) % n], outer[i]];
+    // Two triangles per side, split along the side so the fade follows it.
+    const steps = Math.max(1, Math.ceil(a.distance(b) / 0.5));
+    for (let k = 0; k < steps; k++) {
+      const [t0, t1] = [k / steps, (k + 1) / steps];
+      const [p0, p1] = [a.add(b.sub(a).scale(t0)), a.add(b.sub(a).scale(t1))];
+      const [q0, q1] = [d.add(c.sub(d).scale(t0)), d.add(c.sub(d).scale(t1))];
+      push(p0, 0.32), push(q0, 0), push(p1, 0.32);
+      push(p1, 0.32), push(q0, 0), push(q1, 0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 4));
+  const mesh = new THREE.Mesh(g, shadeMaterial);
+  mesh.renderOrder = 1;
+  return mesh;
 }

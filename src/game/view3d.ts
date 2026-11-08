@@ -1,8 +1,8 @@
 /** The live 3D view of the house on its plot, with an orbit camera. */
 
 import * as THREE from "three";
-import { SEASON_DAY, SIDE_YAW, sceneryFor, sunPosition } from "../core";
-import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
+import { FLOOR_SLAB_HEIGHT, SEASON_DAY, SIDE_YAW, Vec2, pointInPolygon, sceneryFor, shapedGround, sideEdge, siteLevel, sunPosition } from "../core";
+import { type Orbit, type OrbitTween, type Walker, applyPreset, attachOrbitControls, placeCamera, placeWalker, stepTween, tweenOrbit } from "./camera";
 import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { HAZE } from "./landscape";
 import { ToonRenderer } from "./toonPost";
@@ -24,6 +24,17 @@ export class View3D {
   private houseGroup: THREE.Group | null = null;
   private houseDirty = true;
   private frameRequested = false;
+  /** Things moving: trees in the wind, clouds, water. Off in automated tests (they wait for stillness). */
+  motion = typeof navigator !== "undefined" && !navigator.webdriver;
+  private readonly started = performance.now();
+  private tween: OrbitTween | null = null;
+  /** Walking round at eye height, when not null. */
+  walker: Walker | null = null;
+  private readonly walkKeys = new Set<string>();
+  /** The day playing: the sun moving on its own. */
+  playingDay = false;
+  /** Called when walking or playing starts or stops (for the buttons). */
+  onModeChange: () => void = () => {};
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -32,7 +43,7 @@ export class View3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // (soft edges come from shadow.radius in this three.js)
     // No tone mapping: cartoon colours are meant to be shown as they are.
     this.renderer.toneMapping = THREE.NoToneMapping;
 
@@ -63,7 +74,21 @@ export class View3D {
       }
       this.requestRender();
     });
-    attachOrbitControls(canvas, this.orbit, () => this.requestRender());
+    attachOrbitControls(canvas, this.orbit, () => {
+      this.tween = null;
+      this.requestRender();
+    });
+    // Walking: dragging looks round, the wheel steps forward or back.
+    canvas.addEventListener("pointermove", (e) => {
+      if (!this.walker || !(e.buttons & 1)) return;
+      this.walker.yaw -= e.movementX * 0.005;
+      this.walker.pitch = THREE.MathUtils.clamp(this.walker.pitch - e.movementY * 0.005, -1.2, 1.2);
+      this.requestRender();
+    });
+    canvas.addEventListener("wheel", (e) => {
+      if (!this.walker) return;
+      this.walkStep(e.deltaY > 0 ? -0.6 : 0.6, 0);
+    });
     // A click without dragging picks what is under the pointer (left or right button).
     let down: { x: number; y: number; button: number } | null = null;
     canvas.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY, button: e.button }));
@@ -106,9 +131,76 @@ export class View3D {
   }
 
   showPreset(index: number): void {
-    applyPreset(this.orbit, index);
+    if (this.walker) this.stopWalking();
+    const to = { ...this.orbit, target: this.orbit.target.clone() };
+    applyPreset(to, index);
+    this.tween = tweenOrbit(this.orbit, to, this.now());
     this.requestRender();
   }
+
+  private now(): number {
+    return (performance.now() - this.started) / 1000;
+  }
+
+  /** Start walking round at eye height, from the middle of the plot's road side; or stop. */
+  toggleWalking(): void {
+    if (this.walker) return this.stopWalking();
+    const { plot } = this.store;
+    const e = sideEdge(plot, plot.access.side);
+    const at = e.mid.add(e.out.scale(-3));
+    this.walker = { at: new THREE.Vector2(at.x, at.y), yaw: Math.atan2(e.out.x, e.out.y), pitch: -0.05 };
+    this.onModeChange();
+    this.requestRender();
+  }
+
+  stopWalking(): void {
+    this.walker = null;
+    this.walkKeys.clear();
+    this.onModeChange();
+    this.requestRender();
+  }
+
+  /** Arrow keys or WASD while walking; false when not walking. */
+  walkKey(code: string, down: boolean): boolean {
+    if (!this.walker) return false;
+    if (code === "Escape") {
+      this.stopWalking();
+      return true;
+    }
+    if (!/^(Arrow(Up|Down|Left|Right)|Key[WASD])$/.test(code)) return false;
+    if (down) this.walkKeys.add(code);
+    else this.walkKeys.delete(code);
+    this.requestRender();
+    return true;
+  }
+
+  /** Move the walker forward (and to the side), in metres. */
+  private walkStep(forward: number, side: number): void {
+    const w = this.walker;
+    if (!w) return;
+    const f = new THREE.Vector2(-Math.sin(w.yaw), -Math.cos(w.yaw));
+    const r = new THREE.Vector2(Math.cos(w.yaw), -Math.sin(w.yaw));
+    w.at.addScaledVector(f, forward).addScaledVector(r, side);
+    this.requestRender();
+  }
+
+  /** The floor under the walker: the house's floor inside it, the ground outside. */
+  private floorAt(x: number, y: number): number {
+    const { house, plot } = this.store;
+    const level = siteLevel(house, plot);
+    const fp = house.footprint(0);
+    if (fp.ok && pointInPolygon(new Vec2(x, y), fp.value)) return level + FLOOR_SLAB_HEIGHT;
+    return shapedGround(house, plot)(x, y);
+  }
+
+  /** Let the sun run through the day on its own, or stop it. */
+  togglePlayingDay(): void {
+    this.playingDay = !this.playingDay;
+    this.lastTick = this.now();
+    this.onModeChange();
+    this.requestRender();
+  }
+  private lastTick = 0;
 
   /** Render the four appraisal views (always from the default camera, without guides). */
   capture(): CapturedView[] {
@@ -180,10 +272,31 @@ export class View3D {
       this.frameRequested = false;
       if (this.canvas.clientWidth === 0) return; // hidden in plan-only layout
       this.syncHouse();
-      this.world.guides.visible = this.store.showGuides;
+      const t = this.now();
+      const dt = Math.min(0.1, t - this.lastTick);
+      this.lastTick = t;
+      if (this.playingDay) {
+        // Two hours a second; round again after dusk.
+        const next = this.store.sunHour + dt * 2;
+        this.store.setSun(next > 22 ? 4 : next);
+      }
+      this.world.guides.visible = this.store.showGuides && !this.walker;
       this.updateSun();
-      placeCamera(this.camera, this.orbit, this.ground);
+      if (this.motion) this.world.update(t);
+      if (this.tween && !stepTween(this.orbit, this.tween, t)) this.tween = null;
+      if (this.walker) {
+        const k = this.walkKeys;
+        const speed = 3.5 * dt;
+        const fwd = (k.has("ArrowUp") || k.has("KeyW") ? 1 : 0) - (k.has("ArrowDown") || k.has("KeyS") ? 1 : 0);
+        const turn = (k.has("ArrowLeft") ? 1 : 0) - (k.has("ArrowRight") ? 1 : 0);
+        const side = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
+        this.walker.yaw += turn * dt * 1.6;
+        if (fwd || side) this.walkStep(fwd * speed, side * speed);
+        placeWalker(this.camera, this.walker, this.floorAt(this.walker.at.x, this.walker.at.y));
+      } else placeCamera(this.camera, this.orbit, this.ground);
       this.toon.render(this.scene, this.camera);
+      // Keep going while anything moves.
+      if (this.motion || this.tween || this.playingDay || this.walkKeys.size) this.requestRender();
     });
   }
 

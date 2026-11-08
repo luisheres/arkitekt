@@ -348,7 +348,8 @@ function renderToggles(): void {
   const seasons = core.SEASONS.map((s) => `<option value="${s}"${s === store.season ? " selected" : ""}>${m.ui.seasons[s]}</option>`).join("");
   const sun = `<div class="label sun-label" title="${m.ui.sunTitle}">☀ ${m.ui.sun} <output>${time}</output></div>
     <input type="range" class="sun-slider" min="4" max="22" step="0.25" value="${store.sunHour}" aria-label="${m.ui.sun}" title="${m.ui.sunTitle}">
-    <select class="sun-season" aria-label="${m.ui.sun}">${seasons}</select>`;
+    <select class="sun-season" aria-label="${m.ui.sun}">${seasons}</select>
+    <div class="row view-actions"><button type="button" data-view="play" class="${view3d.playingDay ? "active" : ""}" title="${m.ui.playDayTitle}">${view3d.playingDay ? "⏸" : "▶"} ${m.ui.playDay}</button><button type="button" data-view="walk" class="${view3d.walker ? "active" : ""}" title="${m.ui.walkTitle}">🚶 ${m.ui.walk}</button></div>`;
   const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${levels.length > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}${sun}`;
   // (Not while the slider is being dragged: it would lose hold of it.)
   const dragging = document.activeElement?.classList.contains("sun-slider");
@@ -362,6 +363,12 @@ function renderToggles(): void {
     if (out) out.textContent = time;
   }
 }
+toggles.addEventListener("click", (e) => {
+  const action = (e.target as HTMLElement).closest<HTMLElement>("[data-view]")?.dataset.view;
+  if (action === "play") view3d.togglePlayingDay();
+  else if (action === "walk") view3d.toggleWalking();
+});
+view3d.onModeChange = renderToggles;
 toggles.addEventListener("input", (e) => {
   const t = e.target as HTMLInputElement;
   if (t.classList.contains("sun-slider")) store.setSun(Number(t.value));
@@ -411,8 +418,14 @@ function showCaptures(views: CapturedView[]): void {
 
 const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door", KeyS: "stairs", KeyM: "move" };
 
+window.addEventListener("keyup", (e) => view3d.walkKey(e.code, false));
 window.addEventListener("keydown", (e) => {
   if (isModalOpen()) return;
+  // Walking round in 3D takes the arrow keys and WASD (and Escape to stop).
+  if (!(e.target as HTMLElement).matches("input:not([type=range]), select, textarea") && view3d.walkKey(e.code, true)) {
+    e.preventDefault();
+    return;
+  }
   const target = e.target as HTMLElement;
   // Sliders keep shortcuts working; text fields and dropdowns need their keys.
   const typing = target.matches("input:not([type=range]), select, textarea");

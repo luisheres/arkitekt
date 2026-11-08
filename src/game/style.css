@@ -2753,3 +2753,13 @@ button.locked::after,
   height: 46px;
   pointer-events: none;
 }
+
+.view-toggles .view-actions {
+  margin-top: 6px;
+  gap: 6px;
+}
+
+.view-toggles .view-actions button {
+  flex: 1;
+  padding: 3px 8px;
+}

@@ -101,3 +101,50 @@ export function attachOrbitControls(el: HTMLElement, orbit: Orbit, onChange: () 
     { passive: false },
   );
 }
+
+/** An orbit moving smoothly to another over `seconds`. */
+export interface OrbitTween {
+  from: { yaw: number; pitch: number; distance: number; target: THREE.Vector3 };
+  to: { yaw: number; pitch: number; distance: number; target: THREE.Vector3 };
+  start: number;
+  seconds: number;
+}
+
+export function tweenOrbit(orbit: Orbit, to: Partial<Pick<Orbit, "yaw" | "pitch" | "distance">> & { target?: THREE.Vector3 }, now: number, seconds = 0.7): OrbitTween {
+  // Turn the short way round.
+  let yaw = to.yaw ?? orbit.yaw;
+  while (yaw - orbit.yaw > Math.PI) yaw -= Math.PI * 2;
+  while (yaw - orbit.yaw < -Math.PI) yaw += Math.PI * 2;
+  return {
+    from: { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance, target: orbit.target.clone() },
+    to: { yaw, pitch: to.pitch ?? orbit.pitch, distance: to.distance ?? orbit.distance, target: (to.target ?? orbit.target).clone() },
+    start: now,
+    seconds,
+  };
+}
+
+/** Step a tween; true while it is still running. */
+export function stepTween(orbit: Orbit, tw: OrbitTween, now: number): boolean {
+  const t = Math.min(1, (now - tw.start) / tw.seconds);
+  const e = t * t * (3 - 2 * t);
+  orbit.yaw = tw.from.yaw + (tw.to.yaw - tw.from.yaw) * e;
+  orbit.pitch = tw.from.pitch + (tw.to.pitch - tw.from.pitch) * e;
+  orbit.distance = tw.from.distance + (tw.to.distance - tw.from.distance) * e;
+  orbit.target.lerpVectors(tw.from.target, tw.to.target, e);
+  return t < 1;
+}
+
+/** Walking round at eye height: where you stand and which way you look. */
+export interface Walker {
+  at: THREE.Vector2;
+  yaw: number;
+  pitch: number;
+}
+
+/** Place the camera at eye height above `floor`, looking where the walker looks. */
+export function placeWalker(camera: THREE.Camera, w: Walker, floor: number): void {
+  camera.position.set(w.at.x, floor + 1.6, w.at.y);
+  const dir = new THREE.Vector3(-Math.sin(w.yaw) * Math.cos(w.pitch), Math.sin(w.pitch), -Math.cos(w.yaw) * Math.cos(w.pitch));
+  camera.up.set(0, 1, 0);
+  camera.lookAt(camera.position.clone().add(dir));
+}

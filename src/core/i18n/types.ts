@@ -353,6 +353,10 @@ export interface Messages {
     /** The sun in the 3D view. */
     sun: string;
     sunTitle: string;
+    playDay: string;
+    playDayTitle: string;
+    walk: string;
+    walkTitle: string;
     seasons: Record<"spring" | "summer" | "autumn" | "winter", string>;
     /** "☀ 7.5 h of sun in spring · evening sun in summer" */
     terraceSun(hours: string, sunset: boolean): string;
