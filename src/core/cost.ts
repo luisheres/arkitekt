@@ -2,12 +2,13 @@
 
 import { analyzeLayout } from "./layout";
 import { type FurnitureKind, PLANT_PRICE } from "./furniture";
+import type { FenceStyle } from "./model";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
 import { earthworks, exposedFoundationArea, retainingArea, shapedGround, siteLevel } from "./site";
 import { accessRoutes, routeLength } from "./access";
-import { chimneyLength, doorApproaches } from "./features";
+import { chimneyLength, doorApproaches, fenceLayout } from "./features";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -46,6 +47,9 @@ export interface PriceList {
   dormerBase: number;
   dormerM: number;
   skylight: number;
+  /** A metre of fence, by style, and a garden gate. */
+  fenceM: Record<FenceStyle, number>;
+  gate: number;
   /** Per outside step, and per metre of ramp. */
   step: number;
   rampM: number;
@@ -94,6 +98,8 @@ export function defaultPrices(): PriceList {
     dormerBase: 2_400,
     dormerM: 900,
     skylight: 1_300,
+    fenceM: { Picket: 220, Board: 310 },
+    gate: 1_400,
     step: 140,
     rampM: 260,
     paintM2: 8,
@@ -162,6 +168,8 @@ export type CostWhat =
   | { kind: "footpath" }
   | { kind: "lightWells" }
   | { kind: "plant"; plant: FurnitureKind }
+  | { kind: "fence"; style: FenceStyle }
+  | { kind: "gate" }
   | { kind: "paint"; color: PaintColor };
 
 /** One line of the breakdown: how much of what, and what it costs. */
@@ -299,6 +307,12 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
     const price = prices.plants[f.kind];
     if (price) add("extras", { kind: "plant", plant: f.kind }, 1, "pieces", price);
   }
+  if (house.fence && plot) {
+    const fence = fenceLayout(house, plot);
+    add("extras", { kind: "fence", style: house.fence }, fence.length, "m", fence.length * prices.fenceM[house.fence]);
+    const gates = fence.gaps.filter((g) => g.gate).length;
+    if (gates) add("extras", { kind: "gate" }, gates, "pieces", gates * prices.gate);
+  }
   for (const room of analyzeHouse(house).rooms) {
     if (room.paint === "White") continue;
     const perimeter = room.polygon.reduce((s, p, i) => s + p.distance(room.polygon[(i + 1) % room.polygon.length]), 0);
@@ -328,6 +342,8 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     chimney: "extras",
     dormer: "roof",
     skylight: "roof",
+    fence: "extras",
+    gate: "extras",
     steps: "groundworks",
     ramp: "groundworks",
     plant: "extras",

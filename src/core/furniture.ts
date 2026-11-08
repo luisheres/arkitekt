@@ -34,13 +34,23 @@ export type FurnitureKind =
   | "GardenTree"
   | "Shrub"
   | "FlowerBed"
-  | "Hedge";
+  | "Hedge"
+  | "Shed"
+  | "Greenhouse"
+  | "Pond"
+  | "VegetablePatch"
+  | "Swing"
+  | "Trampoline";
 
 /** Plants in pots, for indoors. */
 export const INDOOR_PLANTS: readonly FurnitureKind[] = ["Plant", "TallPlant"];
 /** Things that grow in the garden, outside the house. */
 export const GARDEN_PLANTS: readonly FurnitureKind[] = ["GardenTree", "Shrub", "FlowerBed", "Hedge"];
 export const isGardenPlant = (k: FurnitureKind): boolean => GARDEN_PLANTS.includes(k);
+/** Things to build, grow and play with in the garden. */
+export const GARDEN_THINGS: readonly FurnitureKind[] = ["Shed", "Greenhouse", "Pond", "VegetablePatch", "Swing", "Trampoline"];
+/** Whether a piece stands outside in the garden (on the ground, not on a floor). */
+export const isOutdoor = (k: FurnitureKind): boolean => GARDEN_PLANTS.includes(k) || GARDEN_THINGS.includes(k);
 export const isPlant = (k: FurnitureKind): boolean => INDOOR_PLANTS.includes(k) || GARDEN_PLANTS.includes(k);
 
 /** A piece of furniture in the house. `id` is set once it is part of a house. */
@@ -121,10 +131,29 @@ export const FURNITURE_SIZE: Record<FurnitureKind, { width: number; depth: numbe
   Shrub: { width: 1.2, depth: 1.2, height: 1 },
   FlowerBed: { width: 2, depth: 1, height: 0.4 },
   Hedge: { width: 3, depth: 0.7, height: 1.3 },
+  Shed: { width: 2.4, depth: 2.0, height: 2.4 },
+  Greenhouse: { width: 2.6, depth: 3.0, height: 2.3 },
+  Pond: { width: 3.0, depth: 2.2, height: 0.1 },
+  VegetablePatch: { width: 2.4, depth: 1.2, height: 0.3 },
+  Swing: { width: 2.6, depth: 1.6, height: 2.2 },
+  Trampoline: { width: 3.0, depth: 3.0, height: 0.9 },
 };
 
 /** What a plant costs to buy and plant. */
-export const PLANT_PRICE: Partial<Record<FurnitureKind, number>> = { Plant: 60, TallPlant: 140, GardenTree: 450, Shrub: 90, FlowerBed: 160, Hedge: 220 };
+export const PLANT_PRICE: Partial<Record<FurnitureKind, number>> = {
+  Plant: 60,
+  TallPlant: 140,
+  GardenTree: 450,
+  Shrub: 90,
+  FlowerBed: 160,
+  Hedge: 220,
+  Shed: 6_500,
+  Greenhouse: 4_800,
+  Pond: 1_900,
+  VegetablePatch: 350,
+  Swing: 1_100,
+  Trampoline: 1_600,
+};
 
 /** Pieces offered first when adding furniture to a room of each type. */
 export const SUGGESTED_FURNITURE: Record<RoomType, readonly FurnitureKind[]> = {

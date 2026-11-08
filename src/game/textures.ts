@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import type { FloorFinish, FrameColor, PaintColor, RoofMaterial, WallMaterial } from "../core";
+import type { FloorFinish, FrameColor, PaintColor, RoofMaterial, Season, WallMaterial } from "../core";
 
 const PX = 512;
 
@@ -427,4 +427,55 @@ export function swatchUrl(texture: THREE.Texture): string {
     swatches.set(texture, url);
   }
   return url;
+}
+
+// --- Seasons ----------------------------------------------------------------------------
+
+/** How much snow lies on everything that faces up and was made `snowy` (0 to 1). */
+const SNOW = { value: 0 };
+
+/**
+ * Let snow settle on a material: in winter, surfaces facing up turn white, less so the
+ * steeper they are. Only for things outdoors (indoor floors face up too).
+ */
+export function snowy<T extends THREE.Material>(mat: T): T {
+  const before = mat.onBeforeCompile.bind(mat);
+  const key = mat.customProgramCacheKey.bind(mat);
+  mat.onBeforeCompile = (shader, renderer) => {
+    before(shader, renderer);
+    shader.uniforms.snowAmount = SNOW;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying float vSnowUp;")
+      .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\nvSnowUp = normalize(mat3(modelMatrix) * objectNormal).y;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vSnowUp;\nuniform float snowAmount;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.94, 0.97, 1.0), snowAmount * smoothstep(0.45, 0.8, vSnowUp));");
+  };
+  mat.customProgramCacheKey = () => `${key()}|snowy`;
+  return mat;
+}
+
+type Colored = THREE.Material & { color: THREE.Color };
+/** A colour per season; null hides the material (bare branches in winter); missing keeps its own. */
+type SeasonColors = Partial<Record<Season, string | null>>;
+const seasonalMaterials: { mat: Colored; base: THREE.Color; colors: SeasonColors }[] = [];
+
+/** Make a material change colour with the seasons (leaves turning, bare in winter). */
+export function seasonal<T extends Colored>(mat: T, colors: SeasonColors): T {
+  seasonalMaterials.push({ mat, base: mat.color.clone(), colors });
+  return mat;
+}
+
+let season: Season = "summer";
+export const currentSeason = (): Season => season;
+
+/** Dress everything for a season: leaf colours, bare trees and snow. */
+export function applySeason(s: Season): void {
+  season = s;
+  SNOW.value = s === "winter" ? 1 : 0;
+  for (const { mat, base, colors } of seasonalMaterials) {
+    const c = colors[s];
+    mat.visible = c !== null;
+    mat.color.copy(c ? new THREE.Color(c) : base);
+  }
 }

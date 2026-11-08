@@ -150,6 +150,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
             { kind: "gardenPlants", min: 4 },
             { kind: "balcony" },
             { kind: "sunnyTerrace", minHours: 5 },
+            { kind: "playGarden" },
           ]),
         ],
       };
@@ -216,7 +217,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "windowArea", room: "Living", min: 4 },
           { kind: "wallMaterial", material: wall },
           { kind: "floorFinish", finish: "Wood", room: "Bedroom" },
-          ...extra<BriefItem["req"]>([{ kind: "gardenPlants", min: 5 }, { kind: "fireplace" }, { kind: "sunnyTerrace", minHours: 6 }]),
+          ...extra<BriefItem["req"]>([{ kind: "gardenPlants", min: 5 }, { kind: "fireplace" }, { kind: "sunnyTerrace", minHours: 6 }, { kind: "kitchenGarden" }]),
         ],
       };
     case "remote":

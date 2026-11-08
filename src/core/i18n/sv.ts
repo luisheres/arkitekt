@@ -64,6 +64,12 @@ export const sv: Messages = {
     Shrub: "Buske",
     FlowerBed: "Rabatt",
     Hedge: "Häck",
+    Shed: "Bod",
+    Greenhouse: "Växthus",
+    Pond: "Damm",
+    VegetablePatch: "Grönsaksland",
+    Swing: "Gunga",
+    Trampoline: "Studsmatta",
   },
   floorPhrase: {
     Wood: { one: "trägolv", many: "trägolv" },
@@ -391,6 +397,10 @@ export const sv: Messages = {
         return "En terrass";
       case "sunnyTerrace":
         return `En terrass eller balkong med minst ${r.minHours} timmars sol`;
+      case "playGarden":
+        return "En gunga eller en studsmatta åt barnen";
+      case "kitchenGarden":
+        return "Ett grönsaksland eller ett växthus";
       case "sunsetView":
         return "En balkong eller terrass med kvällssol";
       case "fireplace":
@@ -550,6 +560,8 @@ export const sv: Messages = {
       driveway: "Uppfart",
       gravelDriveway: "Grusad uppfart",
       footpath: "Gång till ytterdörren",
+      fence: (style) => `${style}staket`,
+      gate: "Grind",
       exposedFoundation: "Synlig grundmur",
       lightWells: "Ljusgårdar",
       deck: "Terrass",
@@ -595,6 +607,11 @@ export const sv: Messages = {
     garden: "Trädgård",
     gardenTitle: "Plantera träd, buskar, rabatter och häckar",
     gardenNote: "Nya växter hamnar på en ledig plats i trädgården; dra dem dit du vill, eller klicka på en för att vrida eller ta bort den.",
+    gardenThingsTitle: "Bygg, odla och lek: en bod, ett växthus, en damm, grönsaker, en gunga, en studsmatta",
+    fence: "Staket runt tomten",
+    noFence: "Inget",
+    fenceStyles: { Picket: "Spjäl", Board: "Plank" },
+    fenceNote: "Staketet går runt tomten, med en grind där gången kommer in och en öppning för uppfarten.",
     addPlant: (name) => `+ ${name}`,
     balcony: "Balkong",
     addBalcony: "+ Balkong",

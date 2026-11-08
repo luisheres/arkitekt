@@ -182,7 +182,7 @@ try {
   assert.equal(await page.locator(".popover .choices.paints button.locked").count(), 7, "every colour but white");
   await page.keyboard.press("Escape");
   await page.click('#sidebar .house button:has-text("Garden")');
-  assert.equal(await page.locator(".popover button.locked").count(), 4);
+  assert.equal(await page.locator(".popover button.locked").count(), 10, "four kinds of plant and six garden things");
   await page.click(".popover button.locked >> nth=0");
   assert.equal(await page.locator('#modal .tech-card.focus[data-tech="landscaping"]').count(), 1);
   await page.keyboard.press("Escape");
@@ -461,6 +461,18 @@ try {
   await page.click('.popover button:has-text("+ Shrub")');
   assert.equal(await pieces(), piecesBefore + 1, "a shrub in the garden");
   assert.equal(await page.evaluate(() => window.architect.store.selection.kind), "furniture");
+  await page.keyboard.press("Escape");
+  // A swing, and a picket fence round the plot.
+  await page.click('#sidebar .house button:has-text("Garden")');
+  await page.click('.popover button:has-text("+ Swing")');
+  assert.equal(await pieces(), piecesBefore + 2, "a swing in the garden");
+  await page.keyboard.press("Escape");
+  await page.click('#sidebar .house button:has-text("Garden")');
+  await page.click('.popover .choices button[title="Picket"]');
+  assert.equal(await page.evaluate(() => window.architect.store.house.fence), "Picket");
+  assert.ok(await page.locator(".plan .fence").count() > 0, "the fence shows in the plan");
+  await page.click('.popover .choices button[title="None"]');
+  assert.equal(await page.evaluate(() => window.architect.store.house.fence), null);
   await page.keyboard.press("Escape");
   await page.keyboard.press("v");
   await page.click(".level-switch button[data-level='1']");

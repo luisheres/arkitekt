@@ -166,6 +166,10 @@ export class Wall {
 export const WINDOW_STYLES = ["Standard", "Cottage", "Modern"] as const;
 export type WindowStyle = (typeof WINDOW_STYLES)[number];
 
+/** Fences round the plot: white pickets, or upright boards painted Falu red. */
+export const FENCE_STYLES = ["Picket", "Board"] as const;
+export type FenceStyle = (typeof FENCE_STYLES)[number];
+
 /** Colours for window and door frames. */
 export const FRAME_COLORS = ["White", "Black", "Green", "Blue", "Red"] as const;
 export type FrameColor = (typeof FRAME_COLORS)[number];
@@ -248,6 +252,7 @@ export interface HouseJson {
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
   dormers?: { id: number; wall: number; offset: number; width: number; skylight?: boolean }[];
+  fence?: FenceStyle;
   /** Missing in saves from before furniture could be edited. */
   furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
@@ -267,6 +272,8 @@ export class House {
   levels = 1;
   /** A basement below the ground floor: storey -1. */
   basement = false;
+  /** A fence round the plot, with a gate where the path comes in. */
+  fence: FenceStyle | null = null;
   private nextId = 0;
 
   private freshId(): number {
@@ -541,6 +548,7 @@ export class House {
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
       ...(this.dormers.length ? { dormers: this.dormers.map((d) => ({ ...d })) } : {}),
+      ...(this.fence ? { fence: this.fence } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
       nextId: this.nextId,
     };
@@ -564,6 +572,7 @@ export class House {
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
     h.dormers = (j.dormers ?? []).map((d) => ({ ...d }));
+    h.fence = j.fence ?? null;
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));
     h.nextId = j.nextId;
     return h;

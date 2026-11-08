@@ -6,7 +6,7 @@
 
 import * as THREE from "three";
 import type { Furniture } from "../core";
-import { floorTexture, toon, worldMaterial } from "./textures";
+import { floorTexture, seasonal, snowy, toon, worldMaterial } from "./textures";
 
 const srgb = (hex: string) => new THREE.Color(hex);
 const mat = (hex: string, _roughness = 0.8, _metalness = 0) => toon({ color: srgb(hex) });
@@ -33,9 +33,20 @@ const M = {
   fire: toon({ color: srgb("#ffb03b"), emissive: srgb("#ff7a1a"), emissiveIntensity: 0.9 }),
   soil: mat("#5a3d2b"),
   bark: mat("#8a5a3a"),
-  leaves: ["#4caf50", "#5cbf3f", "#3f9f4a"].map((c) => mat(c)),
-  hedge: mat("#3f8f45"),
+  // Garden trees and shrubs: dark and snow-covered in winter rather than gone.
+  leaves: ["#4caf50", "#5cbf3f", "#3f9f4a"].map((c, i) => snowy(seasonal(mat(c), { spring: "#86d65a", autumn: ["#d9822b", "#e0a030", "#c9541f"][i], winter: "#4f6f45" }))),
+  hedge: snowy(seasonal(mat("#3f8f45"), { autumn: "#5f8a3a", winter: "#3f5f3a" })),
+  /** Plants indoors (and in the greenhouse) stay green all year. */
+  potLeaves: ["#4caf50", "#5cbf3f", "#3f9f4a"].map((c) => mat(c)),
   flowers: ["#ff6f91", "#ffd23f", "#ffffff", "#b388ff", "#ff8a3d"].map((c) => mat(c)),
+  falu: mat("#9c3a2e"),
+  roofing: snowy(mat("#3b3b40")),
+  pond: seasonal(toon({ color: srgb("#3f9fd0"), transparent: true, opacity: 0.85 }), { winter: "#dcecf4" }),
+  lily: mat("#5fae4a"),
+  crops: ["#6fbf4a", "#a6d94a", "#e0573c", "#f0a030"].map((c) => mat(c)),
+  rope: mat("#d8c79e"),
+  frameBlue: mat("#3a5a8a"),
+  frameYellow: mat("#e7b94a"),
 };
 
 // Shared by every piece; disposing a house leaves them alone.
@@ -226,7 +237,7 @@ export function buildFurniture(f: Furniture): THREE.Group {
       const potH = f.kind === "Plant" ? 0.3 : 0.45;
       cyl(g, M.pot, 0, potH / 2, 0, r * 0.7, potH);
       cyl(g, M.soil, 0, potH, 0, r * 0.62, 0.02);
-      const leaf = M.leaves[Math.abs(Math.round(f.at.x * 5 + f.at.y * 3)) % M.leaves.length];
+      const leaf = M.potLeaves[Math.abs(Math.round(f.at.x * 5 + f.at.y * 3)) % M.potLeaves.length];
       if (f.kind === "Plant") {
         ball(g, leaf, 0, potH + (h - potH) * 0.45, 0, r, (h - potH) * 0.5, r);
       } else {
@@ -268,6 +279,111 @@ export function buildFurniture(f: Furniture): THREE.Group {
     case "Hedge": {
       box(g, M.hedge, x0 + 0.1, x1 - 0.1, 0, h - 0.15, z0 + 0.05, z1 - 0.05);
       for (let x = x0 + 0.3; x < x1 - 0.1; x += 0.5) ball(g, M.hedge, x, h - 0.25, 0, 0.32, 0.25, d * 0.45);
+      break;
+    }
+    case "Shed": {
+      // Falu red boards, white corners and door frame, a dark felt roof sloping to the back.
+      const wallH = h - 0.5;
+      box(g, M.falu, x0 + 0.05, x1 - 0.05, 0, wallH, z0 + 0.05, z1 - 0.05);
+      for (const x of [x0 + 0.05, x1 - 0.05]) for (const z of [z0 + 0.05, z1 - 0.05]) box(g, M.white, x - 0.05, x + 0.05, 0, wallH, z - 0.05, z + 0.05);
+      box(g, M.white, -0.45, 0.45, 0, 1.9, z1 - 0.06, z1 - 0.02);
+      box(g, M.falu, -0.38, 0.38, 0.02, 1.84, z1 - 0.04, z1);
+      box(g, M.white, x1 - 0.7, x1 - 0.2, 1.1, 1.6, z1 - 0.06, z1 - 0.02);
+      box(g, M.glass, x1 - 0.65, x1 - 0.25, 1.15, 1.55, z1 - 0.04, z1);
+      const roof = new THREE.Mesh(unit, M.roofing);
+      roof.scale.set(w + 0.3, 0.08, Math.hypot(d + 0.3, 0.5));
+      roof.position.set(0, wallH + 0.25, 0);
+      roof.rotation.x = Math.atan2(0.5, d + 0.3);
+      roof.castShadow = true;
+      g.add(roof);
+      break;
+    }
+    case "Greenhouse": {
+      // Glass on a white frame, with a pitched glass roof and tomatoes inside.
+      const wallH = h - 0.7;
+      box(g, M.stone, x0, x1, 0, 0.3, z0, z1);
+      box(g, M.glass, x0 + 0.03, x1 - 0.03, 0.3, wallH, z0 + 0.03, z1 - 0.03);
+      for (const x of [x0, 0, x1]) for (const z of [z0, z1]) box(g, M.white, x - 0.03, x + 0.03, 0.3, wallH, z - 0.03, z + 0.03);
+      for (let z = z0 + 0.75; z < z1 - 0.1; z += 0.75) for (const x of [x0, x1]) box(g, M.white, x - 0.03, x + 0.03, 0.3, wallH, z - 0.02, z + 0.02);
+      for (const s of [-1, 1]) {
+        const pane = new THREE.Mesh(unit, M.glass);
+        pane.scale.set(Math.hypot(w / 2, 0.7), 0.03, d);
+        pane.position.set((s * w) / 4, wallH + 0.35, 0);
+        pane.rotation.z = -s * Math.atan2(0.7, w / 2);
+        g.add(pane);
+      }
+      box(g, M.white, -0.03, 0.03, wallH + 0.66, wallH + 0.72, z0, z1);
+      for (const x of [x0 + 0.5, x1 - 0.5])
+        for (let z = z0 + 0.5; z < z1 - 0.3; z += 0.6) {
+          cyl(g, M.potLeaves[1], x, 0.7, z, 0.12, 0.8);
+          ball(g, M.crops[2], x + 0.1, 0.9, z, 0.07);
+        }
+      break;
+    }
+    case "Pond": {
+      // Stones round the edge, water a little below the grass, and lily pads.
+      const water = new THREE.Mesh(cylinder, M.pond);
+      water.scale.set(w * 0.92, 0.04, d * 0.92);
+      water.position.set(0, 0.0, 0);
+      water.receiveShadow = true;
+      g.add(water);
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2;
+        ball(g, M.stone, (Math.cos(a) * w) / 2, 0.04, (Math.sin(a) * d) / 2, 0.22, 0.12, 0.18);
+      }
+      for (const [x, z] of [[-0.4, 0.2], [0.5, -0.3], [0.1, 0.45]]) {
+        const pad = new THREE.Mesh(cylinder, M.lily);
+        pad.scale.set(0.35, 0.01, 0.35);
+        pad.position.set(x, 0.03, z);
+        g.add(pad);
+      }
+      ball(g, M.flowers[0], -0.4, 0.06, 0.2, 0.06);
+      break;
+    }
+    case "VegetablePatch": {
+      box(g, M.soil, x0, x1, 0, 0.12, z0, z1);
+      for (const [x, z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]] as const) box(g, M.lightWood, x - 0.04, x + 0.04, 0, 0.22, z - 0.04, z + 0.04);
+      box(g, M.lightWood, x0, x1, 0, 0.2, z0, z0 + 0.04);
+      box(g, M.lightWood, x0, x1, 0, 0.2, z1 - 0.04, z1);
+      // Rows of lettuce, carrots, tomatoes and pumpkins.
+      let row = 0;
+      for (let z = z0 + 0.25; z < z1 - 0.1; z += 0.35, row++)
+        for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.3) ball(g, M.crops[row % M.crops.length], x, 0.18, z, 0.11, row % 2 ? 0.14 : 0.08, 0.11);
+      break;
+    }
+    case "Swing": {
+      // An A-frame each end, a beam across, two seats on ropes.
+      for (const x of [x0 + 0.1, x1 - 0.1])
+        for (const s of [-1, 1]) {
+          const leg = new THREE.Mesh(cylinder, M.frameYellow);
+          leg.scale.set(0.08, Math.hypot(h, d / 2 - 0.1), 0.08);
+          leg.position.set(x, h / 2, (s * (d / 2 - 0.1)) / 2);
+          leg.rotation.x = s * Math.atan2(d / 2 - 0.1, h);
+          leg.castShadow = true;
+          g.add(leg);
+        }
+      cyl(g, M.frameYellow, 0, h, 0, 0.06, w, true);
+      for (const x of [-0.55, 0.55]) {
+        for (const dx of [-0.2, 0.2]) cyl(g, M.rope, x + dx, (h + 0.45) / 2, 0, 0.012, h - 0.45);
+        box(g, M.frameBlue, x - 0.25, x + 0.25, 0.42, 0.47, -0.12, 0.12);
+      }
+      break;
+    }
+    case "Trampoline": {
+      const r = Math.min(w, d) / 2;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r - 0.1, 0.1, 6, 32), M.frameBlue);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = h - 0.05;
+      ring.castShadow = true;
+      g.add(ring);
+      const matMesh = new THREE.Mesh(cylinder, M.dark);
+      matMesh.scale.set((r - 0.2) * 2, 0.02, (r - 0.2) * 2);
+      matMesh.position.y = h - 0.08;
+      g.add(matMesh);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        cyl(g, M.steel, Math.cos(a) * (r - 0.1), (h - 0.05) / 2, Math.sin(a) * (r - 0.1), 0.03, h - 0.05);
+      }
       break;
     }
   }

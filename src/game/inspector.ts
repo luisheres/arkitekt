@@ -50,6 +50,8 @@ import {
   setRoomFloor,
   setRoomPaint,
   GARDEN_PLANTS,
+  GARDEN_THINGS,
+  FENCE_STYLES,
   addGardenPlant,
   BALCONY_LIMITS,
   type Balcony,
@@ -613,7 +615,7 @@ const OPENING_LOCK: Partial<Record<OpeningKind, Unlock>> = { GarageDoor: { kind:
 
 function gardenInspector(store: Store): Inspector {
   const fields: Field[] = [];
-  const buttons = GARDEN_PLANTS.map((kind) => {
+  const adder = (kind: FurnitureKind) => {
     const { button: b, field } = lockable(store, m.ui.addPlant(m.furnitureName[kind]), { kind: "garden" }, () => {
       let id: number | null = null;
       store.edit((h) => (id = addGardenPlant(h, store.plot, kind)));
@@ -621,9 +623,30 @@ function gardenInspector(store: Store): Inspector {
     });
     fields.push(field);
     return b;
-  });
+  };
+  const plants = GARDEN_PLANTS.map(adder);
+  const things = GARDEN_THINGS.map(adder);
+  const fence = choices(
+    m.ui.fence,
+    [{ value: "none" as const, label: m.ui.noFence }, ...FENCE_STYLES.map((s) => ({ value: s, label: m.ui.fenceStyles[s] }))],
+    () => store.house.fence ?? "none",
+    (v) => store.edit((h) => (h.fence = v === "none" ? null : v)),
+    "segmented",
+  );
+  fields.push(fence);
   return {
-    el: el("div", {}, el("h2", {}, m.ui.garden), el("p", { className: "sub" }, m.ui.gardenTitle), el("div", { className: "row" }, ...buttons), el("p", { className: "sub" }, m.ui.gardenNote)),
+    el: el(
+      "div",
+      {},
+      el("h2", {}, m.ui.garden),
+      el("p", { className: "sub" }, m.ui.gardenTitle),
+      el("div", { className: "row" }, ...plants),
+      el("p", { className: "sub" }, m.ui.gardenThingsTitle),
+      el("div", { className: "row" }, ...things),
+      fence.el,
+      el("p", { className: "sub" }, m.ui.fenceNote),
+      el("p", { className: "sub" }, m.ui.gardenNote),
+    ),
     fields,
   };
 }

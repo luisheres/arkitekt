@@ -7,6 +7,7 @@ import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { HAZE } from "./landscape";
 import { ToonRenderer } from "./toonPost";
 import { type Pick, type World, buildHouse, buildShadowCaster, buildWorld, disposeHouse, disposeWorld, setDusk } from "./scene";
+import { applySeason, currentSeason } from "./textures";
 import type { Store } from "./store";
 
 /** Vertical field of view, in degrees, on a wide enough screen (and in captures). */
@@ -261,6 +262,8 @@ export class View3D {
   /** The sun where the store says, and windows lit at dusk. */
   private updateSun(): void {
     const pos = sunPosition(this.store.sunHour, SEASON_DAY[this.store.season]);
+    // Leaves, snow and ice follow the season (before the world reads it).
+    if (currentSeason() !== this.store.season) applySeason(this.store.season);
     this.world.setSun(pos);
     setDusk(1 - THREE.MathUtils.smoothstep(pos.elevation, -3, 6));
   }

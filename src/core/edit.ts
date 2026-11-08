@@ -5,7 +5,7 @@
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment } from "./geometry";
-import { isGardenPlant } from "./furniture";
+import { isOutdoor } from "./furniture";
 import { analyzeLayout } from "./layout";
 import { BALCONY_LIMITS, type Balcony, type BalconyId, type FloorFinish, House, type LabelId, type PaintColor, type StairId, type OpeningId, type OpeningKind, type RoomType, type Wall, type WallId, type WallMaterial } from "./model";
 import { type Room, analyzeRooms, roomAt } from "./rooms";
@@ -421,7 +421,7 @@ export function moveHouse(house: House, delta: Vec2): void {
   for (const w of house.walls) [w.start, w.end] = [move(w.start), move(w.end)];
   for (const l of house.labels) l.at = move(l.at);
   for (const s of house.stairs) s.at = move(s.at);
-  for (const f of house.furniture) if (!isGardenPlant(f.kind)) f.at = move(f.at);
+  for (const f of house.furniture) if (!isOutdoor(f.kind)) f.at = move(f.at);
 }
 
 /** The point the house turns about: the middle of all its walls, on the 10 cm grid. */
@@ -458,7 +458,7 @@ export function rotateHouse(house: House, degrees: number): void {
     s.facing = Math.abs(facing - Math.round(facing)) < 1e-6 ? Math.round(facing) % 4 : Number(facing.toFixed(9));
   }
   for (const f of house.furniture) {
-    if (isGardenPlant(f.kind)) continue;
+    if (isOutdoor(f.kind)) continue;
     f.at = about(f.at);
     const v = turn(f.facing);
     f.facing = new Vec2(clean(v.x), clean(v.y));

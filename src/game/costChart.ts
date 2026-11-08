@@ -63,6 +63,10 @@ export function lineName(l: CostLine, short = false): string {
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.steps}`;
     case "ramp":
       return m.ui.costChart.ramp;
+    case "fence":
+      return m.ui.costChart.fence(m.ui.fenceStyles[w.style]);
+    case "gate":
+      return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.gate}`;
     case "earthworks":
       return m.ui.costChart.earthworks;
     case "basementDig":

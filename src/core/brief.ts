@@ -4,7 +4,7 @@
  */
 
 import { type PriceList, estimate, totalCost } from "./cost";
-import { GARDEN_PLANTS, INDOOR_PLANTS } from "./furniture";
+import { type FurnitureKind, GARDEN_PLANTS, INDOOR_PLANTS } from "./furniture";
 import { type FloorFinish, type House, type PaintColor, type RoofMaterial, type RoofStyle, type RoomType, WALL_FAMILY, type WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { area, percent } from "./i18n/format";
@@ -45,6 +45,10 @@ export type Requirement =
   | { kind: "sunnyTerrace"; minHours: number }
   /** A balcony or terrace that gets the evening sun (in summer). */
   | { kind: "sunsetView" }
+  /** A swing or a trampoline in the garden. */
+  | { kind: "playGarden" }
+  /** A vegetable patch or a greenhouse. */
+  | { kind: "kitchenGarden" }
   /** A fireplace (with its chimney). */
   | { kind: "fireplace" }
   /** At least this many trees, shrubs, flower beds or hedges in the garden. */
@@ -167,6 +171,12 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "sunnyTerrace": {
         const best = Math.max(0, ...house.balconies.map((b) => balconySun(house, b).hours));
         return [best >= r.minHours, m.brief.hoursOfSun(best)];
+      }
+      case "playGarden":
+      case "kitchenGarden": {
+        const kinds: FurnitureKind[] = r.kind === "playGarden" ? ["Swing", "Trampoline"] : ["VegetablePatch", "Greenhouse"];
+        const ok = house.furniture.some((f) => kinds.includes(f.kind));
+        return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "sunsetView": {
         const ok = house.balconies.some((b) => balconySun(house, b).sunset);

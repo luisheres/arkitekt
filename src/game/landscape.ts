@@ -6,12 +6,13 @@
 
 import * as THREE from "three";
 import { type Landmark, type Plot, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, treeLook } from "../core";
-import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { currentSeason, groundTexture, seasonal, snowy, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
 export const HAZE = new THREE.Color("#c4e6f8");
 /** The sky meets the land in the same haze, so the far land fades into it. */
 const SKY_HORIZON = HAZE;
+const ICE = new THREE.Color("#dcecf4");
 
 const ROOF_COLORS = ["#d9534a", "#3f7fbf", "#4f9a5a", "#e08a2e"];
 
@@ -43,6 +44,7 @@ export function buildWorld(plot: Plot): World {
   root.add(roads(scenery));
   const waterGroup = scenery.water ? water(scenery) : null;
   if (waterGroup) root.add(waterGroup);
+  const waterColour = waterGroup ? (waterGroup.userData.surface as THREE.MeshToonMaterial).color.clone() : new THREE.Color();
   if (scenery.jetty) root.add(jetty(scenery));
   // Trees sway in the wind, each a little differently; the further, the less (unseen).
   const swaying: { g: THREE.Object3D; phase: number; amount: number }[] = [];
@@ -50,9 +52,10 @@ export function buildWorld(plot: Plot): World {
     const g = tree(scenery, t);
     root.add(g);
     const far = Math.hypot(t.at.x - center.x, t.at.y - center.z);
-    if (far < 140) swaying.push({ g, phase: t.at.x * 0.37 + t.at.y * 0.21, amount: (t.kind === "birch" ? 0.035 : t.kind === "bush" ? 0.012 : 0.022) / Math.max(1, t.size) });
+    if (far < 140 && t.kind !== "stump") swaying.push({ g, phase: t.at.x * 0.37 + t.at.y * 0.21, amount: (t.kind === "birch" || t.kind === "willow" ? 0.035 : t.kind === "bush" ? 0.012 : t.kind === "oak" ? 0.012 : 0.022) / Math.max(1, t.size) });
   }
   for (const r of scenery.rocks) root.add(rock(scenery, r.at.x, r.at.y, r.size));
+  root.add(groundCover(scenery, plot));
   for (const n of scenery.neighbors) root.add(neighborHouse(scenery, n));
   for (const l of scenery.landmarks) root.add(landmark(scenery, l));
   for (const wall of scenery.walls) root.add(stoneWall(scenery, wall));
@@ -80,6 +83,12 @@ export function buildWorld(plot: Plot): World {
     const u = (skyMesh.material as THREE.ShaderMaterial).uniforms;
     u.top.value.copy(SKY_TOP).lerp(new THREE.Color("#22306b"), (1 - day) * 0.8);
     u.horizon.value.copy(HAZE).lerp(new THREE.Color("#ffb38a"), golden * 0.55);
+    // Lakes and rivers freeze in winter; the sea doesn't.
+    if (waterGroup && scenery.water?.kind !== "sea") {
+      const frozen = currentSeason() === "winter";
+      (waterGroup.userData.surface as THREE.MeshToonMaterial).color.copy(frozen ? ICE : waterColour);
+      if (waterGroup.userData.deep) (waterGroup.userData.deep as THREE.Mesh).visible = !frozen;
+    }
   };
   const cloudStart = cloudGroup.children.map((c) => c.position.clone());
   const reeds = waterGroup?.userData.reeds as THREE.Object3D[] | undefined;
@@ -97,11 +106,12 @@ export function buildWorld(plot: Plot): World {
       const x = cloudStart[i].x + ((t * 1.6 + i * 40) % 600) - 300;
       c.position.x = center.x + ((x - center.x + 900) % 600) - 300;
     });
-    // Ripples on the water grow and fade, and start again somewhere else.
+    // Ripples on the water grow and fade, and start again somewhere else (not on ice).
+    const frozen = currentSeason() === "winter" && scenery.water?.kind !== "sea";
     ripples?.forEach((r, i) => {
       const life = ((t * 0.35 + i * 0.37) % 1 + 1) % 1;
       r.scale.setScalar(0.4 + life * 1.6);
-      (r.material as THREE.MeshBasicMaterial).opacity = 0.55 * Math.sin(life * Math.PI);
+      (r.material as THREE.MeshBasicMaterial).opacity = frozen ? 0 : 0.55 * Math.sin(life * Math.PI);
     });
   };
   return { root, guides, setSun, update };
@@ -311,7 +321,7 @@ const c = new THREE.Color();
   geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(index);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true, map: groundPainting(s, center) }));
+  const mesh = new THREE.Mesh(geo, snowy(toon({ vertexColors: true, map: groundPainting(s, center) })));
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -400,6 +410,7 @@ function water(s: Scenery): THREE.Group {
   const g = new THREE.Group();
   const colour = w.kind === "sea" ? "#2f9fe0" : w.kind === "river" ? "#4fb6e0" : "#3fb3e8";
   const surface = toon({ color: colour, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+  g.userData.surface = surface;
   const foam = toon({ color: "#ffffff", side: THREE.DoubleSide });
   // Ripples: rings that grow and fade on the water near the plot.
   const ripples: THREE.Mesh[] = [];
@@ -440,6 +451,7 @@ function water(s: Scenery): THREE.Group {
     const deep = new THREE.Mesh(new THREE.ShapeGeometry(deepShape, 4), toon({ color: "#2a8fce", transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
     deep.rotation.x = -Math.PI / 2;
     deep.position.y = w.level + 0.01;
+    g.userData.deep = deep;
     g.add(deep);
   }
   // Foam along the shore (the coast only, for the sea).
@@ -533,14 +545,25 @@ const pineTier = (() => {
 })();
 
 const leaf = (c: string) => toon({ color: c, vertexColors: true });
-const LEAVES = ["#4caf50", "#5cbf3f", "#43a84f", "#6fc94a"].map(leaf);
-const LEAVES_LIGHT = ["#7fd65c", "#8fdc5a", "#79cf62", "#97e06a"].map(leaf);
-const BLOSSOM = leaf("#ff9ec7");
-const BLOSSOM_LIGHT = leaf("#ffc7de");
-const PINE = leaf("#2f8a52");
-const PINE_LIGHT = leaf("#4aa865");
-const BIRCH_LEAVES = leaf("#a6dc52");
-const APPLE = toon({ color: "#e8332e" });
+/** Leaves that turn in autumn and fall in winter: spring, autumn colours. */
+const turning = (c: string, spring: string, autumn: string) => seasonal(leaf(c), { spring, autumn, winter: null });
+const AUTUMN = ["#d9822b", "#e0a030", "#c9541f", "#e6b43a"];
+const LEAVES = ["#4caf50", "#5cbf3f", "#43a84f", "#6fc94a"].map((c, i) => turning(c, "#86d65a", AUTUMN[i]));
+const LEAVES_LIGHT = ["#7fd65c", "#8fdc5a", "#79cf62", "#97e06a"].map((c, i) => turning(c, "#b3ec7a", AUTUMN[(i + 1) % 4]));
+// Fruit trees blossom in spring and are green in summer.
+const BLOSSOM = seasonal(leaf("#ff9ec7"), { summer: "#5cbf3f", autumn: "#e0a030", winter: null });
+const BLOSSOM_LIGHT = seasonal(leaf("#ffc7de"), { summer: "#8fdc5a", autumn: "#e6b43a", winter: null });
+// Pines keep their needles, and hold the snow.
+const PINE = snowy(leaf("#2f8a52"));
+const PINE_LIGHT = snowy(leaf("#4aa865"));
+const BIRCH_LEAVES = turning("#a6dc52", "#c3ec6a", "#f2c230");
+const OAK_LEAVES = turning("#3f8f3a", "#7cc94a", "#b07a2e");
+const OAK_LIGHT = turning("#5aa84a", "#9adb5e", "#c98f35");
+const MAPLE_LEAVES = turning("#5cb848", "#8fdc5a", "#d8432e");
+const MAPLE_LIGHT = turning("#7ccf58", "#a8e66a", "#e8742e");
+const WILLOW_LEAVES = turning("#9cc84a", "#c2e36a", "#d6c04a");
+const APPLE = seasonal(toon({ color: "#e8332e" }), { spring: null, winter: null });
+const STUMP_TOP = toon({ color: "#d9b27c" });
 const TRUNK = toon({ color: "#8a5a3a" });
 const BIRCH_TRUNK = toon({ color: "#f6f2ea" });
 const BIRCH_MARK = toon({ color: "#2d2a2a" });
@@ -615,6 +638,47 @@ function tree(s: Scenery, t: Tree): THREE.Group {
       add(pineTier, PINE_LIGHT, 0, (1.6 + tiers * 1.05) * k, 0, 0.45 * k, 0.9 * k, 0.45 * k);
       break;
     }
+    case "oak": {
+      // A thick short trunk, spreading boughs and a broad, low crown.
+      add(trunkGeo, TRUNK, 0, 1.1 * k, 0, 0.5 * k, 2.2 * k, 0.5 * k);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + r(i);
+        const bough = add(trunkGeo, TRUNK, Math.cos(a) * 0.7 * k, 2.4 * k, Math.sin(a) * 0.7 * k, 0.16 * k, 1.8 * k, 0.16 * k);
+        bough.rotation.set(Math.sin(a) * 0.8, 0, -Math.cos(a) * 0.8);
+      }
+      add(canopy, OAK_LEAVES, 0, 3.4 * k, 0, 2.6 * k, 1.4 * k, 2.6 * k);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + r(i + 4);
+        add(canopy, i % 2 ? OAK_LIGHT : OAK_LEAVES, Math.cos(a) * 2.1 * k, (3.0 + r(i + 11) * 0.6) * k, Math.sin(a) * 2.1 * k, 1.2 * k, 0.9 * k, 1.2 * k);
+      }
+      add(canopy, OAK_LIGHT, 0.3 * k, 4.3 * k, 0.2 * k, 1.5 * k, 0.8 * k, 1.5 * k);
+      break;
+    }
+    case "maple": {
+      // A straight trunk and a tall, dense, rounded crown: red in autumn.
+      add(trunkGeo, TRUNK, 0, 1.4 * k, 0, 0.28 * k, 2.8 * k, 0.28 * k);
+      add(canopy, MAPLE_LEAVES, 0, 4.0 * k, 0, 1.8 * k, 2.0 * k, 1.8 * k);
+      add(canopy, MAPLE_LIGHT, 0.5 * k, 4.9 * k, -0.3 * k, 1.1 * k, 1.1 * k, 1.1 * k);
+      add(canopy, MAPLE_LEAVES, -0.8 * k, 3.4 * k, 0.6 * k, 1.0 * k);
+      break;
+    }
+    case "willow": {
+      // A leaning trunk, and curtains of leaves hanging down all round.
+      const lean = add(trunkGeo, TRUNK, 0.2 * k, 1.5 * k, 0, 0.3 * k, 3.1 * k, 0.3 * k, -0.12);
+      lean.castShadow = true;
+      add(canopy, WILLOW_LEAVES, 0.35 * k, 4.0 * k, 0, 1.6 * k, 1.0 * k, 1.6 * k);
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + r(i) * 0.3;
+        add(canopy, WILLOW_LEAVES, 0.35 * k + Math.cos(a) * 1.6 * k, (2.6 + r(i + 7) * 0.4) * k, Math.sin(a) * 1.6 * k, 0.55 * k, 1.6 * k, 0.55 * k);
+      }
+      break;
+    }
+    case "stump": {
+      add(trunkGeo, TRUNK, 0, 0.2 * k, 0, 0.45 * k, 0.4 * k, 0.45 * k);
+      const top = add(trunkGeo, STUMP_TOP, 0, 0.41 * k, 0, 0.36 * k, 0.02 * k, 0.36 * k);
+      top.castShadow = false;
+      break;
+    }
     case "bush": {
       const [dark, light] = [LEAVES[variant % 4], LEAVES_LIGHT[variant % 4]];
       add(blob, dark, 0, 0.5 * k, 0, 0.9 * k, 0.7 * k, 0.9 * k);
@@ -634,7 +698,7 @@ function tree(s: Scenery, t: Tree): THREE.Group {
 }
 
 const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-const rockMat = toon({ color: "#b4b0aa", flatShading: true });
+const rockMat = snowy(toon({ color: "#b4b0aa", flatShading: true }));
 
 function rock(s: Scenery, x: number, y: number, size: number): THREE.Mesh {
   const m = new THREE.Mesh(rockGeo, rockMat);
@@ -666,7 +730,7 @@ function placed(s: Scenery, at: Vec2, facing: number, w: number, d: number): { g
 const mats = {
   white: toon({ color: "#f6f4ee" }),
   red: toon({ color: "#b5382c" }),
-  darkRoof: toon({ color: "#4a4f57" }),
+  darkRoof: snowy(toon({ color: "#4a4f57" })),
   steel: toon({ color: "#b8bdc2" }),
   glass: toon({ color: "#8fd3ff" }),
   wood: toon({ color: "#9a6a42" }),
@@ -675,7 +739,7 @@ const mats = {
   yellow: toon({ color: "#ffd23f" }),
   blue: toon({ color: "#3f7fbf" }),
   water: toon({ color: "#6cc8f0" }),
-  stone: worldMaterial(wallTexture("Stone")),
+  stone: snowy(worldMaterial(wallTexture("Stone"))),
   plaster: worldMaterial(wallTexture("Plaster")),
   falu: worldMaterial(wallTexture("FaluRed")),
   logs: worldMaterial(wallTexture("Wood")),
@@ -729,7 +793,7 @@ function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group
   const facade = worldMaterial(wallTexture(n.facade));
   part(g, facade, -n.width / 2, n.width / 2, 0, wallH + plinth + 0.3, -n.depth / 2, n.depth / 2);
   const top = wallH + plinth + 0.3;
-  const roofMat = toon({ color: ROOF_COLORS[n.roof % ROOF_COLORS.length] });
+  const roofMat = snowy(toon({ color: ROOF_COLORS[n.roof % ROOF_COLORS.length] }));
   if (n.roofStyle === "gable") gable(g, roofMat, n.width, n.depth, top);
   else if (n.roofStyle === "hip") hipRoof(g, roofMat, n.width, n.depth, top);
   else part(g, roofMat, -n.width / 2 - 0.3, n.width / 2 + 0.3, top, top + 0.25, -n.depth / 2 - 0.3, n.depth / 2 + 0.3);
@@ -965,4 +1029,106 @@ function plotGuides(plot: Plot): THREE.Group {
   outline(0, 0xffffff);
   outline(plot.setback, 0xffd94d);
   return guides;
+}
+
+// --- Ground cover ----------------------------------------------------------------------
+
+const tuftGeo = (() => {
+  // Three thin blades leaning out from a point.
+  const blades = [0, 2.1, 4.2].map((a) => {
+    const b = new THREE.ConeGeometry(0.05, 0.38, 3);
+    b.translate(0, 0.19, 0);
+    b.rotateZ(0.25);
+    b.rotateY(a);
+    return b;
+  });
+  const merged = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  for (const b of blades) {
+    const nb = b.toNonIndexed();
+    pos.push(...(nb.getAttribute("position").array as Float32Array));
+  }
+  merged.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  merged.computeVertexNormals();
+  return merged;
+})();
+const flowerGeo = new THREE.IcosahedronGeometry(0.07, 0);
+const fernGeo = (() => {
+  const g = new THREE.ConeGeometry(0.45, 0.35, 6, 1, true);
+  g.translate(0, 0.17, 0);
+  return g;
+})();
+const TUFT = seasonal(toon({ color: "#5aa83f" }), { spring: "#7cc94a", autumn: "#a7a24a", winter: null });
+const FERN = seasonal(toon({ color: "#3f8a3f", side: THREE.DoubleSide }), { autumn: "#a8742e", winter: null });
+const WILDFLOWER = seasonal(toon({ color: "#ffffff" }), { autumn: null, winter: null });
+
+/**
+ * Tufts of long grass, wildflowers, and ferns under the trees, on the land round the plot
+ * (not on the lawn, the roads or the water). Instanced: thousands cost one draw each.
+ */
+function groundCover(s: Scenery, plot: Plot): THREE.Group {
+  const g = new THREE.Group();
+  const centre = new Vec2(plot.width / 2, plot.depth / 2);
+  const roadSegs = s.roads.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i], b, half: r.width / 2 + 1.2 })));
+  const nearRoad = (p: Vec2) =>
+    roadSegs.some(({ a, b, half }) => {
+      const ab = b.sub(a);
+      const t = Math.max(0, Math.min(1, p.sub(a).dot(ab) / Math.max(ab.dot(ab), 1e-9)));
+      return a.add(ab.scale(t)).distance(p) < half;
+    });
+  const nearTrees = s.trees.filter((t) => t.at.distance(centre) < 80 && t.kind !== "bush");
+  const tufts: THREE.Matrix4[] = [];
+  const flowers: { m: THREE.Matrix4; c: THREE.Color }[] = [];
+  const ferns: THREE.Matrix4[] = [];
+  const FLOWER_COLOURS = ["#ffffff", "#ffd23f", "#ff9ec7", "#b388ff"].map((c) => new THREE.Color(c));
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const step = 1.5;
+  for (let y = -55; y < plot.depth + 55; y += step)
+    for (let x = -55; x < plot.width + 55; x += step) {
+      const h1 = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      const r1 = h1 - Math.floor(h1);
+      const h2 = Math.sin(x * 39.346 + y * 11.135) * 24634.6345;
+      const r2 = h2 - Math.floor(h2);
+      const p = new Vec2(x + (r1 - 0.5) * step, y + (r2 - 0.5) * step);
+      const far = p.distance(centre);
+      if (far > 70 || r1 > 0.25 + 0.6 * (1 - far / 70)) continue;
+      if (p.x > -0.6 && p.x < plot.width + 0.6 && p.y > -0.6 && p.y < plot.depth + 0.6) continue;
+      if (s.surface(p.x, p.y) !== "grass" || s.waterDistance(p.x, p.y) < 1.5 || nearRoad(p)) continue;
+      const at = new THREE.Vector3(p.x, s.height(p.x, p.y) - 0.02, p.y);
+      q.setFromAxisAngle(up, r2 * Math.PI * 2);
+      const size = 0.7 + r2 * 0.8;
+      const underTree = nearTrees.some((t) => t.at.distance(p) < 3.2 * t.size);
+      if (underTree && r2 < 0.6) ferns.push(new THREE.Matrix4().compose(at, q, new THREE.Vector3(size, size * 0.8, size)));
+      else tufts.push(new THREE.Matrix4().compose(at, q, new THREE.Vector3(size, size, size)));
+      if (!underTree && r2 > 0.82) {
+        for (let k = 0; k < 3; k++) {
+          const off = new THREE.Vector3(Math.cos(k * 2.1 + r1 * 6) * 0.25, 0.3 + k * 0.05, Math.sin(k * 2.1 + r1 * 6) * 0.25);
+          flowers.push({ m: new THREE.Matrix4().compose(at.clone().add(off), q, new THREE.Vector3(1, 1, 1)), c: FLOWER_COLOURS[Math.floor(r1 * 97 + k) % FLOWER_COLOURS.length] });
+        }
+      }
+    }
+  const instanced = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => {
+    const m = new THREE.InstancedMesh(geo, mat, n);
+    m.receiveShadow = true;
+    m.userData.noOutline = true;
+    g.add(m);
+    return m;
+  };
+  if (tufts.length) {
+    const m = instanced(tuftGeo, TUFT, tufts.length);
+    tufts.forEach((x, i) => m.setMatrixAt(i, x));
+  }
+  if (ferns.length) {
+    const m = instanced(fernGeo, FERN, ferns.length);
+    ferns.forEach((x, i) => m.setMatrixAt(i, x));
+  }
+  if (flowers.length) {
+    const m = instanced(flowerGeo, WILDFLOWER, flowers.length);
+    flowers.forEach((f, i) => {
+      m.setMatrixAt(i, f.m);
+      m.setColorAt(i, f.c);
+    });
+  }
+  return g;
 }

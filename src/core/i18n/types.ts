@@ -9,7 +9,7 @@ import type { Difficulty } from "../difficulty";
 import type { Setting } from "../plot";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
-import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial, FrameColor, WindowStyle } from "../model";
+import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial, FrameColor, WindowStyle, FenceStyle } from "../model";
 import type { Issue } from "../validate";
 
 export const LANGS = ["en", "sv"] as const;
@@ -329,6 +329,8 @@ export interface Messages {
       driveway: string;
       gravelDriveway: string;
       footpath: string;
+      fence(style: string): string;
+      gate: string;
       lightWells: string;
       paint(color: string): string;
       empty: string;
@@ -371,6 +373,11 @@ export interface Messages {
     garden: string;
     gardenTitle: string;
     gardenNote: string;
+    gardenThingsTitle: string;
+    fence: string;
+    noFence: string;
+    fenceStyles: Record<FenceStyle, string>;
+    fenceNote: string;
     addPlant(name: string): string;
     balcony: string;
     addBalcony: string;

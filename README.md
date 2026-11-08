@@ -151,6 +151,12 @@ on the floor), rugs under coffee tables, beds and dining tables, pictures on fre
 skirting boards, wall cabinets over kitchen counters, and railings on stairs and round
 stairwells. They follow the rooms and furniture on their own (`src/core/decor.ts`).
 
+**Seasons and the garden.** The season menu changes the whole world: blossom in spring,
+autumn colours, bare trees, snow on the ground and roofs, and frozen lakes in winter.
+The landscape has oaks, maples, willows and stumps, and long grass, wildflowers and ferns.
+The Garden menu adds a shed, a greenhouse, a pond, a vegetable patch, a swing and a
+trampoline (in the back garden), and a picket or board fence with a gate.
+
 **Doors, openings and roofs.** Outer walls take windows, doors, **glass doors** (wide, and
 they let daylight in like windows) and garage doors; inside walls take doors or an
 **opening**: a gap with no door that joins two rooms. Gable and hip roofs work on any

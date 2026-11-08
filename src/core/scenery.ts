@@ -14,7 +14,7 @@ import { Vec2, pointInPolygon } from "./geometry";
 import type { WallMaterial } from "./model";
 import { type Plot, type RoadKind, type Setting, type Side, groundHeight, sideEdge } from "./plot";
 
-export type TreeKind = "round" | "birch" | "pine" | "bush";
+export type TreeKind = "round" | "birch" | "pine" | "bush" | "oak" | "maple" | "willow" | "stump";
 
 export interface Tree {
   at: Vec2;
@@ -904,6 +904,12 @@ function makeScenery(plot: Plot): Scenery {
     else if (inWoods) kind = kindNoise(p.x, p.y) > 0.55 ? "pine" : treeRnd() < 0.8 ? "birch" : "round";
     else if (setting === "seaside") kind = treeRnd() < 0.6 ? "pine" : "bush";
     else kind = treeRnd() < 0.7 ? "round" : treeRnd() < 0.6 ? "birch" : "bush";
+    // Some of each turn out to be another kind: by place, so the random draws (and every
+    // other tree) stay where they were.
+    const v = placeHash(p);
+    if (kind === "round" && !inWoods) kind = v < 0.2 ? "oak" : v < 0.38 ? "maple" : "round";
+    else if (kind === "birch" && shoreBand && v < 0.45) kind = "willow";
+    else if (inWoods && (kind === "pine" || kind === "birch") && v < 0.05) kind = "stump";
     trees.push({ at: p, kind, size: 0.75 + treeRnd() * 0.6 });
   }
 
@@ -957,6 +963,12 @@ export const LANDMARK_SIZE: Record<LandmarkKind, number> = {
 };
 
 /** How a tree looks beyond its kind: some round trees blossom pink, some bear apples. */
+/** A number in 0..1 that depends only on a place. */
+function placeHash(p: Vec2): number {
+  const s = Math.sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
 export function treeLook(t: Tree): "plain" | "blossom" | "apple" {
   if (t.kind !== "round") return "plain";
   if (t.look) return t.look;

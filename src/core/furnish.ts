@@ -9,7 +9,9 @@
  */
 
 import { SNAP_EPS, Vec2, pointInPolygon, projectOntoSegment, removeCollinear, segmentsIntersect } from "./geometry";
-import { FURNITURE_SIZE, type Furniture, type FurnitureKind } from "./furniture";
+import { FURNITURE_SIZE, type Furniture, type FurnitureKind, GARDEN_THINGS } from "./furniture";
+import { accessRoutes } from "./access";
+import { type Plot, sideEdge } from "./plot";
 import { type House, type Opening, type RoomType, stairDirection, stairOutline } from "./model";
 import { type Room, analyzeRooms } from "./rooms";
 
@@ -426,8 +428,15 @@ export function rotateFurniture(f: Furniture): void {
  * Plant something in the garden: in the first free spot, front garden first, clear of the
  * house (and a path's width around it) and of everything else in the garden.
  */
-export function addGardenPlant(house: House, plot: { width: number; depth: number }, kind: FurnitureKind): number | null {
+export function addGardenPlant(house: House, plot: { width: number; depth: number; access?: Plot["access"] }, kind: FurnitureKind): number | null {
   const size = FURNITURE_SIZE[kind];
+  // Not on the drive or the paths (when the plot's road is known).
+  const routes = plot.access ? accessRoutes(house, plot as Plot).routes : [];
+  const onRoute = (p: Vec2, r: (typeof routes)[number]) =>
+    r.points.slice(1).some((b, i) => {
+      const a = r.points[i];
+      return a.add(b.sub(a).normalize().scale(projectOntoSegment(p, a, b))).distance(p) < r.width / 2 + 0.3;
+    });
   const footprint = house.footprint(0);
   const fp = footprint.ok ? footprint.value : null;
   const others = house.furniture.filter((f) => f.level === 0);
@@ -440,14 +449,18 @@ export function addGardenPlant(house: House, plot: { width: number; depth: numbe
       const wider = furnitureOutline({ ...piece, width: size.width + 2, depth: size.depth + 2 });
       if ([at, ...wider].some((p) => pointInPolygon(p, fp)) || fp.some((p) => pointInPolygon(p, wider))) return false;
     }
+    if (routes.some((r) => [at, ...outline].some((p) => onRoute(p, r)))) return false;
     return !others.some((o) => furnitureOverlap(o, piece));
   };
   const step = 0.5;
-  for (let y = size.depth / 2 + 0.4; y < plot.depth; y += step) {
-    for (let x = size.width / 2 + 0.4; x < plot.width; x += step) {
-      const at = new Vec2(x, y);
-      if (fits(at)) return house.addFurniture({ kind, level: 0, at, facing: new Vec2(0, -1), ...size });
-    }
+  const spots: Vec2[] = [];
+  for (let y = size.depth / 2 + 0.4; y < plot.depth; y += step) for (let x = size.width / 2 + 0.4; x < plot.width; x += step) spots.push(new Vec2(x, y));
+  // Sheds, swings and the like go in the back garden, away from the road, when there is room.
+  if (GARDEN_THINGS.includes(kind) && plot.access) {
+    const road = sideEdge(plot as Plot, plot.access.side);
+    const away = (p: Vec2) => -p.sub(road.mid).dot(road.out);
+    spots.sort((a, b) => away(b) - away(a));
   }
+  for (const at of spots) if (fits(at)) return house.addFurniture({ kind, level: 0, at, facing: new Vec2(0, -1), ...size });
   return null;
 }

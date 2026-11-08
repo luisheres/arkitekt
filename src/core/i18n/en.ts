@@ -61,6 +61,12 @@ export const en: Messages = {
     Shrub: "Shrub",
     FlowerBed: "Flower bed",
     Hedge: "Hedge",
+    Shed: "Shed",
+    Greenhouse: "Greenhouse",
+    Pond: "Pond",
+    VegetablePatch: "Vegetable patch",
+    Swing: "Swing",
+    Trampoline: "Trampoline",
   },
   floorPhrase: {
     Wood: { one: "a wooden floor", many: "wooden floors" },
@@ -383,6 +389,10 @@ export const en: Messages = {
         return "A terrace";
       case "sunnyTerrace":
         return `A terrace or balcony with at least ${r.minHours} hours of sun`;
+      case "playGarden":
+        return "A swing or a trampoline for the children";
+      case "kitchenGarden":
+        return "A vegetable patch or a greenhouse";
       case "sunsetView":
         return "A balcony or terrace with the evening sun";
       case "fireplace":
@@ -542,6 +552,8 @@ export const en: Messages = {
       driveway: "Driveway",
       gravelDriveway: "Gravel driveway",
       footpath: "Path to the front door",
+      fence: (style) => `${style} fence`,
+      gate: "Garden gate",
       exposedFoundation: "Foundation walls above ground",
       lightWells: "Light wells",
       balcony: "Balcony",
@@ -587,6 +599,11 @@ export const en: Messages = {
     garden: "Garden",
     gardenTitle: "Plant trees, shrubs, flower beds and hedges",
     gardenNote: "New plants go in a free spot in the garden; drag them where you like, or click one to turn or remove it.",
+    gardenThingsTitle: "Build, grow and play: a shed, a greenhouse, a pond, vegetables, a swing, a trampoline",
+    fence: "Fence round the plot",
+    noFence: "None",
+    fenceStyles: { Picket: "Picket", Board: "Board" },
+    fenceNote: "The fence runs round the plot, with a gate where the path comes in and a gap for the drive.",
     addPlant: (name) => `+ ${name}`,
     balcony: "Balcony",
     addBalcony: "+ Balcony",

@@ -66,6 +66,7 @@ import {
   validate,
   wallThickness,
   doorApproaches,
+  fenceLayout,
   FLOOR_SLAB_HEIGHT,
   siteLevel,
 } from "../core";
@@ -995,6 +996,12 @@ export class PlanView {
     for (const r of accessRoutes(this.house, this.store.plot).routes)
       out.push(`<polyline class="route ${r.surface}" style="stroke-width:${(r.width * this.scale).toFixed(1)}" points="${this.pts(r.points)}"/>`);
     for (const wall of s.walls) out.push(`<polyline class="stone-wall" style="stroke-width:${Math.max(2, 0.6 * this.scale).toFixed(1)}" points="${this.pts(wall)}"/>`);
+    // The fence round the plot, with its gates.
+    if (this.house.fence) {
+      const fence = fenceLayout(this.house, this.store.plot);
+      for (const [a, b] of fence.runs) out.push(`<polyline class="fence ${this.house.fence.toLowerCase()}" points="${this.pts([a, b])}"/>`);
+      for (const g of fence.gaps) if (g.gate) out.push(`<polyline class="fence-gate" points="${this.pts([g.a, g.b])}"/>`);
+    }
     const visible = (p: Vec2, r: number) => p.x > vx0 - r && p.x < vx1 + r && p.y > vy0 - r && p.y < vy1 + r;
     const circle = (p: Vec2, r: number, cls: string) => {
       const [x, y] = this.toScreen(p);
@@ -1019,7 +1026,7 @@ export class PlanView {
     for (const l of s.landmarks) if (visible(l.at, 30)) out.push(this.landmarkSymbol(l));
     for (const r of s.rocks) if (visible(r.at, 2)) out.push(circle(r.at, r.size * 0.8, "rock"));
     for (const t of s.trees) {
-      const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9 }[t.kind] * t.size;
+      const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9, oak: 2.8, maple: 2.1, willow: 2.5, stump: 0.4 }[t.kind] * t.size;
       if (!visible(t.at, r)) continue;
       const look = treeLook(t);
       out.push(circle(t.at, r, `tree ${t.kind} ${look}`), circle(t.at.add(new Vec2(r * 0.3, r * 0.3)), r * 0.45, "tree-light"));
@@ -1138,6 +1145,29 @@ export class PlanView {
       }
       case "Hedge":
         return `<g class="hedge-piece">${rect(0, 1, 0, 1)}</g>`;
+      case "Shed":
+        // The roof seen from above: its ridge across.
+        return `<g class="shed">${rect(0, 1, 0, 1)}${line(0, 0.5, 1, 0.5)}</g>`;
+      case "Greenhouse": {
+        const bars = [0.25, 0.5, 0.75].map((x) => line(x, 0, x, 1)).join("");
+        return `<g class="greenhouse">${rect(0, 1, 0, 1)}${bars}${line(0, 0.5, 1, 0.5)}</g>`;
+      }
+      case "Pond": {
+        const edge = Array.from({ length: 16 }, (_, i) => {
+          const a = (i / 16) * Math.PI * 2;
+          return at(0.5 + Math.cos(a) * (0.47 + 0.03 * Math.sin(a * 3)), 0.5 + Math.sin(a) * (0.46 + 0.03 * Math.cos(a * 2)));
+        });
+        return `<g class="pond"><polygon points="${this.pts(edge)}"/></g>`;
+      }
+      case "VegetablePatch":
+        return `<g class="veg">${rect(0, 1, 0, 1)}${[0.25, 0.5, 0.75].map((z) => line(0.06, z, 0.94, z)).join("")}</g>`;
+      case "Swing":
+        return `<g class="play">${rect(0, 1, 0.42, 0.58)}${rect(0.3, 0.45, 0.4, 0.6)}${rect(0.55, 0.7, 0.4, 0.6)}</g>`;
+      case "Trampoline": {
+        const ring = Array.from({ length: 20 }, (_, i) => at(0.5 + Math.cos((i / 20) * Math.PI * 2) * 0.5, 0.5 + Math.sin((i / 20) * Math.PI * 2) * 0.5));
+        const mat = Array.from({ length: 20 }, (_, i) => at(0.5 + Math.cos((i / 20) * Math.PI * 2) * 0.4, 0.5 + Math.sin((i / 20) * Math.PI * 2) * 0.4));
+        return `<g class="trampoline"><polygon points="${this.pts(ring)}"/><polygon class="mat" points="${this.pts(mat)}"/></g>`;
+      }
     }
     return parts.join("");
   }

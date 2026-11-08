@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
 import { buildInterior, setLampsDusk } from "./interior3d";
-import { FRAME_HEX, PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { FRAME_HEX, PAINT_HEX, floorTexture, snowy, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   FLOOR_FINISHES,
@@ -26,7 +26,7 @@ import {
   exposedBase,
   siteOf,
   type Site,
-  isGardenPlant,
+  isOutdoor,
   FLOOR_STRUCTURE,
   roomAt,
   STAIR_LENGTH,
@@ -49,6 +49,8 @@ import {
   wallThickness,
   doorApproaches,
   decorate,
+  fenceLayout,
+  type FenceStyle,
   roofHeightAt,
   FRAME_COLORS,
   type FrameColor,
@@ -80,7 +82,7 @@ const palette = {
   // Gables and fascia use the facade material but must render from both sides.
   gable: each(WALL_MATERIALS, (m) => worldMaterial(wallTexture(m), { roughness: 0.85, side: THREE.DoubleSide })),
   roof: each(ROOF_MATERIALS, (m) =>
-    worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide }),
+    snowy(worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide })),
   ),
   glass: toon({ color: "#a8dcff", transparent: true, opacity: 0.6, emissive: "#ffcf70", emissiveIntensity: 0 }),
   frame: matte(0.96, 0.96, 0.94, 0.6),
@@ -245,7 +247,7 @@ const routeMaterials = {
 const baseMaterial = worldMaterial(wallTexture("Concrete"), { side: THREE.DoubleSide });
 
 /** The garden's lawn, shared by every build. */
-const lawnMaterial = worldMaterial(groundTexture("lawn"));
+const lawnMaterial = snowy(worldMaterial(groundTexture("lawn")));
 
 /**
  * The plot's lawn as built, following the shaped ground. It stops at the house's outer
@@ -648,7 +650,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const piece = buildFurniture(f);
       piece.traverse((o) => (o.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick));
       // Garden plants stand on the ground (outside the platform); everything else on the floor.
-      if (isGardenPlant(f.kind)) {
+      if (isOutdoor(f.kind)) {
         piece.position.y = ground(f.at.x, f.at.y);
         outside.push(piece);
         continue;
@@ -821,6 +823,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         outside.push(mesh);
       }
     }
+    if (house.fence) outside.push(buildFence(house, options.plot, ground));
     // Steps (or a ramp) up to raised outside doors.
     for (const a of doorApproaches(house, platform + FLOOR_SLAB_HEIGHT, ground)) outside.push(approach(a, ground));
     // A light well outside each basement window: a grating at ground level.
@@ -1027,5 +1030,78 @@ function approach(a: DoorApproach, ground: (x: number, y: number) => number): TH
     }
   };
   rail(RAMP_LANDING - 0.05);
+  return g;
+}
+
+const fenceMaterials: Record<FenceStyle, THREE.Material> = { Picket: toon({ color: "#f4f1ea" }), Board: toon({ color: "#9c3a2e" }) };
+
+/** A fence round the plot: posts, rails and pickets (or boards), a gate across each path. */
+function buildFence(house: House, plot: Plot, ground: (x: number, y: number) => number): THREE.Group {
+  const style = house.fence!;
+  const g = new THREE.Group();
+  const { runs, gaps } = fenceLayout(house, plot);
+  const mat = fenceMaterials[style];
+  const H = style === "Picket" ? 0.9 : 1.2;
+  const post = (p: Vec2, h = H + 0.08) => {
+    const m = solid(unitBox, mat);
+    m.position.set(p.x, ground(p.x, p.y) + h / 2, p.y);
+    m.scale.set(0.09, h, 0.09);
+    g.add(m);
+  };
+  // Pickets or boards: one instanced mesh for the lot.
+  const slats: { at: Vec2; yaw: number; y: number }[] = [];
+  const spacing = style === "Picket" ? 0.14 : 0.105;
+  for (const [a, b] of runs) {
+    const len = a.distance(b);
+    const d = b.sub(a).normalize();
+    const yaw = Math.atan2(-d.y, d.x);
+    const posts = Math.max(1, Math.ceil(len / 2));
+    for (let i = 0; i <= posts; i++) post(a.add(d.scale((len * i) / posts)));
+    // Two rails between the posts, following the ground.
+    for (let i = 0; i < posts; i++) {
+      const [p, q] = [a.add(d.scale((len * i) / posts)), a.add(d.scale((len * (i + 1)) / posts))];
+      for (const h of [0.25, H - 0.2]) g.add(beam(new THREE.Vector3(p.x, ground(p.x, p.y) + h, p.y), new THREE.Vector3(q.x, ground(q.x, q.y) + h, q.y), 0.04, 0.07, mat));
+    }
+    for (let u = spacing / 2; u < len; u += spacing) {
+      const at = a.add(d.scale(u));
+      slats.push({ at, yaw, y: ground(at.x, at.y) });
+    }
+  }
+  if (slats.length) {
+    const slat = new THREE.InstancedMesh(unitBox, mat, slats.length);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const width = style === "Picket" ? 0.07 : 0.1;
+    slats.forEach((s, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw);
+      m.compose(new THREE.Vector3(s.at.x, s.y + H / 2 + 0.02, s.at.y), q, new THREE.Vector3(width, H, 0.025));
+      slat.setMatrixAt(i, m);
+    });
+    slat.castShadow = slat.receiveShadow = true;
+    g.add(slat);
+  }
+  for (const gap of gaps) {
+    post(gap.a, H + 0.2);
+    post(gap.b, H + 0.2);
+    if (!gap.gate) continue;
+    // A gate: a frame with a diagonal brace and slats, standing a little open.
+    const d = gap.b.sub(gap.a);
+    const len = d.length();
+    const gate = new THREE.Group();
+    const y = ground(gap.a.x, gap.a.y);
+    gate.position.set(gap.a.x, y, gap.a.y);
+    gate.rotation.y = Math.atan2(-d.y, d.x) + 0.35;
+    const part = (x0: number, x1: number, y0: number, y1: number) => {
+      const p = solid(unitBox, mat);
+      p.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0);
+      p.scale.set(x1 - x0, y1 - y0, 0.04);
+      gate.add(p);
+    };
+    const w = len - 0.12;
+    part(0.06, w, 0.15, 0.22);
+    part(0.06, w, H - 0.25, H - 0.18);
+    for (let x = 0.12; x < w; x += 0.13) part(x - 0.035, x + 0.035, 0.08, H - 0.05);
+    g.add(gate);
+  }
   return g;
 }

@@ -9,6 +9,8 @@ import { type RoofGeometry, buildRoof, roofHeightAt } from "./roof";
 import { analyzeLayout } from "./layout";
 import { balconyOutline, interiorNormal } from "./edit";
 import { SEASON_DAY, sunHours, sunsetSun } from "./sun";
+import { accessRoutes } from "./access";
+import type { Plot } from "./plot";
 
 /** How far a chimney rises above the roof where it comes through. */
 export const CHIMNEY_ABOVE_ROOF = 0.9;
@@ -202,4 +204,63 @@ export function doorApproaches(house: House, floor: number, ground: (x: number, 
     out.push({ opening: o.id, at, out: outward, along, width: o.width + 0.4, rise, ground: g, steps, ramp, length: ramp ? Math.max(1.2, rise * 12) : steps * STEP_GOING + 0.4, side });
   }
   return out;
+}
+
+/** A fence round the plot: its runs, and the gaps where the drive and paths come in. */
+export interface FenceLayout {
+  runs: [Vec2, Vec2][];
+  /** A gate across a path, or an open gap for a drive (with a post each side). */
+  gaps: { a: Vec2; b: Vec2; gate: boolean }[];
+  /** Metres of fence, not counting the gaps. */
+  length: number;
+}
+
+/** How far inside the plot's edge the fence stands. */
+export const FENCE_INSET = 0.25;
+
+export function fenceLayout(house: House, plot: Plot): FenceLayout {
+  const [w, d, k] = [plot.width, plot.depth, FENCE_INSET];
+  const corners = [new Vec2(k, k), new Vec2(w - k, k), new Vec2(w - k, d - k), new Vec2(k, d - k)];
+  // Where each route crosses the fence line: a gap as wide as the route, a little more.
+  const cuts: { side: number; t: number; half: number; gate: boolean }[] = [];
+  for (const r of accessRoutes(house, plot).routes) {
+    for (let i = 0; i + 1 < r.points.length; i++) {
+      const [p, q] = [r.points[i], r.points[i + 1]];
+      for (let s = 0; s < 4; s++) {
+        const [a, b] = [corners[s], corners[(s + 1) % 4]];
+        const hit = segmentCross(p, q, a, b);
+        if (hit !== null && !cuts.some((c) => c.side === s && Math.abs(c.t - hit * a.distance(b)) < 0.5)) cuts.push({ side: s, t: hit * a.distance(b), half: r.width / 2 + 0.2, gate: r.kind === "path" });
+      }
+    }
+  }
+  const runs: [Vec2, Vec2][] = [];
+  const gaps: FenceLayout["gaps"] = [];
+  let length = 0;
+  for (let s = 0; s < 4; s++) {
+    const [a, b] = [corners[s], corners[(s + 1) % 4]];
+    const dir = b.sub(a).normalize();
+    const len = a.distance(b);
+    let t = 0;
+    for (const c of cuts.filter((c) => c.side === s).sort((x, y) => x.t - y.t)) {
+      const [g0, g1] = [Math.max(0, c.t - c.half), Math.min(len, c.t + c.half)];
+      if (g0 > t + 0.05) runs.push([a.add(dir.scale(t)), a.add(dir.scale(g0))]);
+      gaps.push({ a: a.add(dir.scale(g0)), b: a.add(dir.scale(g1)), gate: c.gate });
+      length += g0 - t;
+      t = g1;
+    }
+    if (len > t + 0.05) runs.push([a.add(dir.scale(t)), b]);
+    length += len - t;
+  }
+  return { runs, gaps, length };
+}
+
+/** Where segment p–q crosses segment a–b, as a fraction along a–b; null if it does not. */
+function segmentCross(p: Vec2, q: Vec2, a: Vec2, b: Vec2): number | null {
+  const r = q.sub(p);
+  const s = b.sub(a);
+  const den = r.cross(s);
+  if (Math.abs(den) < 1e-12) return null;
+  const t = a.sub(p).cross(s) / den;
+  const u = a.sub(p).cross(r) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? u : null;
 }

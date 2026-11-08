@@ -289,6 +289,8 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     dormerBase: base.dormerBase * all,
     dormerM: base.dormerM * all,
     skylight: base.skylight * all,
+    fenceM: { Picket: base.fenceM.Picket * all, Board: base.fenceM.Board * all },
+    gate: base.gate * all,
     step: base.step * all,
     rampM: base.rampM * all,
     paintM2: base.paintM2 * all,
@@ -385,6 +387,8 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
       if (a.maxStoreys < 2) needs.push({ kind: "storeys", count: 2 });
       break;
     case "gardenPlants":
+    case "playGarden":
+    case "kitchenGarden":
       if (!a.garden) needs.push({ kind: "garden" });
       break;
     case "indoorPlants":
