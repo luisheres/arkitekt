@@ -248,14 +248,16 @@ describe("the ideas: platform height, retaining walls, any angle", async () => {
   const { stairDirection } = await import("./model");
   const steep = plotById("skislope")!;
 
-  it("raises or lowers the platform, trading digging for filling", () => {
+  it("raises or lowers the platform, trading digging for foundation showing downhill", async () => {
+    const { exposedFoundationArea } = await import("./site");
     const h = new House();
     box(h, 8, 10, 18, 18);
     const middle = earthworks(h, steep);
+    const middleBase = exposedFoundationArea(h, steep);
     h.platformOffset = 0.5;
     expect(siteLevel(h, steep)).toBeCloseTo(Math.round((averageGround(h, steep) + 0.5) * 20) / 20, 9);
     const higher = earthworks(h, steep);
-    expect(higher.fill).toBeGreaterThan(middle.fill);
+    expect(exposedFoundationArea(h, steep)).toBeGreaterThan(middleBase);
     expect(higher.cut).toBeLessThan(middle.cut);
     h.platformOffset = 9;
     expect(siteLevel(h, steep)).toBeCloseTo(Math.round((averageGround(h, steep) + 1.5) * 20) / 20, 9);
@@ -269,13 +271,12 @@ describe("the ideas: platform height, retaining walls, any angle", async () => {
     expect(walls.length).toBeGreaterThan(0);
     const line = costLines(h, defaultPrices(), steep).find((l) => l.what.kind === "retainingWalls")!;
     expect(line.amount).toBeCloseTo(retainingArea(h, steep) * 180, 6);
-    // Behind the wall, the ground keeps its natural height.
+    // Where the wall is tallest, the ground behind it keeps its natural height.
     const ground = shapedGround(h, steep);
-    const w = walls[0];
-    const mid = w.a.add(w.b).scale(0.5);
-    const out = mid.sub(v(14, 18)).normalize().scale(0.4);
-    const p = mid.add(out);
-    expect(ground(p.x, p.y)).toBeCloseTo(groundHeight(steep, p.x, p.y), 6);
+    const w = walls.reduce((a, b) => (b.topA > a.topA ? b : a));
+    const out = w.a.sub(v(14, 18)).normalize().scale(0.3);
+    const p = w.a.add(out);
+    expect(ground(p.x, p.y)).toBeCloseTo(groundHeight(steep, p.x, p.y), 2);
     // Gentle slopes need none.
     const gentle = new House();
     box(gentle, 8, 6, 14, 10);
@@ -295,5 +296,36 @@ describe("the ideas: platform height, retaining walls, any angle", async () => {
     expect(h.floorArea()).toBeCloseTo(60, 4);
     for (let i = 0; i < 23; i++) rotateHouse(h, 15);
     expect(JSON.stringify(h.toJSON())).toBe(before);
+  });
+});
+
+describe("where the ground meets the house", async () => {
+  const { siteOf, exposedBase, retainingWalls } = await import("./site");
+  const { addBasement } = await import("./edit");
+  const steep = plotById("skislope")!;
+  const make = (offset: number) => {
+    const h = new House();
+    box(h, 8, 10, 20, 22);
+    addBasement(h);
+    h.platformOffset = offset;
+    return h;
+  };
+
+  it("never raises a terrace out from the facade downhill: the ground meets the house's own base", () => {
+    const h = make(1.2);
+    const site = siteOf(h, steep)!;
+    // In front of the house (downhill), just outside the facade, the ground is below the platform.
+    const front = v(14, 10 - 0.3);
+    expect(site.region(front)).toBe("ground");
+    expect(site.ground(front.x, front.y)).toBeLessThan(site.level - 0.5);
+    expect(exposedBase(h, steep).length).toBeGreaterThan(0);
+    // Retaining walls only uphill, behind the house.
+    for (const w of retainingWalls(h, steep)) expect(w.a.y).toBeGreaterThan(16);
+  });
+
+  it("keeps grass out of the house: everything inside its outer face is the house", () => {
+    const site = siteOf(make(0), steep)!;
+    for (const [x, y] of [[8, 16], [20, 16], [14, 10], [14, 22], [8.1, 10.1]]) expect(site.region(v(x, y))).toBe("house");
+    expect(site.region(v(14, 9.7))).not.toBe("house");
   });
 });

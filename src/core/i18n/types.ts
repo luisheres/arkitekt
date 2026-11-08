@@ -317,6 +317,7 @@ export interface Messages {
       basementDig: string;
       basementWalls: string;
       retainingWalls: string;
+      exposedFoundation: string;
       lightWells: string;
       paint(color: string): string;
       empty: string;

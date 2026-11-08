@@ -512,6 +512,7 @@ export const en: Messages = {
       basementDig: "Digging the basement",
       basementWalls: "Basement walls",
       retainingWalls: "Retaining walls",
+      exposedFoundation: "Foundation walls above ground",
       lightWells: "Light wells",
       balcony: "Balcony",
       paint: (color) => `${color} paint`,

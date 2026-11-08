@@ -5,7 +5,7 @@ import { type FurnitureKind, PLANT_PRICE } from "./furniture";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
-import { earthworks, retainingArea } from "./site";
+import { earthworks, exposedFoundationArea, retainingArea } from "./site";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -115,6 +115,7 @@ export type CostWhat =
   | { kind: "basementDig" }
   | { kind: "basementWalls" }
   | { kind: "retainingWalls" }
+  | { kind: "exposedFoundation" }
   | { kind: "lightWells" }
   | { kind: "plant"; plant: FurnitureKind }
   | { kind: "paint"; color: PaintColor };
@@ -196,6 +197,8 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   if (earth.basement > 0) add("groundworks", { kind: "basementDig" }, earth.basement, "m3", earth.basement * prices.basementDigM3);
   const retaining = plot ? retainingArea(house, plot) : 0;
   if (retaining > 0.05) add("groundworks", { kind: "retainingWalls" }, retaining, "m2", retaining * prices.retainingWallM2);
+  const foundation = plot ? exposedFoundationArea(house, plot) : 0;
+  if (foundation > 0.05) add("groundworks", { kind: "exposedFoundation" }, foundation, "m2", foundation * prices.basementWallM2);
   // A window in a basement's outer wall looks out into a light well dug beside it.
   const basementLayout = layouts.get(-1);
   const wells = house.openings.filter((o) => o.kind === "Window" && house.levelOf(o.wall) === -1 && basementLayout?.ok && basementLayout.value.exterior.has(o.wall)).length;
@@ -242,6 +245,7 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     basementDig: "groundworks",
     basementWalls: "groundworks",
     retainingWalls: "groundworks",
+    exposedFoundation: "groundworks",
     lightWells: "groundworks",
   };
   for (const l of costLines(house, prices, plot)) {

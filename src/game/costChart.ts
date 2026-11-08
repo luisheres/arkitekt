@@ -56,6 +56,8 @@ export function lineName(l: CostLine, short = false): string {
       return m.ui.costChart.basementWalls;
     case "retainingWalls":
       return m.ui.costChart.retainingWalls;
+    case "exposedFoundation":
+      return m.ui.costChart.exposedFoundation;
     case "lightWells":
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.lightWells}`;
     case "plant":

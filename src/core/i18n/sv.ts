@@ -520,6 +520,7 @@ export const sv: Messages = {
       basementDig: "Källarschakt",
       basementWalls: "Källarväggar",
       retainingWalls: "Stödmurar",
+      exposedFoundation: "Synlig grundmur",
       lightWells: "Ljusgårdar",
       balcony: "Balkong",
       paint: (color) => `Färg: ${color.toLowerCase()}`,

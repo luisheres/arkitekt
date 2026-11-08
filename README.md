@@ -100,17 +100,20 @@ land, built from a few natural landforms: an even slope rising towards the back 
 falling towards the water), a tilt to one side, a valley running down the plot, or rounded
 hills and hollows (the dunes have two). They are always level with the street at the
 front. The plan shows contour lines every half metre, with heights on every whole metre. A house stands on a level
-platform at the average height of the ground under it: the ground is dug away where it is
-higher and filled in where it is lower, a metre's working space around the house too, and
-blends back to its natural lie over a couple of metres (you see this in 3D). The sidebar
+platform at the average height of the ground under it. Uphill, the ground is dug away, level
+with the platform for a metre's working space around the house, then back up to its
+natural lie (held by a retaining wall where the cut is deep). Downhill, a shallow drop is
+filled as a gentle bank up to the house; a deeper one is left as it is, and the house's own
+base shows, flush with the facade: its basement walls, or an exposed foundation wall
+(priced per m²). The sidebar
 shows the platform's height and the earth moved; every cubic metre costs money
 (Groundworks), so where on the plot you build, and how big, matters. The original three
 plots stay flat.
 
 Under **Move & turn**, **Platform height** raises the platform above the ground's average
 (more earth filled in) or lowers it (more dug out), up to 1.5 m either way. Where the
-ground at the edge of the working space is cut or filled more than 0.8 m deep, a stone
-retaining wall holds it instead of a slope; it is drawn in 3D and priced per m².
+ground uphill is cut more than about 0.8 m deep, a stone retaining wall at the edge of the
+working space holds it instead of a slope; it is drawn in 3D and priced per m².
 
 **Moving and turning the house.** **✋ Move house** (`M`) drags the whole house around the
 plot, rooms, stairs and furniture too (the garden's plants stay where they are). **Move &

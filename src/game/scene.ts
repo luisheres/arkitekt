@@ -17,7 +17,9 @@ import {
   shapedGround,
   siteLevel,
   retainingWalls,
-  standingOutline,
+  exposedBase,
+  siteOf,
+  type Site,
   isGardenPlant,
   FLOOR_STRUCTURE,
   roomAt,
@@ -175,35 +177,63 @@ function railing(group: THREE.Group, a: Vec2, b: Vec2, y: number): void {
 /** Stone for retaining walls, and dark metal for light-well gratings. */
 const retainingMaterial = worldMaterial(wallTexture("Stone"), { side: THREE.DoubleSide });
 const gratingMaterial = toon({ color: "#3a3d42" });
+/** Concrete for a foundation showing above the ground. */
+const baseMaterial = worldMaterial(wallTexture("Concrete"), { side: THREE.DoubleSide });
 
 /** The garden's lawn, shared by every build. */
 const lawnMaterial = worldMaterial(groundTexture("lawn"));
 
 /**
- * The plot's lawn as built: following the ground, level around the house. Open over the
- * house when it has a basement, so the basement shows when the storeys above are hidden.
+ * The plot's lawn as built, following the shaped ground. It stops at the house's outer
+ * face (so no grass shows inside the walls or a basement), and where it meets the house
+ * or a retaining wall its cells are split finely, each piece taking the height of its own
+ * side, so the grass never slants up a wall.
  */
-function buildLawn(plot: Plot, ground: (x: number, y: number) => number, hole: readonly Vec2[] | null): THREE.Mesh {
+function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number) => number): THREE.Mesh {
   const step = 0.5;
   const nx = Math.round(plot.width / step);
   const ny = Math.round(plot.depth / step);
   const positions: number[] = [];
-  for (let j = 0; j <= ny; j++)
-    for (let i = 0; i <= nx; i++) {
-      const [x, y] = [(i / nx) * plot.width, (j / ny) * plot.depth];
-      positions.push(x, ground(x, y) + 0.01, y);
-    }
-  const index: number[] = [];
-  const at = (i: number, j: number) => j * (nx + 1) + i;
+  const square = (x0: number, y0: number, size: number, height: (x: number, y: number) => number) => {
+    const c = [
+      [x0, y0],
+      [x0 + size, y0],
+      [x0 + size, y0 + size],
+      [x0, y0 + size],
+    ].map(([x, y]) => [x, height(x, y) + 0.01, y]);
+    positions.push(...c[0], ...c[3], ...c[1], ...c[1], ...c[3], ...c[2]);
+  };
   for (let j = 0; j < ny; j++)
     for (let i = 0; i < nx; i++) {
-      if (hole && pointInPolygon(new Vec2Class(((i + 0.5) / nx) * plot.width, ((j + 0.5) / ny) * plot.depth), hole)) continue;
-      index.push(at(i, j), at(i, j + 1), at(i + 1, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
+      const [x0, y0] = [(i / nx) * plot.width, (j / ny) * plot.depth];
+      if (!site) {
+        square(x0, y0, step, ground);
+        continue;
+      }
+      const regions = [
+        [x0, y0],
+        [x0 + step, y0],
+        [x0, y0 + step],
+        [x0 + step, y0 + step],
+        [x0 + step / 2, y0 + step / 2],
+      ].map(([x, y]) => site.region(new Vec2Class(x, y)));
+      if (regions.every((r) => r === regions[0])) {
+        if (regions[0] !== "house") square(x0, y0, step, ground);
+        continue;
+      }
+      // Along an edge: small pieces, each on its own side.
+      const n = 6;
+      const sub = step / n;
+      for (let b = 0; b < n; b++)
+        for (let a = 0; a < n; a++) {
+          const [sx, sy] = [x0 + a * sub, y0 + b * sub];
+          const r = site.region(new Vec2Class(sx + sub / 2, sy + sub / 2));
+          if (r !== "house") square(sx, sy, sub, (x, y) => site.heightIn(new Vec2Class(x, y), r));
+        }
     }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(((nx + 1) * (ny + 1)) * 2), 2));
-  g.setIndex(index);
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((positions.length / 3) * 2), 2));
   g.computeVertexNormals();
   const mesh = new THREE.Mesh(g, lawnMaterial);
   mesh.receiveShadow = true;
@@ -466,8 +496,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
   }
   if (options.plot) {
-    // Retaining walls where the ground is cut or filled deep: from the platform up (or down)
-    // to the natural ground behind them.
+    // Retaining walls where the ground is cut deep: from the platform up to the ground behind.
     const walls = retainingWalls(house, options.plot);
     if (walls.length) {
       const positions: number[] = [];
@@ -476,8 +505,8 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         const quad = [
           [a.x, platform, a.y],
           [b.x, platform, b.y],
-          [b.x, w.groundB + 0.05, b.y],
-          [a.x, w.groundA + 0.05, a.y],
+          [b.x, w.topB + 0.03, b.y],
+          [a.x, w.topA + 0.03, a.y],
         ];
         positions.push(...quad[0], ...quad[1], ...quad[2], ...quad[0], ...quad[2], ...quad[3]);
       }
@@ -488,6 +517,33 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const mesh = new THREE.Mesh(g, retainingMaterial);
       mesh.castShadow = mesh.receiveShadow = true;
       outside.push(mesh);
+    }
+    // Downhill, the house's base shows above the ground: concrete, flush with the facade,
+    // from the ground up to the platform (below the basement, if there is one).
+    const exposed = exposedBase(house, options.plot);
+    if (exposed.length) {
+      const top = platform - (house.basement ? house.basementDepth() : 0);
+      const positions: number[] = [];
+      for (const e of exposed) {
+        const [ga, gb] = [Math.min(e.groundA, top) - 0.05, Math.min(e.groundB, top) - 0.05];
+        if (ga >= top - 0.06 && gb >= top - 0.06) continue;
+        const q = [
+          [e.a.x, ga, e.a.y],
+          [e.b.x, gb, e.b.y],
+          [e.b.x, top, e.b.y],
+          [e.a.x, top, e.a.y],
+        ];
+        positions.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]);
+      }
+      if (positions.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((positions.length / 3) * 2), 2));
+        g.computeVertexNormals();
+        const mesh = new THREE.Mesh(g, baseMaterial);
+        mesh.castShadow = mesh.receiveShadow = true;
+        outside.push(mesh);
+      }
     }
     // A light well outside each basement window: a grating at ground level.
     const basement = analyses.get(-1);
@@ -517,7 +573,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   group.position.y = platform;
   const site = new THREE.Group();
   site.add(group, ...outside);
-  if (options.plot) site.add(buildLawn(options.plot, ground, house.basement ? standingOutline(house) : null));
+  if (options.plot) site.add(buildLawn(options.plot, siteOf(house, options.plot), ground));
   return site;
 }
 

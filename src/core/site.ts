@@ -1,11 +1,16 @@
 /**
- * Building on sloping ground: the house stands on a level platform, at the average height
- * of the ground under it. Where the ground is higher it is dug away, where it is lower
- * it is filled, a metre's working space around the house too, and the earth moved costs
- * money. Beyond that the ground slopes back to its natural lie over a couple of metres.
- * A basement is dug out below the platform. The platform can be raised or lowered from
- * the average (more filling, or more digging). Where the ground is cut or filled more than
- * RETAIN deep at the edge of the working space, a retaining wall holds it instead of a slope.
+ * Building on sloping ground. The house stands on a level platform, at the average height
+ * of the ground under it (raised or lowered by the player). How the ground meets it:
+ *
+ * - Uphill, where the ground is higher than the platform, it is dug away: level with the
+ *   platform for a metre's working space around the house, then sloping back up to its
+ *   natural lie. Where that cut is deep, a retaining wall holds it at the edge of the
+ *   working space instead.
+ * - Downhill, where the ground is lower, a shallow drop is filled as a gentle bank up to
+ *   the house. A deeper one is left as it is, and the house's own base shows, flush with
+ *   the facade: the basement walls, or an exposed foundation wall.
+ *
+ * The earth dug and filled, the retaining walls and exposed foundation walls cost money.
  */
 
 import { Vec2, offsetPolygon, pointInPolygon } from "./geometry";
@@ -87,77 +92,150 @@ function nearestOnPolygon(p: Vec2, polygon: readonly Vec2[]): Vec2 {
   return best;
 }
 
-/** A stretch of retaining wall along the edge of the working space. */
+/** Smoothstep from 0 to 1 as x goes from a to b. */
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/** Where on the site a point is: under the house, on the dug-out working space, or beyond. */
+export type SiteRegion = "house" | "terrace" | "ground";
+
+/** How the house sits on its plot: the levelled site, worked out once per design. */
+export interface Site {
+  level: number;
+  /** The house's outer face (its outline grown by half the outer walls' thickness). */
+  face: Vec2[];
+  /** The edge of the working space dug out around it, where retaining walls stand. */
+  edge: Vec2[];
+  region(p: Vec2): SiteRegion;
+  /** The ground as built at a point, as seen from a region (the two differ across a retaining wall). */
+  heightIn(p: Vec2, region: SiteRegion): number;
+  /** The ground as built. */
+  ground(x: number, y: number): number;
+}
+
+/** A stretch of retaining wall: along the edge of the working space, from the platform up to its top. */
 export interface RetainingWall {
   a: Vec2;
   b: Vec2;
-  /** The ground beyond the wall at each end (the platform is the other side). */
+  topA: number;
+  topB: number;
+}
+
+/** A stretch of the house's base showing above the ground downhill. */
+export interface ExposedBase {
+  a: Vec2;
+  b: Vec2;
+  /** The ground at each end, below the platform. */
   groundA: number;
   groundB: number;
 }
 
-/** The retaining walls: wherever the edge of the working space is cut or filled more than RETAIN. */
-export function retainingWalls(house: House, plot: Plot): RetainingWall[] {
+/** The level site of a house on a plot, or null on flat land or with no house yet. */
+export function siteOf(house: House, plot: Plot): Site | null {
   const outline = standingOutline(house);
-  if (!outline || !plot.terrain) return [];
+  if (!outline || !plot.terrain) return null;
   const level = siteLevel(house, plot);
-  const edge = offsetPolygon(outline, WORKING_MARGIN);
-  const walls: RetainingWall[] = [];
-  edge.forEach((a, i) => {
-    const b = edge[(i + 1) % edge.length];
-    const n = Math.max(1, Math.ceil(a.distance(b) / STEP));
-    for (let k = 0; k < n; k++) {
-      const [p, q] = [a.add(b.sub(a).scale(k / n)), a.add(b.sub(a).scale((k + 1) / n))];
-      const [gp, gq] = [groundHeight(plot, p.x, p.y), groundHeight(plot, q.x, q.y)];
-      if (Math.abs((gp + gq) / 2 - level) > RETAIN) walls.push({ a: p, b: q, groundA: gp, groundB: gq });
+  const standing = house.footprint(0).ok ? 0 : -1;
+  const half = house.wallsOn(standing).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) / 2;
+  const face = offsetPolygon(outline, half);
+  const edge = offsetPolygon(face, WORKING_MARGIN);
+  const natural = (p: Vec2) => groundHeight(plot, p.x, p.y);
+  /** How deep the cut (+) or fill (-) is where the house meets the ground nearest p. */
+  const depthAt = (p: Vec2) => natural(nearestOnPolygon(p, face)) - level;
+  const region = (p: Vec2): SiteRegion => {
+    if (pointInPolygon(p, face)) return "house";
+    return depthAt(p) >= 0 && pointInPolygon(p, edge) ? "terrace" : "ground";
+  };
+  const heightIn = (p: Vec2, r: SiteRegion): number => {
+    if (r !== "ground") return level;
+    const n = natural(p);
+    const depth = depthAt(p);
+    if (depth >= 0) {
+      // Uphill: beyond the working space, back up to the natural ground (or held by a wall).
+      const m = nearestOnPolygon(p, edge);
+      const held = smooth(RETAIN * 0.5, RETAIN, natural(m) - level);
+      const away = pointInPolygon(p, edge) ? 0 : m.distance(p);
+      return level + (n - level) * (held + (1 - held) * smooth(0, BLEND, away));
     }
-  });
-  return walls;
+    // Downhill: a bank up to the house where the drop is shallow; the natural ground where it is deep.
+    const left = smooth(RETAIN * 0.5, RETAIN, -depth);
+    return level + (n - level) * (left + (1 - left) * smooth(0, BLEND, distanceToPolygon(p, face)));
+  };
+  return { level, face, edge, region, heightIn, ground: (x, y) => heightIn(new Vec2(x, y), region(new Vec2(x, y))) };
 }
+
+/** Points along a polygon's outline, about `step` apart. */
+function along(polygon: readonly Vec2[], step: number): [Vec2, Vec2][] {
+  const out: [Vec2, Vec2][] = [];
+  polygon.forEach((a, i) => {
+    const b = polygon[(i + 1) % polygon.length];
+    const n = Math.max(1, Math.ceil(a.distance(b) / step));
+    for (let k = 0; k < n; k++) out.push([a.add(b.sub(a).scale(k / n)), a.add(b.sub(a).scale((k + 1) / n))]);
+  });
+  return out;
+}
+
+/** The retaining walls along the edge of the working space, where the cut is deep. */
+export function retainingWalls(house: House, plot: Plot): RetainingWall[] {
+  const site = siteOf(house, plot);
+  if (!site) return [];
+  const top = (p: Vec2) => {
+    // Just beyond the wall, where the ground keeps (most of) its natural height.
+    const q = p.add(p.sub(nearestOnPolygon(p, site.face)).normalize().scale(0.02));
+    return site.region(p) === "house" ? site.level : site.heightIn(q, "ground");
+  };
+  return along(site.edge, 0.25)
+    .map(([a, b]) => ({ a, b, topA: top(a), topB: top(b) }))
+    .filter((w) => w.topA > site.level + 0.02 || w.topB > site.level + 0.02);
+}
+
+/** The house's base showing above the ground downhill (walls standing on it are flush with the facade). */
+export function exposedBase(house: House, plot: Plot): ExposedBase[] {
+  const site = siteOf(house, plot);
+  if (!site) return [];
+  const at = (p: Vec2) => site.heightIn(p.add(p.sub(nearestOnPolygon(p, standingOutline(house)!)).normalize().scale(0.02)), "ground");
+  return along(site.face, 0.25)
+    .map(([a, b]) => ({ a, b, groundA: at(a), groundB: at(b) }))
+    .filter((e) => e.groundA < site.level - 0.02 || e.groundB < site.level - 0.02);
+}
+
+const faceArea = (a: Vec2, b: Vec2, ha: number, hb: number) => (a.distance(b) * (Math.max(ha, 0) + Math.max(hb, 0))) / 2;
 
 /** The area of the retaining walls' faces (m²). */
 export function retainingArea(house: House, plot: Plot): number {
   const level = siteLevel(house, plot);
-  return retainingWalls(house, plot).reduce((s, w) => s + w.a.distance(w.b) * (Math.abs(w.groundA - level) + Math.abs(w.groundB - level)) / 2, 0);
+  return retainingWalls(house, plot).reduce((s, w) => s + faceArea(w.a, w.b, w.topA - level, w.topB - level), 0);
 }
 
-/** Earth dug away and filled in to make the platform (m³), and the basement's hole. */
-export function earthworks(house: House, plot: Plot): { cut: number; fill: number; basement: number } {
-  const outline = standingOutline(house);
-  const basementArea = house.basement ? house.floorArea(-1) : 0;
-  const basement = basementArea * house.basementDepth();
-  if (!outline || !plot.terrain) return { cut: 0, fill: 0, basement };
+/** The area of foundation wall showing below the house downhill, not counting basement walls (m²). */
+export function exposedFoundationArea(house: House, plot: Plot): number {
   const level = siteLevel(house, plot);
+  const covered = house.basement ? house.basementDepth() : 0;
+  return exposedBase(house, plot).reduce((s, e) => s + faceArea(e.a, e.b, level - e.groundA - covered, level - e.groundB - covered), 0);
+}
+
+/** Earth dug away and filled in to shape the site (m³), and the basement's hole. */
+export function earthworks(house: House, plot: Plot): { cut: number; fill: number; basement: number } {
+  const basement = house.basement ? house.floorArea(-1) * house.basementDepth() : 0;
+  const site = siteOf(house, plot);
+  if (!site) return { cut: 0, fill: 0, basement };
   let cut = 0;
   let fill = 0;
-  for (const p of samples(outline, WORKING_MARGIN)) {
-    const dh = groundHeight(plot, p.x, p.y) - level;
-    if (dh > 0) cut += dh * STEP * STEP;
-    else fill -= dh * STEP * STEP;
+  for (const p of samples(site.face, WORKING_MARGIN + BLEND)) {
+    const n = groundHeight(plot, p.x, p.y);
+    const r = site.region(p);
+    // Under the house, the ground is dug down to the platform; nothing is filled under it.
+    const dh = r === "house" ? Math.min(site.level - n, 0) : site.heightIn(p, r) - n;
+    if (dh < 0) cut -= dh * STEP * STEP;
+    else fill += dh * STEP * STEP;
   }
   return { cut, fill, basement };
 }
 
-/**
- * The ground as built: level with the platform under and around the house, sloping back
- * to the natural ground beyond.
- */
+/** The ground as built: dug and filled around the house, natural further away. */
 export function shapedGround(house: House, plot: Plot): (x: number, y: number) => number {
-  const outline = standingOutline(house);
-  if (!outline || !plot.terrain) return (x, y) => groundHeight(plot, x, y);
-  const level = siteLevel(house, plot);
-  return (x, y) => {
-    const natural = groundHeight(plot, x, y);
-    const p = new Vec2(x, y);
-    const d = distanceToPolygon(p, outline);
-    if (d <= WORKING_MARGIN) return level;
-    if (d >= WORKING_MARGIN + BLEND) return natural;
-    // Behind a retaining wall the ground keeps its natural height right up to the wall.
-    const near = nearestOnPolygon(p, outline);
-    const edge = near.add(p.sub(near).normalize().scale(WORKING_MARGIN));
-    if (Math.abs(groundHeight(plot, edge.x, edge.y) - level) > RETAIN) return natural;
-    const t = (d - WORKING_MARGIN) / BLEND;
-    const s = t * t * (3 - 2 * t);
-    return level + (natural - level) * s;
-  };
+  const site = siteOf(house, plot);
+  return site ? site.ground : (x, y) => groundHeight(plot, x, y);
 }
