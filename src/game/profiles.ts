@@ -27,7 +27,7 @@ const KEY = "architect.profiles.v1";
 const PER_PLAYER = ["game.v2", "free.v1", "designs.v1"] as const;
 export type PlayerData = (typeof PER_PLAYER)[number];
 
-export const AVATARS = ["🦊", "🐻", "🐼", "🐸", "🐙", "🦉", "🐝", "🦄", "🐢", "🐧", "🦁", "🐰"];
+export const AVATARS = ["🦊", "🐻", "🐼", "🦦", "🐸", "🐙", "🦉", "🐝", "🦄", "🐢", "🐧", "🦁", "🐰"];
 
 function read(): Profiles | null {
   try {

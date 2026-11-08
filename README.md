@@ -95,9 +95,11 @@ Each plot is bought by certain client tiers, so better plots come with bigger cl
 play can build on any of them. In 3D the camera never sinks into a hillside: it rises to
 see over the land to the house.
 
-**Sloping ground.** Most of the newer plots are not flat: they rise towards the back,
-tilt to one side or fall towards the water, with bumps, always level with the street at
-the front. The plan shows contour lines every half metre. A house stands on a level
+**Sloping ground.** Most of the newer plots are not flat. Each has a clear lie of the
+land, built from a few natural landforms: an even slope rising towards the back (or
+falling towards the water), a tilt to one side, a valley running down the plot, or rounded
+hills and hollows (the dunes have two). They are always level with the street at the
+front. The plan shows contour lines every half metre, with heights on every whole metre. A house stands on a level
 platform at the average height of the ground under it: the ground is dug away where it is
 higher and filled in where it is lower, a metre's working space around the house too, and
 blends back to its natural lie over a couple of metres (you see this in 3D). The sidebar

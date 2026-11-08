@@ -2522,3 +2522,12 @@ button.locked::after,
   stroke-width: 1.5;
   stroke-dasharray: 6 4;
 }
+
+.plan .contour-label {
+  fill: #3c5f1e;
+  font-size: 10px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 3px;
+}

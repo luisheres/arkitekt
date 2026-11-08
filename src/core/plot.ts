@@ -28,20 +28,21 @@ export interface Plot {
 }
 
 /**
- * The lie of the land on a plot: a slope rising towards the back (negative: falling, as
- * towards water), a tilt from one side to the other, and how bumpy it is (metres). The
+ * The lie of the land on a plot, made of a few clear landforms so it reads like real ground:
+ * a slope rising towards the back (negative: falling, as towards water), a tilt from one
+ * side to the other, a valley running down the plot, and rounded hills or hollows. The
  * front edge, along the street, is always at street level.
  */
 export interface Terrain {
   /** Metres of rise per metre towards the back. */
   back: number;
-  /** Metres of rise per metre to the left (+x), at the back of the plot. */
+  /** Metres of rise per metre to the left (+x), reached at the back of the plot. */
   side: number;
-  bumps: number;
+  /** A valley running from the street towards the back, deepening as it goes. */
+  valley?: { /** Where across the plot, as a share of its width. */ at: number; /** Half-width (m). */ width: number; /** Depth at the back (m). */ depth: number };
+  /** Rounded hills (or hollows, with a negative height), placed as shares of the plot's size. */
+  knolls?: readonly { x: number; y: number; radius: number; height: number }[];
 }
-
-/** Gentle lumps and hollows. */
-const undulate = (x: number, y: number) => Math.sin(x * 0.37 + 1.3) * Math.cos(y * 0.29 + 0.4) + 0.5 * Math.sin(x * 0.17 - y * 0.23);
 
 /**
  * The natural ground height on a plot (outside it, the height at the nearest point of its
@@ -52,10 +53,22 @@ export function groundHeight(plot: Plot, x: number, y: number): number {
   if (!t) return 0;
   const cx = Math.min(Math.max(x, 0), plot.width);
   const cy = Math.min(Math.max(y, 0), plot.depth);
-  // Nothing at the street edge; the full slope and bumps a few metres in.
-  const ramp = Math.min(cy / 3, 1);
-  return t.back * cy + t.side * (cx - plot.width / 2) * (cy / plot.depth) + t.bumps * undulate(cx, cy) * ramp;
+  // Nothing at the street edge; the landforms grow in over the first few metres.
+  const ramp = smooth(Math.min(cy / 4, 1));
+  let h = t.back * cy + t.side * (cx - plot.width / 2) * (cy / plot.depth);
+  if (t.valley) {
+    const u = (cx - t.valley.at * plot.width) / t.valley.width;
+    h -= t.valley.depth * (cy / plot.depth) * Math.exp(-u * u);
+  }
+  for (const k of t.knolls ?? []) {
+    const dx = cx - k.x * plot.width;
+    const dy = cy - k.y * plot.depth;
+    h += k.height * Math.exp(-(dx * dx + dy * dy) / (k.radius * k.radius)) * ramp;
+  }
+  return h;
 }
+
+const smooth = (t: number) => t * t * (3 - 2 * t);
 
 /** True when `p` lies in the buildable area (inside the plot, respecting the setback). */
 export function isBuildable(plot: Plot, p: Vec2): boolean {
@@ -67,6 +80,7 @@ export function isBuildable(plot: Plot, p: Vec2): boolean {
 export function plotCenter(plot: Plot): Vec2 {
   return new Vec2(plot.width * 0.5, plot.depth * 0.5);
 }
+
 
 type PlotSpec = [id: string, en: string, sv: string, setting: Setting, width: number, depth: number, setback: number, price: number, tiers: number[]];
 
@@ -109,26 +123,26 @@ const LOCATION: Record<Setting, number> = { suburban: 1, town: 1.1, lakeside: 1.
 
 /** Plots that are not flat (the original three stay flat, as saved designs expect). */
 const TERRAIN: Record<string, Terrain> = {
-  corner: { back: 0.02, side: 0.02, bumps: 0.1 },
-  culdesac: { back: 0.03, side: -0.02, bumps: 0.15 },
-  bay: { back: -0.025, side: 0.01, bumps: 0.15 },
-  reeds: { back: -0.02, side: -0.01, bumps: 0.1 },
-  lakeview: { back: 0.05, side: 0.03, bumps: 0.35 },
-  riverside: { back: -0.02, side: 0, bumps: 0.15 },
-  mill: { back: -0.025, side: 0.02, bumps: 0.2 },
-  rivermeadow: { back: -0.015, side: -0.01, bumps: 0.2 },
-  clearing: { back: 0.01, side: 0, bumps: 0.35 },
-  pinewood: { back: 0.05, side: 0.02, bumps: 0.4 },
-  birchgrove: { back: 0.03, side: -0.03, bumps: 0.3 },
-  meadow: { back: 0.02, side: 0.01, bumps: 0.15 },
-  orchard: { back: 0.03, side: 0, bumps: 0.2 },
-  dunes: { back: 0.01, side: 0, bumps: 0.55 },
-  clifftop: { back: 0.05, side: 0.02, bumps: 0.3 },
-  slope: { back: 0.1, side: 0.03, bumps: 0.3 },
-  valley: { back: 0.07, side: -0.04, bumps: 0.4 },
-  mountain: { back: 0.14, side: 0.02, bumps: 0.5 },
-  alpine: { back: 0.09, side: 0.05, bumps: 0.6 },
-  skislope: { back: 0.18, side: 0, bumps: 0.3 },
+  corner: { back: 0.02, side: 0.025 },
+  culdesac: { back: 0.025, side: -0.015, knolls: [{ x: 0.8, y: 0.8, radius: 6, height: 0.6 }] },
+  bay: { back: -0.025, side: 0.01 },
+  reeds: { back: -0.02, side: -0.01 },
+  lakeview: { back: 0.04, side: 0.02, knolls: [{ x: 0.3, y: 0.75, radius: 10, height: 1.5 }] },
+  riverside: { back: -0.02, side: 0 },
+  mill: { back: -0.025, side: 0.02 },
+  rivermeadow: { back: -0.012, side: -0.01, knolls: [{ x: 0.5, y: 0.5, radius: 9, height: -0.5 }] },
+  clearing: { back: 0, side: 0, knolls: [{ x: 0.5, y: 0.5, radius: 8, height: -0.6 }] },
+  pinewood: { back: 0.05, side: 0.02, knolls: [{ x: 0.78, y: 0.72, radius: 7, height: 1 }] },
+  birchgrove: { back: 0.03, side: -0.03 },
+  meadow: { back: 0.02, side: 0.01 },
+  orchard: { back: 0.03, side: 0 },
+  dunes: { back: 0.01, side: 0, knolls: [{ x: 0.25, y: 0.6, radius: 6, height: 1.2 }, { x: 0.75, y: 0.85, radius: 7, height: 1.4 }] },
+  clifftop: { back: 0.04, side: 0.02, knolls: [{ x: 0.5, y: 0.9, radius: 10, height: 1 }] },
+  slope: { back: 0.1, side: 0.03 },
+  valley: { back: 0.06, side: 0, valley: { at: 0.5, width: 7, depth: 1.8 } },
+  mountain: { back: 0.14, side: 0.02, knolls: [{ x: 0.2, y: 0.85, radius: 8, height: 1.5 }] },
+  alpine: { back: 0.09, side: 0.05, valley: { at: 0.65, width: 6, depth: 1.2 } },
+  skislope: { back: 0.18, side: 0 },
 };
 
 const PLOTS: readonly Plot[] = SPECS.map(([id, en, sv, setting, width, depth, setback, price, tiers]) =>

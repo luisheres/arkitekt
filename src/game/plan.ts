@@ -255,10 +255,10 @@ export class PlanView {
 
   // --- Ground -----------------------------------------------------------------------
 
-  private contourCache: { key: string; minor: Vec2[][]; major: Vec2[][] } | null = null;
+  private contourCache: { key: string; minor: Vec2[][]; major: Vec2[][]; labels: { at: Vec2; height: number }[] } | null = null;
 
   /** Contour lines of the ground as built (marching squares), worked out once per change. */
-  private contours(): { minor: Vec2[][]; major: Vec2[][] } {
+  private contours(): { minor: Vec2[][]; major: Vec2[][]; labels: { at: Vec2; height: number }[] } {
     const { plot, house, revision } = this.store;
     const key = `${plot.id}:${revision}`;
     if (this.contourCache?.key === key) return this.contourCache;
@@ -275,9 +275,12 @@ export class PlanView {
     const [lo, hi] = [Math.min(...all), Math.max(...all)];
     const minor: Vec2[][] = [];
     const major: Vec2[][] = [];
+    const labels: { at: Vec2; height: number }[] = [];
     const point = (i: number, j: number) => new Vec2((i / nx) * plot.width, (j / ny) * plot.depth);
     for (let level = Math.ceil(lo / 0.5) * 0.5; level <= hi; level += 0.5) {
-      const into = Math.abs(level - Math.round(level)) < 1e-6 ? major : minor;
+      const whole = Math.abs(level - Math.round(level)) < 1e-6;
+      const into = whole ? major : minor;
+      const before = into.length;
       for (let i = 0; i < nx; i++)
         for (let j = 0; j < ny; j++) {
           // Where the level crosses each edge of the cell.
@@ -299,8 +302,14 @@ export class PlanView {
           if (crossings.length >= 2) into.push([crossings[0], crossings[1]]);
           if (crossings.length === 4) into.push([crossings[2], crossings[3]]);
         }
+      // Whole metres get their height written on the line, near one side of the plot.
+      if (whole && into.length > before && Math.round(level) !== 0) {
+        const mids = into.slice(before).map(([a, b]) => a.add(b).scale(0.5));
+        const at = mids.reduce((best, p) => (Math.abs(p.x - (plot.width - 2.5)) < Math.abs(best.x - (plot.width - 2.5)) ? p : best));
+        labels.push({ at, height: Math.round(level) });
+      }
     }
-    this.contourCache = { key, minor, major };
+    this.contourCache = { key, minor, major, labels };
     return this.contourCache;
   }
 
@@ -745,9 +754,14 @@ export class PlanView {
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
     // On sloping ground: contour lines every half metre (stronger every metre), as built.
     if (plot.terrain) {
-      const { minor, major } = this.contours();
+      const { minor, major, labels } = this.contours();
       const path = (segs: Vec2[][]) => segs.map(([a, b]) => `M${this.toScreen(a).map((v) => v.toFixed(1)).join(",")}L${this.toScreen(b).map((v) => v.toFixed(1)).join(",")}`).join("");
       out.push(`<path class="contour" d="${path(minor)}"/><path class="contour major" d="${path(major)}"/>`);
+      if (this.scale >= 6)
+        for (const l of labels) {
+          const [x, y] = this.toScreen(l.at);
+          out.push(`<text class="contour-label" x="${x.toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="middle">${l.height > 0 ? "+" : ""}${l.height} m</text>`);
+        }
     }
 
     // Grid: 1 m lines, stronger every 5 m.
