@@ -4,6 +4,7 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
+import { buildInterior, setLampsDusk } from "./interior3d";
 import { FRAME_HEX, PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
@@ -47,6 +48,7 @@ import {
   wallPieces,
   wallThickness,
   doorApproaches,
+  decorate,
   roofHeightAt,
   FRAME_COLORS,
   type FrameColor,
@@ -377,6 +379,30 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const len = wall.length();
       box(len / 2, (v0 + v1) / 2, at, size(len + t, v1 - v0, t), rotY, faces);
     }
+    // Skirting boards along the foot of every side that faces a room (not across doorways).
+    {
+      const len = wall.length();
+      const foot = wall.level === 0 ? FLOOR_SLAB_HEIGHT : 0.01;
+      const sides = exterior ? [leftIsInside ? 1 : -1] : [1, -1];
+      const stops = openings.filter((o) => o.sill < 0.1).sort((a, b) => a.left() - b.left());
+      for (const side of sides) {
+        let u = 0;
+        for (const o of [...stops, null]) {
+          const end = o ? o.left() : len;
+          if (end - u > 0.05) {
+            // Too thin to outline cleanly: it would draw as a dotted line.
+            const board = solid(unitBox, palette.frame);
+            board.userData.noOutline = true;
+            board.castShadow = false;
+            board.position.copy(at((u + end) / 2, foot + 0.045)).add(new THREE.Vector3(left.x * side * (face + 0.01), 0, left.y * side * (face + 0.01)));
+            board.scale.set(end - u, 0.09, 0.02);
+            board.rotation.y = rotY;
+            group.add(board);
+          }
+          if (o) u = o.right();
+        }
+      }
+    }
     if (exterior) {
       const len = wall.length();
       const fullHeight = wall.level < top && visible(wall.level + 1) ? house.storeyHeight(wall.level) + FLOOR_STRUCTURE : wall.height;
@@ -558,6 +584,10 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       group.add(step);
     }
   }
+
+  // Lamps, rugs, pictures and kitchen cabinets; railings on the stairs.
+  pick = null;
+  group.add(buildInterior(house, decorate(house), { furnishings: !!options.furniture, visible }));
 
   // Balconies: a slab sticking out from the wall at the storey's floor, with a railing
   // of posts, a handrail and glass panels.
@@ -838,6 +868,7 @@ export function disposeHouse(group: THREE.Group): void {
 
 /** Windows glow warm when it gets dark (0: daylight, 1: night). */
 export function setDusk(amount: number): void {
+  setLampsDusk(amount);
   const glass = palette.glass as THREE.MeshToonMaterial;
   glass.emissiveIntensity = amount * 0.9;
   glass.opacity = 0.6 + amount * 0.35;

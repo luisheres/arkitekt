@@ -35,8 +35,8 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `features.ts` chimneys and dormers; `sun.ts` sun positions and sun hours; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
-| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `features.ts` chimneys, dormers, skylights and steps; `sun.ts` sun positions and sun hours; `decor.ts` lamps, rugs, pictures, cabinets and stair rails; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` + `interior3d.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
 
@@ -145,6 +145,11 @@ five frame colours. Houses get sills, lintels or trim, door canopies, a plinth, 
 boards on wooden facades, and gutters and down pipes along the eaves. **Skylights** lie in
 the roof slope, cheaper than dormers. A door above the ground gets steps, or a ramp,
 which are paid for.
+
+**Rooms that look lived in.** Rooms get a ceiling lamp (lit at dusk, with a pool of light
+on the floor), rugs under coffee tables, beds and dining tables, pictures on free walls,
+skirting boards, wall cabinets over kitchen counters, and railings on stairs and round
+stairwells. They follow the rooms and furniture on their own (`src/core/decor.ts`).
 
 **Doors, openings and roofs.** Outer walls take windows, doors, **glass doors** (wide, and
 they let daylight in like windows) and garage doors; inside walls take doors or an
