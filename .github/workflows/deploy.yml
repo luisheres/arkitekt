@@ -1,5 +1,9 @@
 # Build the game and publish it on GitHub Pages on every push to main.
+#
 # One-time setup: in the repository's Settings → Pages, set "Source" to "GitHub Actions".
+# With "Deploy from a branch" instead, GitHub serves the raw source files (the page then
+# fails to load /src/game/main.ts), and this workflow fails at "configure-pages" with
+# "Not Found".
 name: Deploy to GitHub Pages
 
 on:
@@ -21,8 +25,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -30,7 +34,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
