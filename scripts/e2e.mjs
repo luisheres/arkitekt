@@ -61,10 +61,53 @@ try {
     await page.click(`.popover .choices.rooms button[title="${ROOM_NAMES[type]}"]`);
     await page.keyboard.press("Escape");
   };
-  /** Open a sidebar menu (Roof, Facade) and pick an option in it. */
-  const fromMenu = async (menu, option) => {
-    await page.click(`#sidebar .house button:has-text("${menu}")`);
+  /** Open the roof's menu from the sidebar and pick an option in it. */
+  const fromRoofMenu = async (option) => {
+    await page.click("#sidebar button.roof-button");
     await page.click(`.popover button[title="${option}"]`);
+    await page.keyboard.press("Escape");
+  };
+  /** Whether the plan itself is under a plan point on screen (not a panel over it). */
+  const onPlanScreen = `(x, y) => {
+    const c = window.architect.plan.clientPoint(x, y);
+    const el = document.elementFromPoint(c.x, c.y);
+    return !!el && !!el.closest("#plan svg");
+  }`;
+  /** Click the garden in the plan (on the plot, clear of the house and what is in it) to open its menu. */
+  const openGarden = async () => {
+    const at = await page.evaluate((visible) => {
+      const { store, core } = window.architect;
+      const shown = eval(visible);
+      const fp = store.house.footprint(0);
+      const near = (x, y) => (fp.ok && core.pointInPolygon(new core.Vec2(x, y), core.offsetPolygon(fp.value, 1.5))) || store.house.furniture.some((f) => Math.hypot(f.at.x - x, f.at.y - y) < 2.5) || (store.house.paths.length > 0 && y < 3);
+      for (let y = store.plot.depth - 1; y > 1; y -= 1)
+        for (let x = 1; x < store.plot.width - 1; x += 1) if (!near(x, y) && shown(x, y)) return [x, y];
+      return null;
+    }, onPlanScreen);
+    // (A right-click opens the menu whatever the tool.)
+    const c = await page.evaluate(([x, y]) => window.architect.plan.clientPoint(x, y), at);
+    await page.mouse.click(c.x, c.y, { button: "right" });
+    await page.locator(".popover h2", { hasText: "Garden" }).waitFor();
+  };
+  /** Set every outer wall's facade from an outer wall's menu. */
+  const facadeTo = async (material) => {
+    const at = await page.evaluate((visible) => {
+      const { store, core } = window.architect;
+      const shown = eval(visible);
+      const layout = core.analyzeLayout(store.house, store.level);
+      for (const w of store.house.wallsOn(store.level)) {
+        if (w.boundary || !layout.value.exterior.has(w.id)) continue;
+        for (let t = 0.1; t < 0.95; t += 0.05) {
+          const u = t * w.length();
+          if (store.house.openingsIn(w.id).some((o) => u > o.left() - 0.3 && u < o.right() + 0.3)) continue;
+          const p = w.start.add(w.direction().scale(u));
+          if (shown(p.x, p.y)) return [p.x, p.y];
+        }
+      }
+      return null;
+    }, onPlanScreen);
+    await click(at[0], at[1]);
+    await page.click(`.popover button[title="${material}"]`);
     await page.keyboard.press("Escape");
   };
 
@@ -153,7 +196,7 @@ try {
   assert.match(await status(), /The house needs a roof/);
 
   // A hip roof: one of the wishes.
-  await fromMenu("Roof", "Hip");
+  await fromRoofMenu("Hip");
   assert.deepEqual(await unmetMusts(), []);
   assert.match(await page.locator(".brief.wishes li.met").allInnerTexts().then((t) => t.join("\n")), /open plan between the kitchen and the living room/);
   assert.match(await status(), /No building problems/);
@@ -181,8 +224,8 @@ try {
   await click(14.2, 14.5);
   assert.equal(await page.locator(".popover .choices.paints button.locked").count(), 7, "every colour but white");
   await page.keyboard.press("Escape");
-  await page.click('#sidebar .house button:has-text("Garden")');
-  assert.equal(await page.locator(".popover button.locked").count(), 10, "four kinds of plant and six garden things");
+  await openGarden();
+  assert.equal(await page.locator(".popover button.locked").count(), 11, "four kinds of plant, six garden things and the altan");
   await page.click(".popover button.locked >> nth=0");
   assert.equal(await page.locator('#modal .tech-card.focus[data-tech="landscaping"]').count(), 1);
   await page.keyboard.press("Escape");
@@ -253,10 +296,10 @@ try {
   });
   assert.match(await status(), /No building problems/);
 
-  // A stone facade, then back to plaster, from the Facade menu.
-  await fromMenu("Facade", "Stone");
+  // A stone facade on every outer wall, then back to plaster, from a wall's menu.
+  await facadeTo("Stone");
   assert.deepEqual(await page.evaluate(() => [...new Set(window.architect.store.house.walls.filter((w) => w.material === "Stone").map((w) => w.id))].length), 4);
-  await fromMenu("Facade", "Plaster");
+  await facadeTo("Plaster");
 
   // Clicking in 3D opens the menu for what was clicked: here the roof.
   await page.click(".layout-switch button[data-layout='3d']");
@@ -452,23 +495,23 @@ try {
   await page.click(".level-switch button[data-level='0']");
   await page.keyboard.press("s");
   await click(7, 11);
-  await fromMenu("Roof", "Gable");
+  await fromRoofMenu("Gable");
   assert.deepEqual(await page.locator(".issues li").allTextContents(), [], "no building problems, and no budget");
 
   // The extras free play has from the start: a garden, wall paint and a balcony.
   const pieces = () => page.evaluate(() => window.architect.store.house.furniture.length);
   const piecesBefore = await pieces();
-  await page.click('#sidebar .house button:has-text("Garden")');
+  await openGarden();
   await page.click('.popover button:has-text("+ Shrub")');
   assert.equal(await pieces(), piecesBefore + 1, "a shrub in the garden");
   assert.equal(await page.evaluate(() => window.architect.store.selection.kind), "furniture");
   await page.keyboard.press("Escape");
   // A swing, and a picket fence round the plot.
-  await page.click('#sidebar .house button:has-text("Garden")');
+  await openGarden();
   await page.click('.popover button:has-text("+ Swing")');
   assert.equal(await pieces(), piecesBefore + 2, "a swing in the garden");
   await page.keyboard.press("Escape");
-  await page.click('#sidebar .house button:has-text("Garden")');
+  await openGarden();
   await page.click('.popover .choices button[title="Picket"]');
   assert.equal(await page.evaluate(() => window.architect.store.house.fence), "Picket");
   assert.ok(await page.locator(".plan .fence").count() > 0, "the fence shows in the plan");
@@ -525,13 +568,13 @@ try {
   for (const b of ["Add glass door", "+ Terrace"]) assert.equal(await page.locator(`.popover button:has-text("${b}")`).count(), 1, b);
   await page.keyboard.press("Escape");
   // A dormer, from the Roof menu: it lands on a wall under a slope.
-  await page.click('#sidebar .house button:has-text("Roof")');
+  await page.click("#sidebar button.roof-button");
   await page.click('.popover button:has-text("+ Dormer")');
   assert.equal(await page.evaluate(() => window.architect.store.house.dormers.length), 1);
   assert.doesNotMatch(await status(), /dormer/i);
   await page.keyboard.press("Escape");
   // And a skylight, also from the Roof menu.
-  await page.click('#sidebar .house button:has-text("Roof")');
+  await page.click("#sidebar button.roof-button");
   await page.click('.popover button:has-text("+ Skylight")');
   assert.equal(await page.evaluate(() => window.architect.store.house.dormers.filter((d) => d.skylight).length), 1);
   assert.match(await page.locator(".popover h2").textContent(), /Skylight/);
@@ -636,8 +679,9 @@ try {
   assert.equal(await corners(), "18,16 18,24 8,16 8,24".split(" ").sort().join(" "));
   assert.ok((await levelAt()) > lowLevel + 0.4, "higher up the slope");
   // Turn it a quarter: 10 x 8 becomes 8 x 10.
-  await page.keyboard.press("v");
-  await page.click('#sidebar .house button:has-text("Move & turn")');
+  // With the Move tool, a click on the house (not a drag) opens its menu, to turn it.
+  await page.keyboard.press("m");
+  await click(13, 20);
   await page.click('.popover button:has-text("Turn right")');
   const spanX = () =>
     page.evaluate(() => {
@@ -645,12 +689,12 @@ try {
       return Math.max(...xs) - Math.min(...xs);
     });
   assert.equal(await spanX(), 8);
-  // A little turn takes the walls off the grid; turning back puts them on it again.
-  await page.click('.popover button:has-text("⟳ 15°")');
-  assert.ok(Math.abs((await spanX()) - 8) > 0.5, "turned by 15°");
-  await page.click('.popover button:has-text("⟲ 15°")');
-  assert.equal(await spanX(), 8);
-  // The platform can stand higher (more filling) or lower (more digging).
+  // Only quarter turns: no little ones.
+  assert.equal(await page.locator('.popover button:has-text("15°")').count(), 0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("v");
+  // The platform can stand higher (more filling) or lower (more digging), from the garden's menu.
+  await openGarden();
   const platformText = async () => /platform at \+(\d+\.\d+) m/.exec(await status())[1];
   const platformBefore = Number(await platformText());
   await page.getByRole("slider", { name: "Platform height" }).fill("0.5");

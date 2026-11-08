@@ -128,9 +128,8 @@ export function inspectorKey(store: Store): string {
   }
   if (sel.kind === "opening") return `opening:${sel.id}:${house.opening(sel.id)?.kind}`;
   if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
-  if (sel.kind === "facade") return "facade";
-  if (sel.kind === "garden") return "garden";
-  if (sel.kind === "house") return `house:${!!house.altan}:${house.basement}`;
+  if (sel.kind === "garden") return `garden:${!!house.altan}:${house.basement}`;
+  if (sel.kind === "house") return "house";
   return `${sel.kind}:${sel.id}`;
 }
 
@@ -160,8 +159,6 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
       return furnitureInspector(store, sel.id);
     case "roof":
       return roofInspector(store);
-    case "facade":
-      return facadeInspector(store);
     case "label":
       return labelInspector(store, sel.id);
   }
@@ -454,14 +451,6 @@ function setFacade(h: House, material: WallMaterial, only: number | null): void 
   }
 }
 
-function facadeInspector(store: Store): Inspector {
-  const firstOuter = () => {
-    const layout = analyzeLayout(store.house, 0);
-    return store.house.wallsOn(0).find((w) => !w.boundary && (!layout.ok || layout.value.exterior.has(w.id)));
-  };
-  const facade = choices(m.ui.allOuterWalls, wallSwatches(store), () => firstOuter()?.material ?? null, (v) => store.edit((h) => setFacade(h, v, null)), "swatches", store.onLocked);
-  return { el: el("div", {}, el("h2", {}, m.ui.facade), facade.el), fields: [facade] };
-}
 
 // --- Windows and doors -------------------------------------------------------------
 
@@ -664,6 +653,8 @@ function gardenInspector(store: Store): Inspector {
     "segmented",
   );
   fields.push(fence);
+  const site: Node[] = [];
+  siteFields(store, fields, site);
   return {
     el: el(
       "div",
@@ -676,6 +667,7 @@ function gardenInspector(store: Store): Inspector {
       fence.el,
       el("p", { className: "sub" }, m.ui.fenceNote),
       el("p", { className: "sub" }, m.ui.gardenNote),
+      ...site,
     ),
     fields,
   };
@@ -738,17 +730,15 @@ function houseInspector(store: Store): Inspector {
   // Turning on screen: the plan shows +x to the left, so a turn that looks clockwise there
   // is anticlockwise in plan coordinates.
   const turn = (degrees: number) => () => store.edit((h) => rotateHouse(h, degrees));
-  const turns = [
-    button(m.ui.turnLeft, turn(-90)),
-    button(m.ui.turnRight, turn(90)),
-    button("⟲ 15°", turn(-15), { title: m.ui.turnLittle }),
-    button("⟳ 15°", turn(15), { title: m.ui.turnLittle }),
-  ];
-  const move = button(`✋ ${m.ui.tools.move} (M)`, () => store.setTool("move"));
+  const turns = [button(m.ui.turnLeft, turn(-90)), button(m.ui.turnRight, turn(90))];
   const empty = () => store.house.walls.length === 0;
-  const buttons: Field = { el: el("div"), update: () => [...turns, move].forEach((b) => (b.disabled = empty())) };
-  const fields: Field[] = [buttons];
-  const parts: Node[] = [el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, ...turns), el("div", { className: "row" }, move), el("p", { className: "sub" }, m.ui.moveHint)];
+  const buttons: Field = { el: el("div"), update: () => turns.forEach((b) => (b.disabled = empty())) };
+  return { el: el("div", {}, el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, ...turns), el("p", { className: "sub" }, m.ui.moveHint)), fields: [buttons] };
+}
+
+/** How the house sits on the plot: platform height and foundation on a slope, and the altan round it. */
+function siteFields(store: Store, fields: Field[], parts: Node[]): void {
+  const empty = () => store.house.walls.length === 0;
   // On sloping ground: how high the platform stands, from digging more to filling more.
   if (store.plot.terrain) {
     const platform = slider(
@@ -790,7 +780,6 @@ function houseInspector(store: Store): Inspector {
   );
   fields.push(depth);
   parts.push(el("h3", {}, m.ui.altan), el("div", { className: "row" }, altanBtn), depth.el, el("p", { className: "sub" }, m.ui.altanHint));
-  return { el: el("div", {}, ...parts), fields };
 }
 
 // --- Dormers -------------------------------------------------------------------------

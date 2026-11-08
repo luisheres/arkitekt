@@ -68,6 +68,7 @@ import {
   doorApproaches,
   fenceLayout,
   altanLayout,
+  offsetPolygon,
   outsideDoors,
   snapPathPoint,
   projectOntoSegment,
@@ -110,7 +111,7 @@ type Hit =
   | { kind: "dormer"; id: number }
   | { kind: "path"; id: number }
   | { kind: "pathPoint"; id: number; index: number }
-  | { kind: "house" }
+  | { kind: "garden" }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -446,8 +447,8 @@ export class PlanView {
     const stair = this.stairs.find((s) => pointInPolygon(p, stairOutline(s)));
     if (stair) return { kind: "stair", id: stair.id };
     if (roomAt(this.rooms, p)) return { kind: "room", at: p };
-    // The altan: its menu is the whole house's.
-    if (this.level === 0 && altanLayout(this.house)?.pieces.some((q) => pointInPolygon(p, q))) return { kind: "house" };
+    // The altan: its menu is the garden's.
+    if (this.level === 0 && altanLayout(this.house)?.pieces.some((q) => pointInPolygon(p, q))) return { kind: "garden" };
     for (const r of accessRoutes(this.house, this.store.plot).routes) {
       for (let i = 1; i < r.points.length; i++) {
         const [a, b] = [r.points[i - 1], r.points[i]];
@@ -529,7 +530,7 @@ export class PlanView {
       case "select": {
         const hit = this.hitTest(p);
         if (!hit) {
-          store.select(null);
+          store.select(this.onPlot(p) ? { kind: "garden" } : null);
           this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
           return;
         }
@@ -560,7 +561,7 @@ export class PlanView {
           const b = this.house.balcony(hit.id)!;
           const wall = this.house.wall(b.wall)!;
           this.drag = { kind: "balcony", id: b.id, grab: p.sub(wall.start).dot(wall.direction()) - b.offset };
-        } else if (hit.kind === "house") {
+        } else if (hit.kind === "garden") {
           store.endGesture();
           store.select(hit);
           this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
@@ -739,7 +740,19 @@ export class PlanView {
       if (hit && hit.kind !== "corner") {
         this.store.select(hit.kind === "label" ? this.labelSelection(hit.id, hit.at) : hit.kind === "pathPoint" ? { kind: "path", id: hit.id } : hit);
         this.onMenu(e.clientX, e.clientY);
+      } else if (!hit && this.onPlot(this.eventPoint(e))) {
+        this.store.select({ kind: "garden" });
+        this.onMenu(e.clientX, e.clientY);
       } else this.store.select(null);
+      return;
+    }
+    if (clicked && e.button === 0 && this.store.tool === "move" && this.house.walls.length) {
+      this.endDrag();
+      const fp = this.house.footprint(0);
+      if (fp.ok && pointInPolygon(this.eventPoint(e), offsetPolygon(fp.value, 0.3))) {
+        this.store.select({ kind: "house" });
+        this.onMenu(e.clientX, e.clientY);
+      }
       return;
     }
     if (clicked && e.button === 0 && this.store.tool === "select" && this.store.selection) {
@@ -781,6 +794,12 @@ export class PlanView {
     draft.push(p);
     // Reaching an existing wall or corner connects to it and ends the chain.
     if (snap.anchored && !draft.slice(0, -1).some((q) => q.distance(p) < 1e-6)) this.commitDraft(false);
+  }
+
+  /** Whether a plan point is on the plot (where the garden is). */
+  private onPlot(p: Vec2): boolean {
+    const { plot } = this.store;
+    return p.x >= 0 && p.y >= 0 && p.x <= plot.width && p.y <= plot.depth;
   }
 
   /** Where a path point goes: a doorstep, the road's edge, or the grid. */
@@ -955,7 +974,7 @@ export class PlanView {
     // The altan round the ground floor: its deck boards.
     const altan = this.level === 0 ? altanLayout(house) : null;
     if (altan) {
-      const cls = ["altan", this.hover?.kind === "house" && "hover", this.store.selection?.kind === "house" && "selected"].filter(Boolean).join(" ");
+      const cls = ["altan", this.hover?.kind === "garden" && "hover"].filter(Boolean).join(" ");
       for (const q of altan.pieces) out.push(`<polygon class="${cls}" points="${this.pts(q)}"/>`);
     }
 

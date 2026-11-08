@@ -206,6 +206,7 @@ export type Pick =
   | { kind: "dormer"; id: number }
   | { kind: "path"; id: number }
   | { kind: "house" }
+  | { kind: "garden" }
   | { kind: "room"; level: number; at: Vec2 }
   | { kind: "roof" };
 
@@ -314,6 +315,7 @@ function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number)
   g.computeVertexNormals();
   const mesh = new THREE.Mesh(g, lawnMaterial);
   mesh.receiveShadow = true;
+  mesh.userData.pick = { kind: "garden" } satisfies Pick;
   return mesh;
 }
 
@@ -1264,6 +1266,6 @@ export function buildAltan(house: House, floor: number, ground: (x: number, y: n
   }
   const g = mergeByMaterial(parts);
   if (steps) g.add(approach(steps, ground));
-  g.traverse((o) => (o.userData.pick = { kind: "house" } satisfies Pick));
+  g.traverse((o) => (o.userData.pick = { kind: "garden" } satisfies Pick));
   return g;
 }

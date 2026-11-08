@@ -58,9 +58,8 @@ export type Selection =
   | { kind: "label"; id: number }
   /** The room containing `at`, on the current level. */
   | { kind: "room"; at: Vec2 }
-  /** The whole roof, or every outer wall's facade. */
+  /** The whole roof. */
   | { kind: "roof" }
-  | { kind: "facade" }
   /** The garden: what can be planted. */
   | { kind: "garden" }
   /** The whole house: moving and turning it. */

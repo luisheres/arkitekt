@@ -126,7 +126,15 @@ export class Panel {
       this.toolButtons.set(t.tool, b);
       tools.append(b);
     }
-    root.append(el("section", {}, tools));
+    // The roof is drawn over the whole house: its menu opens from here (or by clicking it in 3D).
+    const roofBtn = el("button", { type: "button", className: "opens-menu roof-button", title: m.ui.roofTitle }, el("span", { className: "tool-icon", ariaHidden: "true" }, "🔺"), `${m.ui.roof} ▸`);
+    roofBtn.addEventListener("click", (e) => {
+      store.select({ kind: "roof" });
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      actions.openMenu(r.right, r.top + 12);
+    });
+    tools.append(roofBtn);
+    root.append(el("section", {}, tools, el("p", { className: "sub hint" }, m.ui.clickToEdit)));
 
     // History.
     this.undoBtn = el("button", { type: "button", title: m.ui.undoTitle }, m.ui.undo);
@@ -138,22 +146,6 @@ export class Panel {
     const captureBtn = el("button", { type: "button", title: m.ui.captureTitle }, m.ui.capture);
     captureBtn.addEventListener("click", actions.capture);
     root.append(el("section", { className: "row" }, this.undoBtn, this.redoBtn, clear, captureBtn));
-
-    // Roof and facade (everything else opens by clicking it in the plan or 3D view).
-    const menuFor = (kind: "roof" | "facade" | "garden" | "house") => (e: MouseEvent) => {
-      store.select({ kind });
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      actions.openMenu(r.right, r.top + 12);
-    };
-    const roofBtn = el("button", { type: "button", className: "opens-menu" }, `${m.ui.roof} ▸`);
-    roofBtn.addEventListener("click", menuFor("roof"));
-    const facadeBtn = el("button", { type: "button", className: "opens-menu" }, `${m.ui.facade} ▸`);
-    facadeBtn.addEventListener("click", menuFor("facade"));
-    const gardenBtn = el("button", { type: "button", className: "opens-menu" }, `🌳 ${m.ui.garden} ▸`);
-    gardenBtn.addEventListener("click", menuFor("garden"));
-    const houseBtn = el("button", { type: "button", className: "opens-menu" }, `✋ ${m.ui.moveAndTurn} ▸`);
-    houseBtn.addEventListener("click", menuFor("house"));
-    root.append(el("section", { className: "house" }, el("h2", {}, m.ui.house), el("div", { className: "row" }, roofBtn, facadeBtn, gardenBtn, houseBtn), el("p", { className: "sub hint" }, m.ui.clickToEdit)));
 
     // Costs and issues.
     this.status = el("section", { className: "status" });

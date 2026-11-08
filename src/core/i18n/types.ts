@@ -215,6 +215,7 @@ export interface Messages {
     thisWall: string;
     allOuterWalls: string;
     clickToEdit: string;
+    roofTitle: string;
     save: string;
     saveTitle: string;
     open: string;
