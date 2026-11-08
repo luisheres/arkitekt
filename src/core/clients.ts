@@ -58,7 +58,7 @@ export const CLIENTS: Client[] = [
       },
     },
     plot: suburban,
-    budget: 50_000,
+    budget: 56_000,
     items: [
       { must: true, req: { kind: "rooms", room: "Office", count: 1, minArea: 8 } },
       { must: true, req: { kind: "rooms", room: "Bedroom", count: 1, minArea: 9 } },
@@ -120,7 +120,7 @@ export const CLIENTS: Client[] = [
       },
     },
     plot: lakeside,
-    budget: 52_000,
+    budget: 72_000,
     items: [
       { must: true, req: { kind: "rooms", room: "Garage", count: 1, minArea: 30 } },
       { must: true, req: { kind: "wallMaterial", material: "Wood" } },

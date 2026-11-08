@@ -81,7 +81,7 @@ There are 30 plots in nine kinds of surroundings, and each has its own layout
   streets meeting at a corner, a cul-de-sac ending in a turning circle with houses round
   it, a gravel track winding in through the woods from a lane further off, or a private
   drive. Main streets have a centre line and pavements, lanes are narrower, gravel tracks
-  have grass down the middle. The plan names each road.
+  have grass down the middle. The plan names each road. Roads lie level across, with the ground shaped to them.
 - **Water**: lakes have irregular shores with bays, some with islands, reeds in clumps or
   sandy beaches; rivers wind and change width, with a footbridge; the sea has a curving
   coast, a beach, a cliff or a harbour pier. Water always stays a few metres from the plot.

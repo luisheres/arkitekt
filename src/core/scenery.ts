@@ -479,7 +479,9 @@ function roadsFor(plot: Plot, rnd: () => number): Road[] {
       roads.push({ kind, width, points: longRoad(e.mid.add(e.out.scale(off)), along, rnd) });
       const junction = e.a.add(along.scale(-off)).add(e.out.scale(off));
       const away = e.out.scale(-1);
-      roads.push({ kind: kind === "main" ? "street" : kind, width: kind === "main" ? ROAD_WIDTH.street : width, points: Array.from({ length: 36 }, (_, i) => junction.add(away.scale(i * 8))) });
+      // Starting a little past the main road's far side, so the two join without a seam.
+      const start = junction.sub(away.scale(width / 2 - 0.3));
+      roads.push({ kind: kind === "main" ? "street" : kind, width: kind === "main" ? ROAD_WIDTH.street : width, points: Array.from({ length: 36 }, (_, i) => start.add(away.scale(i * 8))) });
       break;
     }
     case "culdesac": {
@@ -665,11 +667,12 @@ function makeScenery(plot: Plot): Scenery {
     if (x >= 0 && x <= w && y >= 0 && y <= d) return h;
     // Roads are level across: near a road the ground meets the road's own height.
     const near = roadIndex.nearest(new Vec2(x, y));
-    let blend = near ? smoothstep(0.5, 4, near.edge) : 1;
+    // (Level a little wider than the road and its pavements, then easing back to the land.)
+    let blend = near ? smoothstep(1.8, 6, near.edge) : 1;
     let roadH = near ? land(near.at.x, near.at.y) : h;
     for (const r of roads) {
       if (!r.turning) continue;
-      const t = smoothstep(0.5, 4, new Vec2(x, y).distance(r.turning.at) - r.turning.radius);
+      const t = smoothstep(1.8, 6, new Vec2(x, y).distance(r.turning.at) - r.turning.radius);
       if (t < blend) [blend, roadH] = [t, land(r.turning.at.x, r.turning.at.y)];
     }
     return roadH + (h - roadH) * blend;
@@ -903,14 +906,6 @@ function makeScenery(plot: Plot): Scenery {
     else kind = treeRnd() < 0.7 ? "round" : treeRnd() < 0.6 ? "birch" : "bush";
     trees.push({ at: p, kind, size: 0.75 + treeRnd() * 0.6 });
   }
-  // A few bushes in the corners of the garden, outside the buildable area.
-  for (const [cx, cy] of [
-    [0.9, 0.9],
-    [w - 0.9, 0.9],
-    [0.9, d - 0.9],
-    [w - 0.9, d - 0.9],
-  ])
-    trees.push({ at: new Vec2(cx, cy), kind: "bush", size: 0.8 });
 
   // Rocks: on the shores, and many in the mountains.
   const rocks: Rock[] = [];

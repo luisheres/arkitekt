@@ -42,7 +42,10 @@ export function typicalCost(client: Client, prices: PriceList = defaultPrices())
   const windows = ((area * storeys) / 10) * (prices.windowBase + 1.5 * prices.windowM2);
   const doors = rooms * (prices.doorBase + 1.8 * prices.doorM2) + (storeys - 1) * prices.stairs;
   const floors = area * storeys * prices.floorM2.Laminate;
-  return totalCost(estimate(h, prices)) + partitions + windows + doors + floors;
+  // A path to the front door and, for a garage, a driveway, a few metres from the road.
+  const garage = musts.some((r) => r.kind === "rooms" && r.room === "Garage");
+  const access = 7 * 1.2 * prices.pathM2 + (garage ? 9 * 3 * prices.asphaltM2 : 0);
+  return totalCost(estimate(h, prices)) + partitions + windows + doors + floors + access;
 }
 
 /** A client's budget at a difficulty (the fee stays reckoned on the moderate budget). */

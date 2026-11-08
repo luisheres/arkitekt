@@ -55,7 +55,6 @@ import {
   money,
   technique,
   accessRoutes,
-  sideEdge,
   type Landmark,
   INDOOR_PLANTS,
   balconyOutline,
@@ -968,13 +967,6 @@ export class PlanView {
     }
     for (const l of s.landmarks) if (visible(l.at, 30)) out.push(this.landmarkSymbol(l));
     for (const r of s.rocks) if (visible(r.at, 2)) out.push(circle(r.at, r.size * 0.8, "rock"));
-    // Hedges along the sides of the garden, but not where the road comes in.
-    const { plot } = this.store;
-    for (const side of s.hedgeSides) {
-      const e = sideEdge(plot, side);
-      const n = Math.max(1, Math.round(e.a.distance(e.b) / 1.1));
-      for (let k = 1; k < n; k++) out.push(circle(e.a.add(e.b.sub(e.a).scale(k / n)).add(e.out.scale(0.4)), 0.55, "hedge"));
-    }
     for (const t of s.trees) {
       const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9 }[t.kind] * t.size;
       if (!visible(t.at, r)) continue;

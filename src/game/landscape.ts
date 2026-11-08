@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import { type Landmark, type Plot, type Scenery, type Surface, type Tree, Vec2, groundHeight, sceneryFor, sideEdge, treeLook } from "../core";
+import { type Landmark, type Plot, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, treeLook } from "../core";
 import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
@@ -40,7 +40,6 @@ export function buildWorld(plot: Plot): World {
   for (const n of scenery.neighbors) root.add(neighborHouse(scenery, n));
   for (const l of scenery.landmarks) root.add(landmark(scenery, l));
   for (const wall of scenery.walls) root.add(stoneWall(scenery, wall));
-  root.add(hedges(plot, scenery));
 
   const guides = plotGuides(plot);
   root.add(guides);
@@ -115,6 +114,77 @@ function farHills(setting: Scenery["setting"], angle: number): number {
   return big * (34 + 20 * Math.sin(3 * angle + 1.1) + 12 * Math.sin(7 * angle + 2.3) + 6 * Math.sin(13 * angle + 0.4) + 3 * Math.sin(29 * angle));
 }
 
+/** The near ground's colours are painted into a texture this far round the plot's centre (m), this fine. */
+const PAINT_REACH = 170;
+const PAINT_RES = 0.6;
+
+/** Colours of what covers the ground. */
+const GROUND = {
+  grass: new THREE.Color("#6cc24a"),
+  meadow: new THREE.Color("#9ad25a"),
+  forest: new THREE.Color("#3f9a4a"),
+  rock: new THREE.Color("#a7a29a"),
+  snow: new THREE.Color("#f7fbff"),
+  sand: new THREE.Color("#f0d9a0"),
+  field1: new THREE.Color("#e8cf5f"), // ripe wheat
+  field2: new THREE.Color("#86c43c"), // young crops
+  field3: new THREE.Color("#a57a52"), // ploughed earth
+};
+
+/** The colour of the near ground at a point. */
+function groundColour(s: Scenery, x: number, y: number, h: number, slope: number, c: THREE.Color): THREE.Color {
+  const cover = s.surface(x, y);
+  if (cover === "grass") {
+    c.copy(GROUND.grass).lerp(GROUND.meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
+    if (h > 4) c.lerp(GROUND.forest, Math.min((h - 4) / 8, 1));
+  } else {
+    c.copy(GROUND[cover]);
+    // Furrows across the fields.
+    if (cover === "field1" || cover === "field2" || cover === "field3") c.multiplyScalar(0.92 + 0.08 * Math.sin(x * 2.2 + y * 0.7));
+  }
+  if (slope > 0.55 && cover !== "sand") c.lerp(GROUND.rock, Math.min((slope - 0.55) * 2, 0.8));
+  return c;
+}
+
+/**
+ * The near ground painted into a texture, so fields, beaches and snow have crisp edges
+ * however coarse the land's mesh is. Its border is white, so beyond it (where the texture
+ * is clamped) the land's own vertex colours show unchanged.
+ */
+function groundPainting(s: Scenery, center: THREE.Vector3): THREE.Texture {
+  const n = Math.round((PAINT_REACH * 2) / PAINT_RES);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(n, n);
+  const x0 = center.x - PAINT_REACH;
+  const y0 = center.z - PAINT_REACH;
+  // Heights once (one pixel wider) for the slopes.
+  const heights = new Float32Array((n + 1) * (n + 1));
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) heights[j * (n + 1) + i] = s.height(x0 + i * PAINT_RES, y0 + j * PAINT_RES);
+  const c = new THREE.Color();
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const o = (j * n + i) * 4;
+      if (i < 2 || j < 2 || i >= n - 2 || j >= n - 2) {
+        img.data.set([255, 255, 255, 255], o);
+        continue;
+      }
+      const h = heights[j * (n + 1) + i];
+      const slope = Math.hypot(heights[j * (n + 1) + i + 1] - h, heights[(j + 1) * (n + 1) + i] - h) / PAINT_RES;
+      groundColour(s, x0 + i * PAINT_RES, y0 + j * PAINT_RES, h, slope, c);
+      // (Vertex colours are linear; the canvas holds sRGB.)
+      const srgb = c.clone().convertLinearToSRGB();
+      img.data.set([srgb.r * 255, srgb.g * 255, srgb.b * 255, 255], o);
+    }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+
 /**
  * The land: a disc round the plot, fine near it and coarser further out, reaching far beyond
  * the camera so its edge is never seen. Close by it follows the scenery; further out it rolls
@@ -128,19 +198,11 @@ function terrain(s: Scenery, center: THREE.Vector3, plot: Plot): THREE.Mesh {
   const around = 320;
   const positions = new Float32Array(radii.length * around * 3);
   const colors = new Float32Array(radii.length * around * 3);
-  const grass = new THREE.Color("#6cc24a");
-  const meadow = new THREE.Color("#9ad25a");
-  const forest = new THREE.Color("#3f9a4a");
-  const rockC = new THREE.Color("#a7a29a");
-  const snow = new THREE.Color("#f7fbff");
-  const covers: Record<Exclude<Surface, "grass">, THREE.Color> = {
-    sand: new THREE.Color("#f0d9a0"),
-    field1: new THREE.Color("#e8cf5f"), // ripe wheat
-    field2: new THREE.Color("#86c43c"), // young crops
-    field3: new THREE.Color("#a57a52"), // ploughed earth
-    snow,
-  };
-  const c = new THREE.Color();
+  const uvs = new Float32Array(radii.length * around * 2);
+  const grass = GROUND.grass;
+  const forest = GROUND.forest;
+  const snow = GROUND.snow;
+const c = new THREE.Color();
   radii.forEach((r, ring) => {
     for (let k = 0; k < around; k++) {
       const a = (k / around) * Math.PI * 2;
@@ -157,15 +219,15 @@ function terrain(s: Scenery, center: THREE.Vector3, plot: Plot): THREE.Mesh {
       const inside = x > 3.5 && x < plot.width - 3.5 && y > 3.5 && y < plot.depth - 3.5;
       const o = (ring * around + k) * 3;
       positions.set([x, inside ? h - 9 : h - 0.02, y], o);
-      // Colour: shaded by height and slope near by; the far hills in woodland green.
-      if (r <= NEAR_LAND) {
+      // Colour: near by, from the painted texture (white here); further out, by height and
+      // slope; the far hills in woodland green.
+      const [u, v] = [(x - center.x + PAINT_REACH) / (PAINT_REACH * 2), (y - center.z + PAINT_REACH) / (PAINT_REACH * 2)];
+      uvs.set([u, 1 - v], (ring * around + k) * 2);
+      const painted = Math.abs(x - center.x) < PAINT_REACH - 2 && Math.abs(y - center.z) < PAINT_REACH - 2;
+      if (painted) c.setRGB(1, 1, 1);
+      else if (r <= NEAR_LAND) {
         const slope = Math.hypot(s.height(x + 1, y) - hNear, s.height(x, y + 1) - hNear);
-        c.copy(grass).lerp(meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
-        if (hNear > 4) c.lerp(forest, Math.min((hNear - 4) / 8, 1));
-        if (slope > 0.55) c.lerp(rockC, Math.min((slope - 0.55) * 2, 0.8));
-        const cover = s.surface(x, y);
-        if (cover !== "grass") c.copy(covers[cover]);
-        if (cover === "field1" || cover === "field2" || cover === "field3") c.multiplyScalar(0.94 + 0.06 * Math.sin(x * 1.7 + y * 0.4)); // furrows
+        groundColour(s, x, y, hNear, slope, c);
       } else {
         c.copy(grass).lerp(forest, 0.6);
         if (s.setting === "mountain" && h > 70) c.copy(snow);
@@ -183,9 +245,10 @@ function terrain(s: Scenery, center: THREE.Vector3, plot: Plot): THREE.Mesh {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(index);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true }));
+  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true, map: groundPainting(s, center) }));
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -199,7 +262,9 @@ function ribbon(s: Scenery, points: readonly Vec2[], half: number | readonly num
     const next = points[Math.min(i + 1, points.length - 1)];
     const dir = next.sub(prev).normalize();
     const n = new Vec2(-dir.y, dir.x).scale(typeof half === "number" ? half : half[i]);
-    for (const q of [p.add(n), p.sub(n)]) positions.push(q.x, (flatAt ?? Math.max(s.height(q.x, q.y), s.height(p.x, p.y))) + lift, q.y);
+    // Level across, at the height of the centreline (the ground round a road is shaped to it).
+    const y = (flatAt ?? s.height(p.x, p.y)) + lift;
+    for (const q of [p.add(n), p.sub(n)]) positions.push(q.x, y, q.y);
     if (i) {
       const k = (i - 1) * 2;
       index.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
@@ -221,21 +286,34 @@ const kerbMat = toon({ color: "#e9e4da", side: THREE.DoubleSide });
 const verge = toon({ color: "#8fc45a", side: THREE.DoubleSide });
 const paint = toon({ color: "#ffffff" });
 
+/** A polyline with extra points so no stretch is longer than `step` (so it follows the ground). */
+function densify(points: readonly Vec2[], step: number): Vec2[] {
+  const out: Vec2[] = [];
+  points.forEach((p, i) => {
+    if (!i) return out.push(p);
+    const a = points[i - 1];
+    const n = Math.max(1, Math.ceil(a.distance(p) / step));
+    for (let k = 1; k <= n; k++) out.push(a.add(p.sub(a).scale(k / n)));
+  });
+  return out;
+}
+
 /** The roads: asphalt with pavements in town, narrow lanes, gravel tracks with grass down the middle. */
 function roads(s: Scenery): THREE.Group {
   const g = new THREE.Group();
-  for (const r of s.roads) {
+  for (const road of s.roads) {
+    const r = { ...road, points: densify(road.points, 1.5) };
     const tarmac = r.kind !== "gravel";
-    if (r.kind === "main" || r.kind === "street") g.add(ribbon(s, r.points, r.width / 2 + 1.2, 0.04, kerbMat));
-    g.add(ribbon(s, r.points, r.width / 2, 0.07, tarmac ? asphalt : gravelMat));
-    if (r.kind === "gravel") g.add(ribbon(s, r.points, 0.25, 0.09, verge));
+    if (r.kind === "main" || r.kind === "street") g.add(ribbon(s, r.points, r.width / 2 + 1.2, 0.1, kerbMat));
+    g.add(ribbon(s, r.points, r.width / 2, 0.14, tarmac ? asphalt : gravelMat));
+    if (r.kind === "gravel") g.add(ribbon(s, r.points, 0.25, 0.17, verge));
     if (r.turning) {
       const h = s.height(r.turning.at.x, r.turning.at.y);
       const disc = new THREE.Mesh(new THREE.CircleGeometry(r.turning.radius, 48), asphalt);
       disc.rotation.x = -Math.PI / 2;
-      disc.position.set(r.turning.at.x, h + 0.075, r.turning.at.y);
+      disc.position.set(r.turning.at.x, h + 0.15, r.turning.at.y);
       const island = new THREE.Mesh(new THREE.CylinderGeometry(r.turning.radius * 0.35, r.turning.radius * 0.35, 0.2, 32), verge);
-      island.position.set(r.turning.at.x, h + 0.12, r.turning.at.y);
+      island.position.set(r.turning.at.x, h + 0.2, r.turning.at.y);
       g.add(disc, island);
     }
     // A dashed centre line on main roads.
@@ -245,7 +323,7 @@ function roads(s: Scenery): THREE.Group {
         if (i % 2) continue;
         const mid = a.add(b).scale(0.5);
         const dash = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, Math.min(a.distance(b) * 0.6, 4)), paint);
-        dash.position.set(mid.x, s.height(mid.x, mid.y) + 0.09, mid.y);
+        dash.position.set(mid.x, s.height(mid.x, mid.y) + 0.16, mid.y);
         dash.rotation.y = Math.atan2(b.x - a.x, b.y - a.y);
         g.add(dash);
       }
@@ -476,25 +554,6 @@ function rock(s: Scenery, x: number, y: number, size: number): THREE.Mesh {
   m.rotation.set(x, y, 0);
   m.castShadow = m.receiveShadow = true;
   return m;
-}
-
-/** Low hedges along the sides of the garden, but not where the road comes in. */
-function hedges(plot: Plot, s: Scenery): THREE.Group {
-  const g = new THREE.Group();
-  const mat = toon({ color: "#4f9f3f", flatShading: true });
-  for (const side of s.hedgeSides) {
-    const e = sideEdge(plot, side);
-    const n = Math.max(1, Math.round(e.a.distance(e.b) / 1.1));
-    for (let k = 1; k < n; k++) {
-      const p = e.a.add(e.b.sub(e.a).scale(k / n)).add(e.out.scale(0.4));
-      const m = new THREE.Mesh(blob, mat);
-      m.scale.set(0.55, 0.5, 0.65);
-      m.position.set(p.x, groundHeight(plot, p.x - e.out.x * 0.4, p.y - e.out.y * 0.4) + 0.4, p.y);
-      m.castShadow = true;
-      g.add(m);
-    }
-  }
-  return g;
 }
 
 // --- Buildings round about -------------------------------------------------------------
