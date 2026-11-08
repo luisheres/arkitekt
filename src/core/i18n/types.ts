@@ -366,6 +366,8 @@ export interface Messages {
     dormer: string;
     addDormer: string;
     dormerNote: string;
+    dormerNeedsRoof: string;
+    dormerHint: string;
     buildingProblems: string;
     noBuildingProblems: string;
 

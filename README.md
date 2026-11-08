@@ -136,7 +136,7 @@ slope, moving it changes how much earth is dug.
 they let daylight in like windows) and garage doors; inside walls take doors or an
 **opening**: a gap with no door that joins two rooms. Gable and hip roofs work on any
 house with square corners: an L, T or U is split into a main block and wings whose roofs
-meet in valleys. A wall's menu on the top floor adds a **dormer** (a window with its own
+meet in valleys. The Roof menu's **+ Dormer** (or a top-floor wall's menu) adds a **dormer** (a window with its own
 little roof in the slope above that wall; it lights the room under it and needs a slope,
 not a gable end), and on the ground floor a **terrace** (a wooden deck outside a door).
 A **fireplace** from a room's furniture list gets a brick chimney up through the storeys

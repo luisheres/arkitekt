@@ -54,6 +54,7 @@ import {
   placeBalcony,
   placeTerrace,
   placeDormer,
+  placeDormerAnywhere,
   DORMER_WIDTH,
   dormerShape,
   rotateHouse,
@@ -372,14 +373,22 @@ function wallInspector(store: Store, id: number): Inspector | null {
     fields.push(field);
     buttons.push(b);
   }
-  // A dormer in the roof slope over an outer wall of the top storey.
-  if (exterior && w.level === store.house.topLevel() && store.house.roof && store.house.roof.style !== "Flat") {
+  // A dormer in the roof slope over an outer wall of the top storey (it needs a pitched roof).
+  if (exterior && w.level === store.house.topLevel()) {
     const { button: b, field } = lockable(store, m.ui.addDormer, { kind: "dormers" }, () => {
       let dormer: number | null = null;
       store.edit((h) => (dormer = placeDormer(h, id)));
       if (dormer !== null) store.select({ kind: "dormer", id: dormer });
     });
-    fields.push(field);
+    const pitched = () => !!store.house.roof && store.house.roof.style !== "Flat";
+    fields.push({
+      el: b,
+      update: () => {
+        field.update();
+        b.disabled = !pitched();
+        if (!pitched()) b.title = m.ui.dormerNeedsRoof;
+      },
+    });
     buttons.push(b);
   }
   return {
@@ -535,7 +544,23 @@ function roofInspector(store: Store): Inspector {
       store.onLocked,
     ),
   ];
-  return { el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.map((f) => f.el)), fields };
+  // Dormers: on the best wall for one (road side first), or from an outer wall's menu.
+  const { button: dormerBtn, field: dormerField } = lockable(store, m.ui.addDormer, { kind: "dormers" }, () => {
+    let dormer: number | null = null;
+    store.edit((h) => (dormer = placeDormerAnywhere(h, store.plot.access.side)));
+    if (dormer !== null) store.select({ kind: "dormer", id: dormer });
+  });
+  fields.push({
+    el: dormerBtn,
+    update: () => {
+      dormerField.update();
+      dormerBtn.disabled = !pitched();
+    },
+  });
+  return {
+    el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.slice(0, -1).map((f) => f.el), el("div", { className: "row" }, dormerBtn), el("p", { className: "sub" }, m.ui.dormerHint)),
+    fields,
+  };
 }
 
 /** The techniques some openings need. */

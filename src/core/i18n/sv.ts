@@ -586,6 +586,8 @@ export const sv: Messages = {
     terraceNote: "En terrass behöver en dörr eller glasdörr ut i väggen bakom.",
     dormer: "Takkupa",
     addDormer: "+ Takkupa",
+    dormerNeedsRoof: "Takkupor behöver ett lutande tak (sadeltak eller valmat): välj ett i takmenyn först",
+    dormerHint: "Takkupor står i taket ovanför en yttervägg på översta våningen; lägg till fler från en väggs meny och dra dem längs väggen.",
     dormerNote: "En takkupa står i takfallet ovanför väggen och ger ljus åt rummet under.",
     buildingProblems: "Byggproblem",
     noBuildingProblems: "Inga byggproblem",

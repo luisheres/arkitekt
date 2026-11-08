@@ -101,14 +101,15 @@ export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
   const surface = new TriMesh();
   const gables = new TriMesh();
   let peak = 0;
-  for (const b of blocks) {
-    const g = pitchedRoof(b.rect, eave, halfThickness, roof, b.ends, b.alongU);
-    surface.positions.push(...g.surface.positions);
-    surface.normals.push(...g.surface.normals);
+  const built = blocks.map((b) => pitchedRoof(b.rect, eave, halfThickness, roof, b.ends, b.alongU));
+  built.forEach((g, k) => {
+    // Only what is not under another block's roof: where wings meet, a clean valley.
+    const others = built.filter((_, j) => j !== k).flatMap((o) => triangles(o.surface));
+    for (const t of triangles(g.surface)) for (const piece of uncovered(t, others)) pushPolygon(surface, piece);
     gables.positions.push(...g.gables.positions);
     gables.normals.push(...g.gables.normals);
     peak = Math.max(peak, g.peakHeight);
-  }
+  });
   return ok({ surface, gables, peakHeight: peak });
 }
 
@@ -323,4 +324,82 @@ export function roofHeightAt(g: RoofGeometry, p: Vec2): number | null {
     if (best === null || h > best) best = h;
   }
   return best;
+}
+
+// --- Clipping roofs against each other --------------------------------------------------
+
+type Tri = [Vec3, Vec3, Vec3];
+/** A plan polygon (x, z) with heights, convex. */
+type Poly = Vec3[];
+
+function triangles(m: TriMesh): Tri[] {
+  const p = m.positions;
+  const out: Tri[] = [];
+  for (let i = 0; i < p.length; i += 9) out.push([new Vec3(p[i], p[i + 1], p[i + 2]), new Vec3(p[i + 3], p[i + 4], p[i + 5]), new Vec3(p[i + 6], p[i + 7], p[i + 8])]);
+  return out;
+}
+
+/** The plane of a triangle as height = a·x + b·z + c (null when it stands vertical). */
+function planeOf([p, q, r]: Tri): [number, number, number] | null {
+  const det = (q.x - p.x) * (r.z - p.z) - (r.x - p.x) * (q.z - p.z);
+  if (Math.abs(det) < 1e-12) return null;
+  const a = ((q.y - p.y) * (r.z - p.z) - (r.y - p.y) * (q.z - p.z)) / det;
+  const b = ((q.x - p.x) * (r.y - p.y) - (r.x - p.x) * (q.y - p.y)) / det;
+  return [a, b, p.y - a * p.x - b * p.z];
+}
+
+/** Keep the part of a convex polygon where f >= 0 (f linear in plan), heights interpolated. */
+function clip(poly: Poly, f: (v: Vec3) => number): Poly {
+  const out: Poly = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [a, b] = [poly[i], poly[(i + 1) % poly.length]];
+    const [fa, fb] = [f(a), f(b)];
+    if (fa >= 0) out.push(a);
+    if ((fa >= 0) !== (fb >= 0)) {
+      const t = fa / (fa - fb);
+      out.push(new Vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t));
+    }
+  }
+  return out;
+}
+
+const polyArea = (poly: Poly) => Math.abs(poly.reduce((s, p, i) => { const q = poly[(i + 1) % poly.length]; return s + p.x * q.z - q.x * p.z; }, 0)) / 2;
+
+/**
+ * The parts of a roof triangle not covered by any of `others` (a part is covered where
+ * another roof surface lies above it).
+ */
+function uncovered(t: Tri, others: Tri[]): Poly[] {
+  const own = planeOf(t);
+  if (!own) return [t];
+  let pieces: Poly[] = [t];
+  for (const o of others) {
+    const plane = planeOf(o);
+    if (!plane) continue;
+    // Where the other surface is above this one, within the other triangle (in plan).
+    const above = (v: Vec3) => plane[0] * v.x + plane[1] * v.z + plane[2] - (own[0] * v.x + own[1] * v.z + own[2]) - 1e-4;
+    const cover: ((v: Vec3) => number)[] = [above];
+    const sign = (o[1].x - o[0].x) * (o[2].z - o[0].z) - (o[2].x - o[0].x) * (o[1].z - o[0].z) > 0 ? 1 : -1;
+    for (let i = 0; i < 3; i++) {
+      const [a, b] = [o[i], o[(i + 1) % 3]];
+      cover.push((v) => sign * ((b.x - a.x) * (v.z - a.z) - (b.z - a.z) * (v.x - a.x)));
+    }
+    const next: Poly[] = [];
+    for (const piece of pieces) {
+      // Subtract the convex covered region: what lies outside each of its sides in turn.
+      let rest = piece;
+      for (const f of cover) {
+        const outside = clip(rest, (v) => -f(v));
+        if (outside.length >= 3 && polyArea(outside) > 1e-6) next.push(outside);
+        rest = clip(rest, f);
+        if (rest.length < 3) break;
+      }
+    }
+    pieces = next;
+  }
+  return pieces;
+}
+
+function pushPolygon(m: TriMesh, poly: Poly): void {
+  for (let i = 1; i + 1 < poly.length; i++) m.pushTriFacing(poly[0], poly[i], poly[i + 1], UP);
 }

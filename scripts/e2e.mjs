@@ -484,6 +484,12 @@ try {
   await click(14.2, 5);
   for (const b of ["Add glass door", "+ Terrace"]) assert.equal(await page.locator(`.popover button:has-text("${b}")`).count(), 1, b);
   await page.keyboard.press("Escape");
+  // A dormer, from the Roof menu: it lands on a wall under a slope.
+  await page.click('#sidebar .house button:has-text("Roof")');
+  await page.click('.popover button:has-text("+ Dormer")');
+  assert.equal(await page.evaluate(() => window.architect.store.house.dormers.length), 1);
+  assert.doesNotMatch(await status(), /dormer/i);
+  await page.keyboard.press("Escape");
   await page.click(".level-switch button[data-level='1']");
   await shot("extras");
   await page.click(".level-switch button[data-level='0']");

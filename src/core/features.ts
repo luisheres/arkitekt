@@ -119,3 +119,24 @@ export function dormerOutline(house: House, d: Dormer): Vec2[] {
   const [a, b] = [mid.sub(half).add(inward.scale(0.4)), mid.add(half).add(inward.scale(0.4))];
   return [a, b, b.add(inward.scale(1.8)), a.add(inward.scale(1.8))];
 }
+
+/**
+ * Put a dormer where one fits: in the middle of a top-floor outer wall under a roof slope,
+ * preferring the side facing `side` (where the road is), then the longest wall.
+ */
+export function placeDormerAnywhere(house: House, side: "front" | "back" | "left" | "right"): number | null {
+  const layout = analyzeLayout(house, house.topLevel());
+  if (!layout.ok || !house.roof || house.roof.style === "Flat") return null;
+  const facing = { front: new Vec2(0, -1), back: new Vec2(0, 1), left: new Vec2(1, 0), right: new Vec2(-1, 0) }[side];
+  const walls = house
+    .wallsOn(house.topLevel())
+    .filter((w) => !w.boundary && layout.value.exterior.has(w.id))
+    .sort((a, b) => interiorNormal(house, a).dot(facing) - interiorNormal(house, b).dot(facing) || b.length() - a.length());
+  for (const w of walls) {
+    const id = placeDormer(house, w.id);
+    if (id === null) continue;
+    if (dormerShape(house, house.dormer(id)!)) return id;
+    house.removeDormer(id);
+  }
+  return null;
+}

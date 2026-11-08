@@ -578,6 +578,8 @@ export const en: Messages = {
     terraceNote: "A terrace needs a door or glass door out to it in the wall behind.",
     dormer: "Dormer",
     addDormer: "+ Dormer",
+    dormerNeedsRoof: "Dormers need a pitched (gable or hip) roof: choose one in the Roof menu first",
+    dormerHint: "Dormers stand in the roof over an outer wall of the top floor; add more from a wall's menu, and drag them along it.",
     dormerNote: "A dormer stands in the roof slope over this wall, and lights the room under it.",
     buildingProblems: "Building problems",
     noBuildingProblems: "No building problems",

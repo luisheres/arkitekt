@@ -100,3 +100,16 @@ describe("terraces", () => {
     expect(missingTechniques(h, abilities(["woodFloor", "glassDoors", "tileRoof"]))).toEqual(["terraces"]);
   });
 });
+
+describe("placing a dormer anywhere", async () => {
+  const { placeDormerAnywhere } = await import("./features");
+  it("finds a wall under a slope, on the road side, and none with a flat roof", () => {
+    const { h } = make();
+    const id = placeDormerAnywhere(h, "front")!;
+    const d = h.dormer(id)!;
+    expect(h.wall(d.wall)!.start.y).toBe(6);
+    expect(dormerShape(h, d)).not.toBeNull();
+    h.roof = { ...h.roof!, style: "Flat", pitchDeg: 2 };
+    expect(placeDormerAnywhere(h, "front")).toBeNull();
+  });
+});
