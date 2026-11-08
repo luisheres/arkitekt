@@ -5,7 +5,9 @@
  */
 
 import * as THREE from "three";
-import { type Landmark, type Plot, type Street, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, streetFor, treeLook } from "../core";
+import { type Landmark, type Neighbor, type Plot, type ShopKind, type Street, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, neighborHouse as gameHouseOf, pointAlong, polylineLength, sceneryFor, streetFor, townShops, treeLook } from "../core";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { buildHouse } from "./scene";
 import { buildFurniture } from "./furniture3d";
 import { currentSeason, groundTexture, seasonal, snowy, toon, wallTexture, worldMaterial } from "./textures";
 
@@ -58,8 +60,20 @@ export function buildWorld(plot: Plot): World {
   }
   for (const r of scenery.rocks) root.add(rock(scenery, r.at.x, r.at.y, r.size));
   root.add(groundCover(scenery, plot));
-  for (const n of scenery.neighbors) root.add(neighborHouse(scenery, n));
-  for (const l of scenery.landmarks) root.add(landmark(scenery, l));
+  // Near neighbours are real houses of the game, with a yard; far ones, simple blocks.
+  const shops = townShops(plot);
+  const centreXZ = new Vec2(center.x, center.z);
+  for (const n of scenery.neighbors) root.add(n.at.distance(centreXZ) < NEAR_NEIGHBOURS ? gameNeighbor(scenery, n, shops.get(n) ?? null) : neighborHouse(scenery, n));
+  /** Things that move, each told the time. */
+  const movers: ((t: number) => void)[] = [];
+  for (const l of scenery.landmarks) {
+    const g = landmark(scenery, l);
+    root.add(g);
+    if (g.userData.move) movers.push(g.userData.move);
+  }
+  const life = streetLife(scenery, center);
+  root.add(life.group);
+  movers.push(...life.movers);
   for (const wall of scenery.walls) root.add(stoneWall(scenery, wall));
 
   const guides = plotGuides(plot);
@@ -96,6 +110,7 @@ export function buildWorld(plot: Plot): World {
   const reeds = waterGroup?.userData.reeds as THREE.Object3D[] | undefined;
   const ripples = waterGroup?.userData.ripples as THREE.Mesh[] | undefined;
   const update = (t: number) => {
+    for (const move of movers) move(t);
     // Gusts: a slow swell, with a quicker flutter on top.
     const gust = 0.6 + 0.4 * Math.sin(t * 0.31);
     for (const s of swaying) {
@@ -116,6 +131,8 @@ export function buildWorld(plot: Plot): World {
       (r.material as THREE.MeshBasicMaterial).opacity = frozen ? 0 : 0.55 * Math.sin(life * Math.PI);
     });
   };
+  // Everything in its place before anything moves (and in still screenshots).
+  for (const move of movers) move(0);
   return { root, guides, setSun, update };
 }
 
@@ -829,12 +846,17 @@ function landmark(s: Scenery, l: Landmark): THREE.Group {
       const cap = new THREE.Mesh(new THREE.ConeGeometry(1.9, 2.2, 8), mats.red);
       cap.position.y = y + 10.1;
       g.add(body, cap);
+      // The sails on a hub that turns in the wind.
+      const hub = new THREE.Group();
+      hub.position.set(0, y + 8.5, -2.2);
+      g.add(hub);
       for (let k = 0; k < 4; k++) {
-        const sail = part(g, mats.wood, -0.4, 0.4, 0, 6.5, -0.1, 0.1);
+        const sail = part(hub, mats.wood, -0.4, 0.4, 0, 6.5, -0.1, 0.1);
         sail.geometry.translate(0, 3.25, 0);
-        sail.position.set(0, y + 8.5, -2.2);
+        sail.position.set(0, 0, 0);
         sail.rotation.z = (k * Math.PI) / 2 + 0.4;
       }
+      g.userData.move = (t: number) => (hub.rotation.z = -t * 0.6);
       break;
     }
     case "barn":
@@ -978,6 +1000,32 @@ function skiLift(s: Scenery, l: Landmark): THREE.Group {
     tops.push(new THREE.Vector3(p.x, h + 7.9, p.y));
   }
   g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tops), new THREE.LineBasicMaterial({ color: 0x2a2433 })));
+  // Chairs going up on one side of the cable and down on the other, round and round.
+  const length = tops[0].distanceTo(tops[tops.length - 1]);
+  const across = new THREE.Vector3(b.y - a.y, 0, -(b.x - a.x)).normalize();
+  const chairs: THREE.Group[] = [];
+  const count = Math.max(4, Math.round((length * 2) / 18));
+  for (let i = 0; i < count; i++) {
+    const chair = new THREE.Group();
+    const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.6, 0.05), mats.steel);
+    hanger.position.y = -0.8;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), mats.blue);
+    seat.position.y = -1.6;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 0.08), mats.blue);
+    back.position.set(0, -1.35, 0.25);
+    chair.add(hanger, seat, back);
+    g.add(chair);
+    chairs.push(chair);
+  }
+  const at = (d: number) => {
+    // Up the first side, then down the other.
+    const loop = ((d % (2 * length)) + 2 * length) % (2 * length);
+    const up = loop < length;
+    const k = (up ? loop : 2 * length - loop) / length;
+    const p = tops[0].clone().lerp(tops[tops.length - 1], k);
+    return p.addScaledVector(across, up ? 1.4 : -1.4);
+  };
+  g.userData.move = (t: number) => chairs.forEach((c, i) => c.position.copy(at(t * 2.5 + (i * 2 * length) / count)));
   for (const [p, facing] of [
     [a, Math.atan2(b.y - a.y, b.x - a.x)],
     [b, Math.atan2(a.y - b.y, a.x - b.x)],
@@ -1339,4 +1387,381 @@ function streetFurniture(s: Scenery, st: Street): THREE.Group {
     brace.rotation.z = Math.atan2(0.8, gate.width);
   }
   return g;
+}
+
+// --- Neighbours as houses of the game ---------------------------------------------------
+
+/** Within this distance of the plot, neighbours are full houses of the game. */
+const NEAR_NEIGHBOURS = 80;
+
+/** One mesh per material: a whole house in a dozen draws instead of hundreds. */
+function mergeByMaterial(root: THREE.Object3D): THREE.Group {
+  root.updateMatrixWorld(true);
+  const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const push = (m: THREE.Material, g: THREE.BufferGeometry) => {
+    const list = parts.get(m) ?? [];
+    list.push(g);
+    parts.set(m, list);
+  };
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || o instanceof THREE.InstancedMesh || !o.visible) return;
+    let g = (o.geometry as THREE.BufferGeometry).clone().applyMatrix4(o.matrixWorld);
+    if (g.index) g = g.toNonIndexed();
+    for (const name of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(name)) g.deleteAttribute(name);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    const mats = o.material as THREE.Material | THREE.Material[];
+    if (!Array.isArray(mats)) return push(mats, g);
+    // A box with a material per face: split it by face.
+    for (const grp of g.groups) {
+      const sub = new THREE.BufferGeometry();
+      for (const name of ["position", "normal", "uv"]) {
+        const attr = g.getAttribute(name) as THREE.BufferAttribute;
+        const size = attr.itemSize;
+        sub.setAttribute(name, new THREE.Float32BufferAttribute((attr.array as Float32Array).slice(grp.start * size, (grp.start + grp.count) * size), size));
+      }
+      push(mats[grp.materialIndex ?? 0], sub);
+    }
+  });
+  const out = new THREE.Group();
+  for (const [m, list] of parts) {
+    const merged = mergeGeometries(list.map((g) => {
+      g.clearGroups();
+      return g;
+    }));
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, m);
+    mesh.castShadow = mesh.receiveShadow = true;
+    out.add(mesh);
+  }
+  return out;
+}
+
+const yard = {
+  base: toon({ color: "#9a958c" }),
+  awnings: [["#d8342a", "#ffffff"], ["#2f8a3f", "#ffffff"], ["#3f6fbf", "#ffffff"], ["#e7b94a", "#ffffff"]].map(([a, b]) => {
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 8;
+    const g = c.getContext("2d")!;
+    for (let i = 0; i < 8; i++) {
+      g.fillStyle = i % 2 ? b : a;
+      g.fillRect(i * 8, 0, 8, 8);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return toon({ map: t, side: THREE.DoubleSide });
+  }),
+  table: toon({ color: "#f2f1ec" }),
+  chair: toon({ color: "#3b3b40" }),
+  parasol: toon({ color: "#d8342a", side: THREE.DoubleSide }),
+};
+
+const SHOP_SIGN: Record<ShopKind, string> = { cafe: "KAFÉ", bakery: "BAGERI", grocer: "LIVS", icecream: "GLASS" };
+const signMaterials = new Map<ShopKind, THREE.Material>();
+function shopSign(kind: ShopKind): THREE.Material {
+  let m = signMaterials.get(kind);
+  if (!m) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#2b2d31";
+    g.fillRect(0, 0, 256, 64);
+    g.fillStyle = "#ffd23f";
+    g.font = "bold 40px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(SHOP_SIGN[kind], 128, 34);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    signMaterials.set(kind, (m = new THREE.MeshBasicMaterial({ map: t })));
+  }
+  return m;
+}
+
+/** How far a plan point is from the nearest road's edge. */
+function roadGap(s: Scenery, p: Vec2): number {
+  let best = Infinity;
+  for (const r of s.roads)
+    for (let i = 1; i < r.points.length; i++) {
+      const [a, b] = [r.points[i - 1], r.points[i]];
+      const ab = b.sub(a);
+      const t = Math.max(0, Math.min(1, p.sub(a).dot(ab) / Math.max(ab.dot(ab), 1e-9)));
+      best = Math.min(best, a.add(ab.scale(t)).distance(p) - r.width / 2);
+    }
+  return best;
+}
+
+/** A neighbour built like the player's house, on a base, with a fence, a car, or a shopfront. */
+function gameNeighbor(s: Scenery, n: Neighbor, shop: ShopKind | null): THREE.Group {
+  const { g, plinth } = placed(s, n.at, n.facing, n.width, n.depth);
+  const floor = plinth + 0.25;
+  part(g, yard.base, -n.width / 2 - 0.1, n.width / 2 + 0.1, 0, floor, -n.depth / 2 - 0.1, n.depth / 2 + 0.1);
+  const house = mergeByMaterial(buildHouse(gameHouseOf(n, shop), { roof: true }));
+  house.position.y = floor;
+  g.add(house);
+  // Local: +x across the front, -z out of the front. Where is that in plan?
+  const f = new Vec2(Math.cos(n.facing), Math.sin(n.facing));
+  const side = new Vec2(-f.y, f.x);
+  const world = (x: number, z: number) => n.at.add(side.scale(-x)).add(f.scale(-z));
+  const free = (x: number, z: number, room: number) => roadGap(s, world(x, z)) > room && s.waterDistance(world(x, z).x, world(x, z).y) > 1;
+  if (shop) {
+    // An awning over the shop windows and a sign above it.
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(n.width * 0.85, 0.05, 1.4), yard.awnings[["cafe", "bakery", "grocer", "icecream"].indexOf(shop)]);
+    awning.position.set(0, floor + 2.55, -n.depth / 2 - 0.65);
+    awning.rotation.x = -0.3;
+    awning.castShadow = true;
+    g.add(awning);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), shopSign(shop));
+    // (Clear of the wall, which is thick and centred on the outline.)
+    sign.position.set(0, floor + 3.0, -n.depth / 2 - 0.35);
+    sign.rotation.y = Math.PI;
+    g.add(sign);
+    // Tables outside the café.
+    if (shop === "cafe" && free(0, -n.depth / 2 - 2.5, 0.8)) {
+      for (const x of [-n.width / 4, n.width / 4]) {
+        const z = -n.depth / 2 - 2.3;
+        const y = s.height(world(x, z).x, world(x, z).y) - g.position.y;
+        part(g, yard.table, x - 0.04, x + 0.04, y, y + 0.72, z - 0.04, z + 0.04);
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.04, 16), yard.table);
+        top.position.set(x, y + 0.74, z);
+        g.add(top);
+        for (const dx of [-0.6, 0.6]) part(g, yard.chair, x + dx - 0.2, x + dx + 0.2, y + 0.42, y + 0.47, z - 0.2, z + 0.2);
+        part(g, yard.table, x - 0.02, x + 0.02, y + 0.74, y + 2.3, z - 0.02, z + 0.02);
+        const shade = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.5, 8, 1, true), yard.parasol);
+        shade.position.set(x, y + 2.3, z);
+        shade.castShadow = true;
+        g.add(shade);
+      }
+    }
+    return g;
+  }
+  // A low picket fence along the front of the yard, with a gap for the path.
+  const fz = -n.depth / 2 - 4;
+  if (free(0, fz, 1)) {
+    // (Built apart and merged: a picket per mesh would be hundreds of draws.)
+    const fence = new THREE.Group();
+    for (const [x0, x1] of [[-n.width / 2 - 2, -0.7], [0.7, n.width / 2 + 2]]) {
+      const y = s.height(world((x0 + x1) / 2, fz).x, world((x0 + x1) / 2, fz).y) - g.position.y;
+      part(fence, mats.white, x0, x1, y + 0.25, y + 0.32, fz - 0.02, fz + 0.02);
+      part(fence, mats.white, x0, x1, y + 0.6, y + 0.67, fz - 0.02, fz + 0.02);
+      for (let x = x0 + 0.06; x < x1; x += 0.16) part(fence, mats.white, x - 0.03, x + 0.03, y, y + 0.8, fz - 0.015, fz + 0.015);
+    }
+    g.add(mergeByMaterial(fence));
+  }
+  // A car on the drive beside the house.
+  const cx = n.width / 2 + 1.6;
+  const cz = -n.depth / 2 + 0.5;
+  if (free(cx, cz, 1.2) && free(cx, cz - 2.2, 1.2) && s.neighbors.every((o) => o === n || o.at.distance(world(cx, cz)) > Math.max(o.width, o.depth) / 2 + 2.5)) {
+    const car = buildFurniture({ kind: "Car", level: 0, at: new Vec2(cx, cz), facing: new Vec2(0, -1), width: 1.8, depth: 4.4, height: 1.45 });
+    const y = s.height(world(cx, cz).x, world(cx, cz).y) - g.position.y;
+    car.position.set(cx, y, cz);
+    car.rotation.y = Math.PI;
+    g.add(car);
+  }
+  return g;
+}
+
+// --- Life: cars going by, people walking (and a dog), birds, boats ------------------------
+
+const people = {
+  skin: toon({ color: "#f1c9a5" }),
+  clothes: ["#d8342a", "#3f6fbf", "#2f8a3f", "#e7b94a", "#7a5fd0"].map((c) => toon({ color: c })),
+  legs: toon({ color: "#2f3542" }),
+  dog: toon({ color: "#a0703a" }),
+  bird: toon({ color: "#2b2d31", side: THREE.DoubleSide }),
+  hull: toon({ color: "#f2f1ec" }),
+  sail: toon({ color: "#ffffff", side: THREE.DoubleSide }),
+  rowing: toon({ color: "#b5382c" }),
+};
+
+function person(colour: number): { g: THREE.Group; legs: THREE.Mesh[] } {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 8), people.clothes[colour % people.clothes.length]);
+  body.position.y = 1.15;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), people.skin);
+  head.position.y = 1.65;
+  const legs = [-0.09, 0.09].map((x) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.8, 0.12), people.legs);
+    leg.geometry.translate(0, -0.4, 0);
+    leg.position.set(x, 0.8, 0);
+    return leg;
+  });
+  g.add(body, head, ...legs);
+  g.traverse((o) => (o.castShadow = true));
+  return { g, legs };
+}
+
+function dog(): { g: THREE.Group; legs: THREE.Mesh[] } {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.6), people.dog);
+  body.position.y = 0.38;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.24), people.dog);
+  head.position.set(0, 0.55, -0.36);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.25), people.dog);
+  tail.position.set(0, 0.5, 0.38);
+  tail.rotation.x = 0.6;
+  const legs = [-0.08, 0.08].flatMap((x) =>
+    [-0.2, 0.2].map((z) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), people.dog);
+      leg.geometry.translate(0, -0.15, 0);
+      leg.position.set(x, 0.3, z);
+      return leg;
+    }),
+  );
+  g.add(body, head, tail, ...legs);
+  g.traverse((o) => (o.castShadow = true));
+  return { g, legs };
+}
+
+/** Cars driving the roads, people walking the pavements (one with a dog), birds and boats. */
+function streetLife(s: Scenery, center: THREE.Vector3): { group: THREE.Group; movers: ((t: number) => void)[] } {
+  const group = new THREE.Group();
+  const movers: ((t: number) => void)[] = [];
+  const centre = new Vec2(center.x, center.z);
+  const paved = s.roads.filter((r) => r.kind !== "gravel");
+  const roadY = (p: Vec2) => s.height(p.x, p.y) + 0.14;
+
+  // Cars: one or two on each street, driving on the right, round and round.
+  let carCount = 0;
+  for (const road of paved) {
+    if (road.kind === "gravel" || carCount >= 4) continue;
+    const length = polylineLength(road.points);
+    if (length < 40) continue;
+    for (let k = 0; k < (road.kind === "main" ? 2 : 1); k++, carCount++) {
+      const forward = k % 2 === 0;
+      const car = buildFurniture({ kind: "Car", level: 0, at: new Vec2(k * 3.1, k * 7.3 + carCount), facing: new Vec2(0, 1), width: 1.8, depth: 4.4, height: 1.45 });
+      group.add(car);
+      const speed = road.kind === "main" ? 9 : 6;
+      const start = (k * 0.5 + carCount * 0.27) * length;
+      movers.push((t) => {
+        const d = (((start + t * speed) % length) + length) % length;
+        const { at, dir } = pointAlong(road.points, forward ? d : length - d);
+        const heading = forward ? dir : dir.scale(-1);
+        const lane = new Vec2(heading.y, -heading.x).scale(road.width / 4);
+        const p = at.add(lane);
+        car.position.set(p.x, roadY(p), p.y);
+        car.rotation.y = Math.atan2(heading.x, heading.y);
+      });
+    }
+  }
+
+  // People walking up and down the pavement near the plot; the first one has a dog.
+  const walks = paved.filter((r) => r.points.some((p) => p.distance(centre) < 90));
+  for (let i = 0; i < Math.min(4, walks.length * 2); i++) {
+    const road = walks[i % walks.length];
+    const length = polylineLength(road.points);
+    // Their stretch: 50 m round the point nearest the plot.
+    let nearest = 0;
+    let best = Infinity;
+    for (let d = 0; d < length; d += 2) {
+      const dist = pointAlong(road.points, d).at.distance(centre);
+      if (dist < best) [best, nearest] = [dist, d];
+    }
+    const from = Math.max(0, nearest - 25 + i * 7);
+    const span = Math.min(50, length - from);
+    if (span < 10) continue;
+    const side = i % 2 ? 1 : -1;
+    const walker = person(i);
+    group.add(walker.g);
+    const pet = i === 0 ? dog() : null;
+    if (pet) group.add(pet.g);
+    const speed = 1.2 + i * 0.1;
+    movers.push((t) => {
+      // Back and forth along the stretch.
+      const run = (t * speed + i * 13) % (2 * span);
+      const forward = run < span;
+      const d = from + (forward ? run : 2 * span - run);
+      const { at, dir } = pointAlong(road.points, d);
+      const heading = forward ? dir : dir.scale(-1);
+      const off = new Vec2(-dir.y, dir.x).scale(side * (road.width / 2 + 0.9));
+      const p = at.add(off);
+      walker.g.position.set(p.x, s.height(p.x, p.y), p.y);
+      walker.g.rotation.y = Math.atan2(heading.x, heading.y);
+      const swing = Math.sin(t * speed * 5) * 0.5;
+      walker.legs[0].rotation.x = swing;
+      walker.legs[1].rotation.x = -swing;
+      if (pet) {
+        const q = p.add(heading.scale(1.3)).add(new Vec2(-dir.y, dir.x).scale(side * 0.5));
+        pet.g.position.set(q.x, s.height(q.x, q.y), q.y);
+        pet.g.rotation.y = walker.g.rotation.y + Math.PI;
+        pet.legs.forEach((l, k) => (l.rotation.x = (k % 2 ? 1 : -1) * Math.sin(t * 9) * 0.6));
+      }
+    });
+  }
+
+  // Birds circling high over the plot, flapping now and then.
+  for (let i = 0; i < 6; i++) {
+    const bird = new THREE.Group();
+    const wings = [-1, 1].map((sgn) => {
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.25), people.bird);
+      w.geometry.translate(0.35 * sgn, 0, 0);
+      w.rotation.x = -Math.PI / 2;
+      const pivot = new THREE.Group();
+      pivot.add(w);
+      bird.add(pivot);
+      return pivot;
+    });
+    group.add(bird);
+    const radius = 18 + i * 6;
+    const height = 26 + (i % 3) * 6;
+    movers.push((t) => {
+      const a = t * (0.25 - i * 0.02) + i * 1.3;
+      bird.position.set(center.x + Math.cos(a) * radius, height + Math.sin(t * 0.7 + i) * 1.5, center.z + Math.sin(a) * radius);
+      bird.rotation.y = -a;
+      const flap = Math.sin(t * 9 + i) * 0.6 * (Math.sin(t * 0.8 + i) > 0 ? 1 : 0.15);
+      wings[0].rotation.z = flap;
+      wings[1].rotation.z = -flap;
+    });
+  }
+
+  // Boats: a rowing boat by the jetty, and a sailing boat out on open water.
+  const w = s.water;
+  if (w) {
+    if (s.jetty) {
+      const dir = s.jetty.to.sub(s.jetty.from).normalize();
+      const at = s.jetty.to.add(new Vec2(-dir.y, dir.x).scale(s.jetty.width / 2 + 0.9));
+      const boat = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.35, 3), people.rowing);
+      hull.position.y = 0.1;
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1, 0.05, 0.3), people.hull);
+      seat.position.y = 0.3;
+      boat.add(hull, seat);
+      boat.rotation.y = Math.atan2(dir.x, dir.y);
+      group.add(boat);
+      movers.push((t) => {
+        boat.position.set(at.x, w.level + Math.sin(t * 1.4) * 0.05, at.y);
+        boat.rotation.z = Math.sin(t * 1.1) * 0.04;
+      });
+    }
+    // Open water: a circle of 12 m radius that is water all round.
+    let sailAt: Vec2 | null = null;
+    for (let r = 40; r <= 160 && !sailAt; r += 20)
+      for (let k = 0; k < 16 && !sailAt; k++) {
+        const c = centre.add(new Vec2(Math.cos((k / 16) * Math.PI * 2), Math.sin((k / 16) * Math.PI * 2)).scale(r));
+        const ring = [0, 1, 2, 3, 4, 5, 6, 7].map((j) => c.add(new Vec2(Math.cos(j * 0.785), Math.sin(j * 0.785)).scale(14)));
+        if ([c, ...ring].every((p) => s.waterDistance(p.x, p.y) < -3)) sailAt = c;
+      }
+    if (sailAt) {
+      const c = sailAt;
+      const boat = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 4), people.hull);
+      hull.position.y = 0.2;
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5, 6), mats.wood);
+      mast.position.y = 2.7;
+      const sail = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.6, 0.1), new THREE.Vector3(0, 5, 0.1), new THREE.Vector3(0, 0.6, 2.2)]), people.sail);
+      sail.geometry.computeVertexNormals();
+      boat.add(hull, mast, sail);
+      boat.traverse((o) => (o.castShadow = true));
+      group.add(boat);
+      movers.push((t) => {
+        const a = t * 0.05;
+        boat.position.set(c.x + Math.cos(a) * 10, w.level + Math.sin(t * 1.2) * 0.08, c.y + Math.sin(a) * 10);
+        boat.rotation.y = -a;
+        boat.rotation.z = 0.12;
+      });
+    }
+  }
+  return { group, movers };
 }
