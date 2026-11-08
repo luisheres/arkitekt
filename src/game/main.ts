@@ -343,10 +343,33 @@ function renderToggles(): void {
   const row = (key: string, label: string, on: boolean, hint = "") =>
     `<label${hint ? ` title="${hint}"` : ""}><input type="checkbox" data-toggle="${key}"${on ? " checked" : ""}> ${label}</label>`;
   const levels = [...house.levelList()].reverse().map((k) => row(`level:${k}`, m.levelName(k), !hiddenLevels.has(k)));
-  const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${levels.length > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}`;
-  if (toggles.innerHTML !== html) toggles.innerHTML = html;
+  const hh = Math.floor(store.sunHour);
+  const time = `${String(hh).padStart(2, "0")}:${String(Math.round((store.sunHour - hh) * 60)).padStart(2, "0")}`;
+  const seasons = core.SEASONS.map((s) => `<option value="${s}"${s === store.season ? " selected" : ""}>${m.ui.seasons[s]}</option>`).join("");
+  const sun = `<div class="label sun-label" title="${m.ui.sunTitle}">☀ ${m.ui.sun} <output>${time}</output></div>
+    <input type="range" class="sun-slider" min="4" max="22" step="0.25" value="${store.sunHour}" aria-label="${m.ui.sun}" title="${m.ui.sunTitle}">
+    <select class="sun-season" aria-label="${m.ui.sun}">${seasons}</select>`;
+  const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${levels.length > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}${sun}`;
+  // (Not while the slider is being dragged: it would lose hold of it.)
+  const dragging = document.activeElement?.classList.contains("sun-slider");
+  if (!dragging) {
+    if (toggles.dataset.html !== html) {
+      toggles.innerHTML = html;
+      toggles.dataset.html = html;
+    }
+  } else {
+    const out = toggles.querySelector(".sun-label output");
+    if (out) out.textContent = time;
+  }
 }
+toggles.addEventListener("input", (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.classList.contains("sun-slider")) store.setSun(Number(t.value));
+});
 toggles.addEventListener("change", (e) => {
+  const t = e.target as HTMLElement;
+  if (t.classList.contains("sun-season")) return store.setSun(store.sunHour, (t as HTMLSelectElement).value as core.Season);
+  if (t.classList.contains("sun-slider")) return;
   const key = (e.target as HTMLInputElement).dataset.toggle ?? "";
   if (key === "roof") store.toggleRoof();
   else if (key === "furniture") store.toggleFurniture();

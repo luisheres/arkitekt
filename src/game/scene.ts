@@ -71,7 +71,7 @@ const palette = {
   roof: each(ROOF_MATERIALS, (m) =>
     worldMaterial(roofTexture(m), { roughness: m === "Metal" ? 0.45 : 0.85, metalness: m === "Metal" ? 0.5 : 0, side: THREE.DoubleSide }),
   ),
-  glass: toon({ color: "#a8dcff", transparent: true, opacity: 0.6 }),
+  glass: toon({ color: "#a8dcff", transparent: true, opacity: 0.6, emissive: "#ffcf70", emissiveIntensity: 0 }),
   frame: matte(0.96, 0.96, 0.94, 0.6),
   // A cheerfully painted front door.
   door: toon({ color: "#e0584a" }),
@@ -715,4 +715,36 @@ export function disposeHouse(group: THREE.Group): void {
     if (o instanceof THREE.Mesh && !o.geometry.userData.shared) o.geometry.dispose();
   });
   group.removeFromParent();
+}
+
+/** Windows glow warm when it gets dark (0: daylight, 1: night). */
+export function setDusk(amount: number): void {
+  const glass = palette.glass as THREE.MeshToonMaterial;
+  glass.emissiveIntensity = amount * 0.9;
+  glass.opacity = 0.6 + amount * 0.35;
+}
+
+/** Casts shadows but is never seen: the roof or storeys hidden from view still shade the house. */
+const SHADOW_ONLY = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+
+/**
+ * What is hidden from view (the roof, hidden storeys), built only to cast its shadows, so
+ * looking into the house shows the light as it really comes in.
+ */
+export function buildShadowCaster(house: House, options: HouseViewOptions): THREE.Group | null {
+  const all = new Set(house.levelList());
+  const shown = [...all].filter((k) => !options.hidden?.has(k));
+  if (options.roof && shown.length === all.size) return null;
+  const ghost = buildHouse(house, { roof: !options.roof || shown.length < all.size, hidden: new Set(shown), furniture: false, plot: options.plot });
+  // Only the house itself (the first child): not the lawn, paths or garden around it.
+  for (const extra of ghost.children.slice(1)) extra.removeFromParent();
+  ghost.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.material = SHADOW_ONLY;
+      o.castShadow = true;
+      o.receiveShadow = false;
+    }
+  });
+  ghost.userData.shadowOnly = true;
+  return ghost;
 }

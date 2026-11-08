@@ -149,7 +149,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
             { kind: "paint", room: "Bedroom", color: colour },
             { kind: "gardenPlants", min: 4 },
             { kind: "balcony" },
-            { kind: "terrace" },
+            { kind: "sunnyTerrace", minHours: 5 },
           ]),
         ],
       };
@@ -184,6 +184,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           ...extra<BriefItem["req"]>([
             { kind: "indoorPlants", min: 2 },
             { kind: "paint", room: "Living", color: pick<PaintColor>(["Cream", "Sage", "Sky"]) },
+            { kind: "sunsetView" },
           ]),
         ],
       };
@@ -215,7 +216,7 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "windowArea", room: "Living", min: 4 },
           { kind: "wallMaterial", material: wall },
           { kind: "floorFinish", finish: "Wood", room: "Bedroom" },
-          ...extra<BriefItem["req"]>([{ kind: "gardenPlants", min: 5 }, { kind: "fireplace" }, { kind: "terrace" }]),
+          ...extra<BriefItem["req"]>([{ kind: "gardenPlants", min: 5 }, { kind: "fireplace" }, { kind: "sunnyTerrace", minHours: 6 }]),
         ],
       };
     case "remote":
@@ -285,7 +286,8 @@ function draft(kind: Archetype, rnd: () => number, tier?: Tier): Draft {
           { kind: "gardenPlants", min: 8 },
           { kind: "doubleHeight", room: "Living" },
           { kind: "fireplace" },
-          { kind: "terrace" },
+          { kind: "sunsetView" },
+          { kind: "sunnyTerrace", minHours: 7 },
         ],
       };
     case "signature":

@@ -113,12 +113,19 @@ export class ToonRenderer {
     const clearColor = r.getClearColor(new THREE.Color());
     const clearAlpha = r.getClearAlpha();
     scene.background = null;
+    // Things that only cast shadows must not show up as outlines.
+    const ghosts: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (o.userData.shadowOnly && o.visible) ghosts.push(o);
+    });
+    for (const g of ghosts) g.visible = false;
     scene.overrideMaterial = this.normalMaterial;
     r.setRenderTarget(this.normals);
     r.setClearColor(0x8080ff, 1);
     r.clear();
     r.render(scene, camera);
     scene.overrideMaterial = null;
+    for (const g of ghosts) g.visible = true;
     scene.background = background;
     r.setClearColor(clearColor, clearAlpha);
 

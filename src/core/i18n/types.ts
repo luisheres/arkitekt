@@ -174,6 +174,7 @@ export interface Messages {
   /** Evaluating a brief and the client's verdict. */
   brief: {
     countOf(n: number, total: number): string;
+    hoursOfSun(hours: number): string;
     yes: string;
     no: string;
     noRoof: string;
@@ -349,6 +350,13 @@ export interface Messages {
     platformHeight: string;
     platformHint: string;
     moveHint: string;
+    /** The sun in the 3D view. */
+    sun: string;
+    sunTitle: string;
+    seasons: Record<"spring" | "summer" | "autumn" | "winter", string>;
+    /** "☀ 7.5 h of sun in spring · evening sun in summer" */
+    terraceSun(hours: string, sunset: boolean): string;
+    north: string;
     /** On sloping ground: the platform's height and the earth moved. */
     platform(height: string, dug: string, filled: string): string;
     /** The room menu's paint swatches, the Garden menu, balconies. */

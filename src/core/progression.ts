@@ -388,6 +388,8 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
       if (!a.fireplace) needs.push({ kind: "fireplace" });
       break;
     case "terrace":
+    case "sunnyTerrace":
+    case "sunsetView":
       if (!a.terraces) needs.push({ kind: "terraces" });
       break;
     case "doubleHeight":

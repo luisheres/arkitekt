@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import { type Landmark, type Plot, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, treeLook } from "../core";
+import { type Landmark, type Plot, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, treeLook } from "../core";
 import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
@@ -20,6 +20,8 @@ export interface World {
   root: THREE.Group;
   /** Plot boundary and setback lines. */
   guides: THREE.Object3D;
+  /** Put the sun where it is at a time of day and season. */
+  setSun(sun: SunPosition): void;
 }
 
 /** Plan point at ground height to world space. */
@@ -30,7 +32,10 @@ export function buildWorld(plot: Plot): World {
   const scenery = sceneryFor(plot);
   const center = new THREE.Vector3(plot.width / 2, 0, plot.depth / 2);
 
-  root.add(sky(), clouds(center), ...lights(center, plot));
+  const [hemi, sun, target] = lights(center, plot);
+  const baseExtent = Math.max(plot.width, plot.depth) * 0.8 + 10;
+  const skyMesh = sky();
+  root.add(skyMesh, clouds(center), hemi, sun, target);
   root.add(terrain(scenery, center, plot));
   root.add(roads(scenery));
   if (scenery.water) root.add(water(scenery));
@@ -43,7 +48,29 @@ export function buildWorld(plot: Plot): World {
 
   const guides = plotGuides(plot);
   root.add(guides);
-  return { root, guides };
+  const setSun = (pos: SunPosition) => {
+    // Shadows from a sun at least 7° up (lower, they would run off for hundreds of metres).
+    const up = Math.max(pos.dir.up, Math.sin((7 * Math.PI) / 180));
+    const flat = Math.hypot(pos.dir.x, pos.dir.y) || 1;
+    const dir = new THREE.Vector3(pos.dir.x / flat, up / Math.cos(Math.asin(up)), pos.dir.y / flat).normalize();
+    sun.position.copy(center).addScaledVector(dir, 150);
+    sun.target.position.copy(center);
+    // The shadowed area grows as the sun sinks, so long shadows stay inside it.
+    const reach = baseExtent + Math.min(90, 7 / Math.tan(Math.asin(dir.y)) * 2.2);
+    Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, far: 400 });
+    sun.shadow.camera.updateProjectionMatrix();
+    // Low sun: weaker, warmer, golden; after sunset, only the blue of the sky.
+    const day = THREE.MathUtils.smoothstep(pos.elevation, -4, 12);
+    const golden = 1 - THREE.MathUtils.smoothstep(pos.elevation, 2, 25);
+    sun.intensity = 2.6 * day;
+    sun.color.set("#fff4dd").lerp(new THREE.Color("#ffb066"), golden * 0.8);
+    hemi.intensity = 0.55 + 0.85 * day;
+    hemi.color.set("#ffffff").lerp(new THREE.Color("#9aa6d8"), 1 - day);
+    const u = (skyMesh.material as THREE.ShaderMaterial).uniforms;
+    u.top.value.copy(SKY_TOP).lerp(new THREE.Color("#22306b"), (1 - day) * 0.8);
+    u.horizon.value.copy(HAZE).lerp(new THREE.Color("#ffb38a"), golden * 0.55);
+  };
+  return { root, guides, setSun };
 }
 
 // --- Sky -------------------------------------------------------------------------------
@@ -53,7 +80,7 @@ function sky(): THREE.Mesh {
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    uniforms: { top: { value: SKY_TOP }, horizon: { value: SKY_HORIZON } },
+    uniforms: { top: { value: SKY_TOP.clone() }, horizon: { value: SKY_HORIZON.clone() } },
     vertexShader: "varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader:
       "uniform vec3 top;\nuniform vec3 horizon;\nvarying vec3 vDir;\nvoid main() {\n  float t = pow(clamp(vDir.y, 0.0, 1.0), 0.6);\n  gl_FragColor = vec4(mix(horizon, top, t), 1.0);\n  #include <colorspace_fragment>\n}",
@@ -87,15 +114,16 @@ function clouds(center: THREE.Vector3): THREE.Group {
   return g;
 }
 
-function lights(center: THREE.Vector3, plot: Plot): THREE.Object3D[] {
+function lights(center: THREE.Vector3, plot: Plot): [THREE.HemisphereLight, THREE.DirectionalLight, THREE.Object3D] {
   const hemi = new THREE.HemisphereLight("#ffffff", "#8fbf6a", 1.4);
   const sun = new THREE.DirectionalLight("#fff4dd", 2.4);
   sun.position.set(center.x - 35, 60, center.z - 30);
   sun.target.position.copy(center);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const extent = Math.max(plot.width, plot.depth) + 6;
-  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 200 });
+  sun.shadow.mapSize.set(4096, 4096);
+  // Covering the plot even when the low sun throws long shadows.
+  const extent = Math.max(plot.width, plot.depth) * 0.8 + 10;
+  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 260 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
   return [hemi, sun, sun.target];

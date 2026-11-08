@@ -54,6 +54,7 @@ import {
   placeBalcony,
   placeTerrace,
   placeDormer,
+  balconySun,
   placeDormerAnywhere,
   DORMER_WIDTH,
   dormerShape,
@@ -591,6 +592,12 @@ function balconyInspector(store: Store, id: number): Inspector | null {
   const balcony = (h: House = store.house) => h.balcony(id);
   if (!balcony()) return null;
   const terrace = store.house.wall(balcony()!.wall)?.level === 0;
+  const sunLine = readout("", () => {
+    const b = balcony();
+    if (!b) return "";
+    const s = balconySun(store.house, b);
+    return m.ui.terraceSun(m.brief.hoursOfSun(s.hours).replace(/ (of sun|sol)$/, ""), s.sunset);
+  });
   const editBalcony = (fn: (b: Balcony, wall: Wall) => void, key: string) =>
     store.edit((h) => {
       const b = balcony(h);
@@ -623,9 +630,10 @@ function balconyInspector(store: Store, id: number): Inspector | null {
       el("h2", {}, terrace ? m.ui.terrace : m.ui.balcony),
       ...fields.map((f) => f.el),
       el("p", { className: "sub" }, terrace ? m.ui.terraceNote : m.ui.balconyNote),
+      sunLine.el,
       el("div", { className: "row" }, deleteButton(store)),
     ),
-    fields,
+    fields: [...fields, sunLine],
   };
 }
 

@@ -18,6 +18,7 @@ import {
   type HouseJson,
   type PriceList,
   type SavedDesign,
+  type Season,
   type TechniqueId,
   type Unlock,
   type Vec2,
@@ -111,6 +112,9 @@ export class Store {
   showFurniture = true;
   /** The live cost chart is open. */
   showCosts = false;
+  /** The sun in the 3D view: the time of day (solar hours) and the season. */
+  sunHour = 14;
+  season: Season = "summer";
 
   private history = new History();
   private readonly listeners = new Set<(change: Change) => void>();
@@ -492,6 +496,12 @@ export class Store {
   toggleLevelShown(level: number): void {
     if (this.hiddenLevels.has(level)) this.hiddenLevels.delete(level);
     else this.hiddenLevels.add(level);
+    this.emit("ui");
+  }
+
+  setSun(hour: number, season: Season = this.season): void {
+    this.sunHour = hour;
+    this.season = season;
     this.emit("ui");
   }
 

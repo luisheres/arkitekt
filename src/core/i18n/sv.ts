@@ -388,6 +388,10 @@ export const sv: Messages = {
         return "En balkong";
       case "terrace":
         return "En terrass";
+      case "sunnyTerrace":
+        return `En terrass eller balkong med minst ${r.minHours} timmars sol`;
+      case "sunsetView":
+        return "En balkong eller terrass med kvällssol";
       case "fireplace":
         return "En öppen spis";
       case "gardenPlants":
@@ -402,6 +406,7 @@ export const sv: Messages = {
   },
 
   brief: {
+    hoursOfSun: (hours) => `${num(sv, hours, 1)} h sol`,
     countOf: (n, total) => `${n} av ${total}`,
     yes: "ja",
     no: "nej",
@@ -572,6 +577,11 @@ export const sv: Messages = {
     platformHeight: "Grundens höjd",
     platformHint: "Upp från markens medelhöjd: högre fyller mer jord, lägre schaktar mer. Djupa schakt och fyllningar får stödmurar.",
     moveHint: "Vrid det ett kvarts varv i taget, eller välj verktyget ✋ Flytta (M) och dra det i planen. I en slänt ändrar flytten hur mycket jord som schaktas.",
+    sun: "Sol",
+    sunTitle: "Var solen står: dra genom dagen för att se hur ljuset faller in i huset",
+    seasons: { spring: "Vår", summer: "Sommar", autumn: "Höst", winter: "Vinter" },
+    terraceSun: (hours, sunset) => `☀ ${hours} sol på våren${sunset ? " · kvällssol på sommaren" : ""}`,
+    north: "N",
     platform: (height, dug, filled) => `Står på en plan yta på +${height} m · ${dug} m³ bortschaktat, ${filled} m³ utfyllt`,
     wallColour: "Väggfärg",
     garden: "Trädgård",

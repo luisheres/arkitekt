@@ -13,6 +13,7 @@ import type { Lang, Messages } from "./i18n/types";
 import { ROOM_INFO, type Room, analyzeHouse, voidArea } from "./rooms";
 import { validate } from "./validate";
 import { openingAbove } from "./edit";
+import { balconySun } from "./features";
 import type { Abilities } from "./progression";
 
 export type Requirement =
@@ -40,6 +41,10 @@ export type Requirement =
   | { kind: "balcony" }
   /** A terrace on the ground, against the house. */
   | { kind: "terrace" }
+  /** A terrace or balcony with at least this many hours of sun (at the spring equinox). */
+  | { kind: "sunnyTerrace"; minHours: number }
+  /** A balcony or terrace that gets the evening sun (in summer). */
+  | { kind: "sunsetView" }
   /** A fireplace (with its chimney). */
   | { kind: "fireplace" }
   /** At least this many trees, shrubs, flower beds or hedges in the garden. */
@@ -158,6 +163,14 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       case "terrace": {
         const n = house.balconies.filter((b) => house.wall(b.wall)?.level === 0).length;
         return [n > 0, String(n)];
+      }
+      case "sunnyTerrace": {
+        const best = Math.max(0, ...house.balconies.map((b) => balconySun(house, b).hours));
+        return [best >= r.minHours, m.brief.hoursOfSun(best)];
+      }
+      case "sunsetView": {
+        const ok = house.balconies.some((b) => balconySun(house, b).sunset);
+        return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "fireplace": {
         const n = house.furniture.filter((f) => f.kind === "Fireplace").length;

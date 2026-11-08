@@ -380,6 +380,10 @@ export const en: Messages = {
         return "A balcony";
       case "terrace":
         return "A terrace";
+      case "sunnyTerrace":
+        return `A terrace or balcony with at least ${r.minHours} hours of sun`;
+      case "sunsetView":
+        return "A balcony or terrace with the evening sun";
       case "fireplace":
         return "A fireplace";
       case "gardenPlants":
@@ -394,6 +398,7 @@ export const en: Messages = {
   },
 
   brief: {
+    hoursOfSun: (hours) => `${num(en, hours, 1)} h of sun`,
     countOf: (n, total) => `${n} of ${total}`,
     yes: "yes",
     no: "no",
@@ -564,6 +569,11 @@ export const en: Messages = {
     platformHeight: "Platform height",
     platformHint: "Up from the ground's average: higher fills more earth in, lower digs more out. Deep cuts and fills get retaining walls.",
     moveHint: "Turn it a quarter at a time, or pick the ✋ Move tool (M) and drag it in the plan. On a slope, moving it changes how much earth is dug.",
+    sun: "Sun",
+    sunTitle: "Where the sun is: drag through the day to see how the light falls into the house",
+    seasons: { spring: "Spring", summer: "Summer", autumn: "Autumn", winter: "Winter" },
+    terraceSun: (hours, sunset) => `☀ ${hours} of sun in spring${sunset ? " · evening sun in summer" : ""}`,
+    north: "N",
     platform: (height, dug, filled) => `Stands on a level platform at +${height} m · ${dug} m³ dug, ${filled} m³ filled`,
     wallColour: "Wall colour",
     garden: "Garden",

@@ -149,7 +149,11 @@ export class PlanView {
     this.levels = document.createElement("div");
     this.levels.className = "level-switch";
     this.levels.addEventListener("click", (e) => this.levelClick(e));
-    container.append(this.svg, this.hint, this.levels);
+    // A compass: north is up in the plan (the back of every plot).
+    const compass = document.createElement("div");
+    compass.className = "plan-compass";
+    compass.innerHTML = `<svg viewBox="-23 -23 46 46" aria-label="${m.ui.north}"><circle r="21" fill="rgba(255,255,255,0.88)" stroke="#8a8478"/><text y="-10" text-anchor="middle" dominant-baseline="middle" font-weight="800" font-size="10" fill="#3a3530">${m.ui.north}</text><polygon points="0,-3 5,15 0,11 -5,15" fill="#d9534a"/></svg>`;
+    container.append(this.svg, this.hint, this.levels, compass);
 
     this.refresh();
     store.subscribe((change) => {

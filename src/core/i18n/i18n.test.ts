@@ -123,7 +123,7 @@ describe("languages", () => {
 
   it("no Swedish UI text is left in English by mistake", () => {
     // Words that really are the same in both languages.
-    const same = new Set(["Plan", "3D", "Budget", "Material", "Garage", "WC", "Hall"]);
+    const same = new Set(["Plan", "3D", "Budget", "Material", "Garage", "WC", "Hall", "N"]);
     const strings = (o: unknown, path = ""): [string, string][] =>
       typeof o === "string" ? [[path, o]] : o && typeof o === "object" ? Object.entries(o).flatMap(([k, v]) => strings(v, `${path}.${k}`)) : [];
     const english = new Map(strings(en));

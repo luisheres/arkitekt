@@ -1,12 +1,12 @@
 /** The live 3D view of the house on its plot, with an orbit camera. */
 
 import * as THREE from "three";
-import { SIDE_YAW, sceneryFor } from "../core";
+import { SEASON_DAY, SIDE_YAW, sceneryFor, sunPosition } from "../core";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { HAZE } from "./landscape";
 import { ToonRenderer } from "./toonPost";
-import { type Pick, type World, buildHouse, buildWorld, disposeHouse, disposeWorld } from "./scene";
+import { type Pick, type World, buildHouse, buildShadowCaster, buildWorld, disposeHouse, disposeWorld, setDusk } from "./scene";
 import type { Store } from "./store";
 
 /** Vertical field of view, in degrees, on a wide enough screen (and in captures). */
@@ -49,6 +49,7 @@ export class View3D {
 
     // What the house was last built for: rebuild when the house or what is shown changes.
     const shownKey = () => `${store.showRoof}|${store.showFurniture}|${[...store.hiddenLevels].sort().join(",")}`;
+    this.updateSun();
     let shown = shownKey();
     store.subscribe((change) => {
       if (change !== "ui" || shownKey() !== shown) this.houseDirty = true;
@@ -149,13 +150,27 @@ export class View3D {
     this.requestRender();
   }
 
+  private shadowCaster: THREE.Group | null = null;
+
   private syncHouse(): void {
     if (!this.houseDirty) return;
     this.houseDirty = false;
     if (this.houseGroup) disposeHouse(this.houseGroup);
+    if (this.shadowCaster) disposeHouse(this.shadowCaster);
     const { house, showRoof, hiddenLevels, showFurniture } = this.store;
-    this.houseGroup = buildHouse(house, { roof: showRoof, hidden: hiddenLevels, furniture: showFurniture, plot: this.store.plot });
+    const options = { roof: showRoof, hidden: hiddenLevels, furniture: showFurniture, plot: this.store.plot };
+    this.houseGroup = buildHouse(house, options);
     this.scene.add(this.houseGroup);
+    // The roof and storeys hidden from view still cast their shadows.
+    this.shadowCaster = buildShadowCaster(house, options);
+    if (this.shadowCaster) this.scene.add(this.shadowCaster);
+  }
+
+  /** The sun where the store says, and windows lit at dusk. */
+  private updateSun(): void {
+    const pos = sunPosition(this.store.sunHour, SEASON_DAY[this.store.season]);
+    this.world.setSun(pos);
+    setDusk(1 - THREE.MathUtils.smoothstep(pos.elevation, -3, 6));
   }
 
   private requestRender(): void {
@@ -166,6 +181,7 @@ export class View3D {
       if (this.canvas.clientWidth === 0) return; // hidden in plan-only layout
       this.syncHouse();
       this.world.guides.visible = this.store.showGuides;
+      this.updateSun();
       placeCamera(this.camera, this.orbit, this.ground);
       this.toon.render(this.scene, this.camera);
     });

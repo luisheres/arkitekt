@@ -4,10 +4,11 @@
  */
 
 import { Vec2 } from "./geometry";
-import { type Dormer, type House, DORMER_WIDTH } from "./model";
+import { type Balcony, type Dormer, type House, DORMER_WIDTH } from "./model";
 import { type RoofGeometry, buildRoof, roofHeightAt } from "./roof";
 import { analyzeLayout } from "./layout";
-import { interiorNormal } from "./edit";
+import { balconyOutline, interiorNormal } from "./edit";
+import { SEASON_DAY, sunHours, sunsetSun } from "./sun";
 
 /** How far a chimney rises above the roof where it comes through. */
 export const CHIMNEY_ABOVE_ROOF = 0.9;
@@ -139,4 +140,15 @@ export function placeDormerAnywhere(house: House, side: "front" | "back" | "left
     house.removeDormer(id);
   }
   return null;
+}
+
+/** The sun on a balcony or terrace: hours of direct sun at the spring equinox, and whether it gets the summer's evening sun. */
+export function balconySun(house: House, b: Balcony): { hours: number; sunset: boolean } {
+  const outline = balconyOutline(house, b);
+  const wall = house.wall(b.wall);
+  if (!outline || !wall) return { hours: 0, sunset: false };
+  // Its middle, a little out from the wall, at sitting height.
+  const at = outline.reduce((s, p) => s.add(p), new Vec2(0, 0)).scale(1 / outline.length);
+  const height = house.levelBase(wall.level) + 1;
+  return { hours: sunHours(house, at, height, SEASON_DAY.spring), sunset: sunsetSun(house, at, height) };
 }

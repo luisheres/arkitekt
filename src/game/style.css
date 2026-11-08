@@ -2697,3 +2697,59 @@ button.locked::after,
 .popover .sub.bad {
   color: var(--error);
 }
+
+/* The sun in the 3D view */
+.view-toggles .sun-label {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-toggles .sun-label output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.view-toggles .sun-slider {
+  width: 140px;
+  accent-color: #f0a020;
+}
+
+/* The compass in the plan */
+.plan-compass {
+  position: absolute;
+  right: 12px;
+  bottom: 60px;
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+}
+
+/* The sun in the 3D view */
+.view-toggles .sun-label {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-toggles .sun-label output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.view-toggles .sun-slider {
+  width: 140px;
+  accent-color: #f0a020;
+}
+
+/* The compass in the plan */
+.plan-compass {
+  position: absolute;
+  right: 12px;
+  bottom: 64px;
+  width: 46px;
+  height: 46px;
+  pointer-events: none;
+}
