@@ -5,12 +5,13 @@
  */
 
 import * as THREE from "three";
-import { type Plot, STREET, type Scenery, type Surface, type Tree, groundHeight, sceneryFor, treeLook } from "../core";
+import { type Landmark, type Plot, type Scenery, type Surface, type Tree, Vec2, groundHeight, sceneryFor, sideEdge, treeLook } from "../core";
 import { groundTexture, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
-const SKY_HORIZON = new THREE.Color("#cfeeff");
-export const HAZE = new THREE.Color("#bfe3f7");
+export const HAZE = new THREE.Color("#c4e6f8");
+/** The sky meets the land in the same haze, so the far land fades into it. */
+const SKY_HORIZON = HAZE;
 
 const ROOF_COLORS = ["#d9534a", "#3f7fbf", "#4f9a5a", "#e08a2e"];
 
@@ -31,13 +32,15 @@ export function buildWorld(plot: Plot): World {
 
   root.add(sky(), clouds(center), ...lights(center, plot));
   root.add(terrain(scenery, center, plot));
-  root.add(street(plot));
-  if (scenery.lake) root.add(lake(scenery));
+  root.add(roads(scenery));
+  if (scenery.water) root.add(water(scenery));
   if (scenery.jetty) root.add(jetty(scenery));
   for (const t of scenery.trees) root.add(tree(scenery, t));
   for (const r of scenery.rocks) root.add(rock(scenery, r.at.x, r.at.y, r.size));
   for (const n of scenery.neighbors) root.add(neighborHouse(scenery, n));
-  root.add(hedges(plot));
+  for (const l of scenery.landmarks) root.add(landmark(scenery, l));
+  for (const wall of scenery.walls) root.add(stoneWall(scenery, wall));
+  root.add(hedges(plot, scenery));
 
   const guides = plotGuides(plot);
   root.add(guides);
@@ -56,7 +59,7 @@ function sky(): THREE.Mesh {
     fragmentShader:
       "uniform vec3 top;\nuniform vec3 horizon;\nvarying vec3 vDir;\nvoid main() {\n  float t = pow(clamp(vDir.y, 0.0, 1.0), 0.6);\n  gl_FragColor = vec4(mix(horizon, top, t), 1.0);\n  #include <colorspace_fragment>\n}",
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), material);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), material);
   mesh.renderOrder = -1;
   mesh.userData.followCamera = true;
   return mesh;
@@ -101,112 +104,195 @@ function lights(center: THREE.Vector3, plot: Plot): THREE.Object3D[] {
 
 // --- Ground ----------------------------------------------------------------------------
 
+/** How far the land reaches (m from the plot): well past where the haze hides everything. */
+const LAND_REACH = 1800;
+/** Beyond this the land eases into the distant hills of the horizon. */
+const NEAR_LAND = 320;
+
+/** Distant rolling hills (mountains, in mountain country) round the horizon, by direction. */
+function farHills(setting: Scenery["setting"], angle: number): number {
+  const big = setting === "mountain" ? 3 : setting === "hillside" ? 1.8 : setting === "seaside" ? 0.4 : 1;
+  return big * (34 + 20 * Math.sin(3 * angle + 1.1) + 12 * Math.sin(7 * angle + 2.3) + 6 * Math.sin(13 * angle + 0.4) + 3 * Math.sin(29 * angle));
+}
+
+/**
+ * The land: a disc round the plot, fine near it and coarser further out, reaching far beyond
+ * the camera so its edge is never seen. Close by it follows the scenery; further out it rolls
+ * into hills along the horizon that fade into the haze. Under the plot it drops out of
+ * sight: the lawn, built with the house, covers it.
+ */
 function terrain(s: Scenery, center: THREE.Vector3, plot: Plot): THREE.Mesh {
-  const size = 320;
-  const seg = 160;
-  const geo = new THREE.PlaneGeometry(size, size, seg, seg);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
+  const radii: number[] = [];
+  for (let r = 0.5; r < 160; r += 2) radii.push(r);
+  for (let k = 0; k <= 44; k++) radii.push(160 * (LAND_REACH / 160) ** (k / 44));
+  const around = 320;
+  const positions = new Float32Array(radii.length * around * 3);
+  const colors = new Float32Array(radii.length * around * 3);
   const grass = new THREE.Color("#6cc24a");
   const meadow = new THREE.Color("#9ad25a");
   const forest = new THREE.Color("#3f9a4a");
   const rockC = new THREE.Color("#a7a29a");
+  const snow = new THREE.Color("#f7fbff");
   const covers: Record<Exclude<Surface, "grass">, THREE.Color> = {
     sand: new THREE.Color("#f0d9a0"),
     field1: new THREE.Color("#e8cf5f"), // ripe wheat
     field2: new THREE.Color("#86c43c"), // young crops
     field3: new THREE.Color("#a57a52"), // ploughed earth
-    snow: new THREE.Color("#f7fbff"),
+    snow,
   };
   const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) + center.x;
-    const y = pos.getZ(i) + center.z;
-    const h = s.height(x, y);
-    // Slight dip below the street so the road sits on top cleanly; well below the plot,
-    // where the lawn (shaped around the house, built with it) covers it. Only points a
-    // whole grid step inside the plot go down, so no trench opens just outside it.
-    const inside = x > 2.05 && x < plot.width - 2.05 && y > 2.05 && y < plot.depth - 2.05;
-    pos.setXYZ(i, x, inside ? h - 9 : h - 0.02, y);
-    const slope = Math.hypot(s.height(x + 1, y) - h, s.height(x, y + 1) - h);
-    c.copy(grass).lerp(meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
-    if (h > 4) c.lerp(forest, Math.min((h - 4) / 8, 1));
-    if (slope > 0.55) c.lerp(rockC, Math.min((slope - 0.55) * 2, 0.8));
-    // Beaches, fields and snow.
-    const cover = s.surface(x, y);
-    if (cover !== "grass") c.copy(covers[cover]);
-    if (cover === "field1" || cover === "field2" || cover === "field3") c.multiplyScalar(0.94 + 0.06 * Math.sin(x * 1.7 + y * 0.4)); // furrows
-    colors.set([c.r, c.g, c.b], i * 3);
-  }
+  radii.forEach((r, ring) => {
+    for (let k = 0; k < around; k++) {
+      const a = (k / around) * Math.PI * 2;
+      const [dx, dy] = [Math.cos(a), Math.sin(a)];
+      const [x, y] = [center.x + dx * r, center.z + dy * r];
+      // Near: the scenery. Far: the land where the scenery ends, easing into the far hills.
+      const near = Math.min(r, NEAR_LAND);
+      const [nx, ny] = [center.x + dx * near, center.z + dy * near];
+      const hNear = s.height(nx, ny);
+      const far = THREE.MathUtils.smoothstep(r, NEAR_LAND, NEAR_LAND * 3);
+      const hills = farHills(s.setting, a) * THREE.MathUtils.smoothstep(r, NEAR_LAND * 1.5, LAND_REACH * 0.6);
+      const h = hNear * (1 - far * 0.6) + hills;
+      // Well inside the plot, out of sight under the lawn.
+      const inside = x > 3.5 && x < plot.width - 3.5 && y > 3.5 && y < plot.depth - 3.5;
+      const o = (ring * around + k) * 3;
+      positions.set([x, inside ? h - 9 : h - 0.02, y], o);
+      // Colour: shaded by height and slope near by; the far hills in woodland green.
+      if (r <= NEAR_LAND) {
+        const slope = Math.hypot(s.height(x + 1, y) - hNear, s.height(x, y + 1) - hNear);
+        c.copy(grass).lerp(meadow, 0.5 + 0.5 * Math.sin(x * 0.13) * Math.cos(y * 0.11));
+        if (hNear > 4) c.lerp(forest, Math.min((hNear - 4) / 8, 1));
+        if (slope > 0.55) c.lerp(rockC, Math.min((slope - 0.55) * 2, 0.8));
+        const cover = s.surface(x, y);
+        if (cover !== "grass") c.copy(covers[cover]);
+        if (cover === "field1" || cover === "field2" || cover === "field3") c.multiplyScalar(0.94 + 0.06 * Math.sin(x * 1.7 + y * 0.4)); // furrows
+      } else {
+        c.copy(grass).lerp(forest, 0.6);
+        if (s.setting === "mountain" && h > 70) c.copy(snow);
+      }
+      colors.set([c.r, c.g, c.b], o);
+    }
+  });
+  const index: number[] = [];
+  for (let ring = 0; ring < radii.length - 1; ring++)
+    for (let k = 0; k < around; k++) {
+      const [a, b] = [ring * around + k, ring * around + ((k + 1) % around)];
+      const [c2, d2] = [a + around, b + around];
+      index.push(a, b, c2, b, d2, c2);
+    }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(index);
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, toon({ vertexColors: true }));
   mesh.receiveShadow = true;
   return mesh;
 }
 
-/** The street in front of the plot: road, pavements, and a dashed centre line. */
-function street(plot: Plot): THREE.Group {
+/** A strip along a polyline, `half` wide each side, lying on the ground (`lift` above it). */
+function ribbon(s: Scenery, points: readonly Vec2[], half: number | readonly number[], lift: number, material: THREE.Material, flatAt?: number): THREE.Mesh {
+  const positions: number[] = [];
+  const index: number[] = [];
+  points.forEach((p, i) => {
+    const prev = points[Math.max(i - 1, 0)];
+    const next = points[Math.min(i + 1, points.length - 1)];
+    const dir = next.sub(prev).normalize();
+    const n = new Vec2(-dir.y, dir.x).scale(typeof half === "number" ? half : half[i]);
+    for (const q of [p.add(n), p.sub(n)]) positions.push(q.x, (flatAt ?? Math.max(s.height(q.x, q.y), s.height(p.x, p.y))) + lift, q.y);
+    if (i) {
+      const k = (i - 1) * 2;
+      index.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((positions.length / 3) * 2), 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+const asphalt = worldMaterial(groundTexture("asphalt"), { side: THREE.DoubleSide });
+const gravelMat = toon({ color: "#d9c79e", side: THREE.DoubleSide });
+const kerbMat = toon({ color: "#e9e4da", side: THREE.DoubleSide });
+const verge = toon({ color: "#8fc45a", side: THREE.DoubleSide });
+const paint = toon({ color: "#ffffff" });
+
+/** The roads: asphalt with pavements in town, narrow lanes, gravel tracks with grass down the middle. */
+function roads(s: Scenery): THREE.Group {
   const g = new THREE.Group();
-  const length = 220;
-  const cx = plot.width / 2;
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(length, STREET.to - STREET.from - 2), worldMaterial(groundTexture("asphalt")));
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(cx, 0.015, STREET.center);
-  road.receiveShadow = true;
-  g.add(road);
-  const kerb = toon({ color: "#e9e4da" });
-  for (const y of [STREET.from + 0.5, STREET.to - 0.5]) {
-    const walk = new THREE.Mesh(new THREE.BoxGeometry(length, 0.14, 1), kerb);
-    walk.position.set(cx, 0.07, y);
-    walk.receiveShadow = true;
-    g.add(walk);
-  }
-  const paint = toon({ color: "#ffffff" });
-  for (let x = cx - length / 2; x < cx + length / 2; x += 4) {
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, 0.18), paint);
-    dash.position.set(x, 0.03, STREET.center);
-    g.add(dash);
+  for (const r of s.roads) {
+    const tarmac = r.kind !== "gravel";
+    if (r.kind === "main" || r.kind === "street") g.add(ribbon(s, r.points, r.width / 2 + 1.2, 0.04, kerbMat));
+    g.add(ribbon(s, r.points, r.width / 2, 0.07, tarmac ? asphalt : gravelMat));
+    if (r.kind === "gravel") g.add(ribbon(s, r.points, 0.25, 0.09, verge));
+    if (r.turning) {
+      const h = s.height(r.turning.at.x, r.turning.at.y);
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(r.turning.radius, 48), asphalt);
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.set(r.turning.at.x, h + 0.075, r.turning.at.y);
+      const island = new THREE.Mesh(new THREE.CylinderGeometry(r.turning.radius * 0.35, r.turning.radius * 0.35, 0.2, 32), verge);
+      island.position.set(r.turning.at.x, h + 0.12, r.turning.at.y);
+      g.add(disc, island);
+    }
+    // A dashed centre line on main roads.
+    if (r.kind === "main")
+      for (let i = 1; i < r.points.length; i += 1) {
+        const [a, b] = [r.points[i - 1], r.points[i]];
+        if (i % 2) continue;
+        const mid = a.add(b).scale(0.5);
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, Math.min(a.distance(b) * 0.6, 4)), paint);
+        dash.position.set(mid.x, s.height(mid.x, mid.y) + 0.09, mid.y);
+        dash.rotation.y = Math.atan2(b.x - a.x, b.y - a.y);
+        g.add(dash);
+      }
   }
   return g;
 }
 
-function lake(s: Scenery): THREE.Group {
-  const l = s.lake!;
+/** The water: a lake or the sea as its outline (with island holes), a river as a winding band; foam along shores, reeds in clumps. */
+function water(s: Scenery): THREE.Group {
+  const w = s.water!;
   const g = new THREE.Group();
-  const ellipse = (scale: number) => {
-    const shape = new THREE.Shape();
-    shape.absellipse(0, 0, l.rx * scale, l.ry * scale, 0, Math.PI * 2, false, 0);
-    return shape;
+  const colour = w.kind === "sea" ? "#2f9fe0" : w.kind === "river" ? "#4fb6e0" : "#3fb3e8";
+  const surface = toon({ color: colour, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+  const foam = toon({ color: "#ffffff", side: THREE.DoubleSide });
+  if (w.river) {
+    g.add(ribbon(s, w.river.points, w.river.widths.map((x) => x / 2 + 0.8), 0, surface, w.level));
+    return g;
+  }
+  // A little larger than the water's edge, so it meets the sloping shore.
+  const grow = (pts: readonly Vec2[], by: number) => {
+    const c = pts.reduce((a, b) => a.add(b), new Vec2(0, 0)).scale(1 / pts.length);
+    return pts.map((p) => p.add(p.sub(c).normalize().scale(by)));
   };
-  const flat = (shape: THREE.Shape, material: THREE.Material, y: number) => {
-    const m = new THREE.Mesh(new THREE.ShapeGeometry(shape, 64), material);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(l.center.x, y, l.center.y);
-    return m;
-  };
-  // A white rim of foam where the water meets the shore: about a metre wide (for a lake,
-  // as it always was; a river or the sea would get a band many metres wide otherwise).
-  const [outer, inner, water] = l.kind === "lake" ? [1.03, 0.985, 1.02] : [1 + 0.5 / Math.min(l.rx, l.ry), 1 - 0.5 / Math.min(l.rx, l.ry), 1 + 0.3 / Math.min(l.rx, l.ry)];
-  g.add(flat(ellipse(water), toon({ color: l.kind === "sea" ? "#2f9fe0" : "#3fb3e8", transparent: true, opacity: 0.88 }), l.level));
-  const rim = ellipse(outer);
-  rim.holes.push(new THREE.Path().absellipse(0, 0, l.rx * inner, l.ry * inner, 0, Math.PI * 2, true, 0));
-  g.add(flat(rim, toon({ color: "#ffffff" }), l.level + 0.01));
-  // Reeds along a lake's shore.
-  const reed = toon({ color: "#5f9e3f" });
-  for (let i = 0; i < (l.kind === "lake" ? 40 : 0); i++) {
-    const a = (i / 40) * Math.PI * 2 + Math.sin(i * 7.3) * 0.08;
-    if (Math.abs(Math.sin(a)) > 0.9 && Math.sin(a) < 0) continue; // keep the jetty's end clear
-    const r = 1.0 + 0.03 * Math.sin(i * 3.1);
-    const x = l.center.x + Math.cos(a) * l.rx * r;
-    const y = l.center.y + Math.sin(a) * l.ry * r;
-    for (let k = 0; k < 3; k++) {
-      const stem = new THREE.Mesh(new THREE.ConeGeometry(0.06, 1.2 + k * 0.2, 5), reed);
-      stem.position.set(x + (k - 1) * 0.25, l.level + 0.6, y + Math.sin(k + i) * 0.2);
-      stem.rotation.z = (k - 1) * 0.12;
-      g.add(stem);
-    }
+  const outline = w.kind === "sea" ? w.outline : grow(w.outline, 0.6);
+  const shape = new THREE.Shape(outline.map((p) => new THREE.Vector2(p.x, -p.y)));
+  for (const isle of w.islands) shape.holes.push(new THREE.Path(grow(isle, -0.6).map((p) => new THREE.Vector2(p.x, -p.y))));
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape, 4), surface);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = w.level;
+  g.add(mesh);
+  // Foam along the shore (the coast only, for the sea).
+  const shore = w.kind === "sea" ? w.outline.slice(0, -2) : [...w.outline, w.outline[0]];
+  if (!w.cliff) g.add(ribbon(s, shore, 0.35, 0.02, foam, w.level));
+  for (const isle of w.islands) g.add(ribbon(s, [...isle, isle[0]], 0.3, 0.02, foam, w.level));
+  // Reeds, in clumps along the shore.
+  if (w.reeds) {
+    const reed = toon({ color: "#5f9e3f" });
+    const stem = new THREE.ConeGeometry(0.06, 1.3, 5);
+    w.outline.forEach((p, i) => {
+      if (Math.sin(i * 0.9) + Math.sin(i * 0.37 + 1) < 0.6) return;
+      for (let k = 0; k < 4; k++) {
+        const m = new THREE.Mesh(stem, reed);
+        m.position.set(p.x + Math.sin(i * 7 + k) * 0.6, w.level + 0.6, p.y + Math.cos(i * 5 + k) * 0.6);
+        m.rotation.z = Math.sin(i + k) * 0.15;
+        g.add(m);
+      }
+    });
   }
   return g;
 }
@@ -216,18 +302,22 @@ function jetty(s: Scenery): THREE.Group {
   const g = new THREE.Group();
   const wood = worldMaterial(groundTexture("wood"), { color: "#e7c79a" });
   const len = j.from.distance(j.to);
-  const deckY = (s.lake?.level ?? 0) + 0.5;
+  const dir = j.to.sub(j.from).normalize();
+  const deckY = Math.max((s.water?.level ?? 0) + 0.5, s.height(j.from.x, j.from.y) + 0.15);
   const deck = new THREE.Mesh(new THREE.BoxGeometry(j.width, 0.15, len), wood);
-  deck.position.set((j.from.x + j.to.x) / 2, deckY, (j.from.y + j.to.y) / 2);
+  const mid = j.from.add(j.to).scale(0.5);
+  deck.position.set(mid.x, deckY, mid.y);
+  deck.rotation.y = Math.atan2(dir.x, dir.y);
   deck.castShadow = deck.receiveShadow = true;
   g.add(deck);
-  for (let t = 0; t <= len; t += 2.5) {
+  const across = new Vec2(-dir.y, dir.x).scale(j.width / 2);
+  for (let t = 1; t <= len; t += 2.5)
     for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 8), wood);
-      post.position.set(j.from.x + (side * j.width) / 2, deckY - 0.9, j.from.y + t);
+      const p = j.from.add(dir.scale(t)).add(across.scale(side));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 8), wood);
+      post.position.set(p.x, deckY - 1.1, p.y);
       g.add(post);
     }
-  }
   return g;
 }
 
@@ -388,66 +478,316 @@ function rock(s: Scenery, x: number, y: number, size: number): THREE.Mesh {
   return m;
 }
 
-/** Low hedges along the sides of the garden. */
-function hedges(plot: Plot): THREE.Group {
+/** Low hedges along the sides of the garden, but not where the road comes in. */
+function hedges(plot: Plot, s: Scenery): THREE.Group {
   const g = new THREE.Group();
   const mat = toon({ color: "#4f9f3f", flatShading: true });
-  const side = (x: number) => {
-    for (let y = 1; y < plot.depth - 0.5; y += 1.1) {
+  for (const side of s.hedgeSides) {
+    const e = sideEdge(plot, side);
+    const n = Math.max(1, Math.round(e.a.distance(e.b) / 1.1));
+    for (let k = 1; k < n; k++) {
+      const p = e.a.add(e.b.sub(e.a).scale(k / n)).add(e.out.scale(0.4));
       const m = new THREE.Mesh(blob, mat);
       m.scale.set(0.55, 0.5, 0.65);
-      m.position.set(x, groundHeight(plot, x, y) + 0.4, y);
+      m.position.set(p.x, groundHeight(plot, p.x - e.out.x * 0.4, p.y - e.out.y * 0.4) + 0.4, p.y);
       m.castShadow = true;
       g.add(m);
     }
-  };
-  side(-0.4);
-  side(plot.width + 0.4);
+  }
   return g;
 }
 
-// --- Neighbours ----------------------------------------------------------------------
+// --- Buildings round about -------------------------------------------------------------
 
-function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group {
+/**
+ * A group for something standing at `at`, turned so that its local -z (its front) faces
+ * `facing` (plan radians), on the lowest ground under a footprint of `w` × `d`.
+ */
+function placed(s: Scenery, at: Vec2, facing: number, w: number, d: number): { g: THREE.Group; plinth: number } {
+  const f = new Vec2(Math.cos(facing), Math.sin(facing));
+  const side = new Vec2(-f.y, f.x);
+  const corners = [-1, 1].flatMap((u) => [-1, 1].map((v) => at.add(side.scale((u * w) / 2)).add(f.scale((v * d) / 2))));
+  const heights = corners.map((p) => s.height(p.x, p.y));
+  const base = Math.min(...heights);
   const g = new THREE.Group();
-  const corners = [
-    [-1, -1],
-    [1, -1],
-    [1, 1],
-    [-1, 1],
-  ].map(([sx, sy]) => s.height(n.at.x + (sx * n.width) / 2, n.at.y + (sy * n.depth) / 2));
-  const base = Math.min(...corners);
-  const plinth = Math.max(...corners) - base + 0.3;
-  const wallH = 2.7;
-  const facade = worldMaterial(wallTexture(n.facade));
-  const body = new THREE.Mesh(new THREE.BoxGeometry(n.width, wallH + plinth, n.depth), facade);
-  body.position.set(0, (wallH + plinth) / 2, 0);
-  body.castShadow = body.receiveShadow = true;
-  g.add(body);
-  // A gable roof along the width.
-  const roofH = n.depth * 0.38;
-  const shape = new THREE.Shape([new THREE.Vector2(-n.depth / 2 - 0.4, 0), new THREE.Vector2(n.depth / 2 + 0.4, 0), new THREE.Vector2(0, roofH)]);
-  const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: n.width + 0.6, bevelEnabled: false }), toon({ color: ROOF_COLORS[n.roof % ROOF_COLORS.length] }));
+  g.position.set(at.x, base, at.y);
+  g.rotation.y = Math.atan2(-f.x, -f.y);
+  return { g, plinth: Math.max(...heights) - base };
+}
+
+const mats = {
+  white: toon({ color: "#f6f4ee" }),
+  red: toon({ color: "#b5382c" }),
+  darkRoof: toon({ color: "#4a4f57" }),
+  steel: toon({ color: "#b8bdc2" }),
+  glass: toon({ color: "#8fd3ff" }),
+  wood: toon({ color: "#9a6a42" }),
+  hay: toon({ color: "#e8cf5f" }),
+  sand: toon({ color: "#ead9a8" }),
+  yellow: toon({ color: "#ffd23f" }),
+  blue: toon({ color: "#3f7fbf" }),
+  water: toon({ color: "#6cc8f0" }),
+  stone: worldMaterial(wallTexture("Stone")),
+  plaster: worldMaterial(wallTexture("Plaster")),
+  falu: worldMaterial(wallTexture("FaluRed")),
+  logs: worldMaterial(wallTexture("Wood")),
+};
+
+/** Add a box spanning x0..x1, y0..y1, z0..z1 (local). */
+function part(g: THREE.Group, m: THREE.Material, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
+  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  mesh.castShadow = mesh.receiveShadow = true;
+  g.add(mesh);
+  return mesh;
+}
+
+/** A gable roof over a w × d box (ridge across the width), starting at height y. */
+function gable(g: THREE.Group, m: THREE.Material, w: number, d: number, y: number, pitch = 0.38, over = 0.4): void {
+  const h = d * pitch;
+  const shape = new THREE.Shape([new THREE.Vector2(-d / 2 - over, 0), new THREE.Vector2(d / 2 + over, 0), new THREE.Vector2(0, h)]);
+  const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: w + over * 2, bevelEnabled: false }), m);
   roof.rotation.y = Math.PI / 2;
-  roof.position.set(-n.width / 2 - 0.3, wallH + plinth, 0);
+  roof.position.set(-w / 2 - over, y, 0);
   roof.castShadow = true;
   g.add(roof);
-  // A door and windows on the side facing the plot's street (low y), so neighbours look lived in.
-  const frame = toon({ color: "#ffffff" });
-  const glass = toon({ color: "#8fd3ff" });
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1, 2.1, 0.1), toon({ color: ROOF_COLORS[(n.roof + 1) % ROOF_COLORS.length] }));
-  door.position.set(0, plinth + 1.05, -n.depth / 2 - 0.03);
-  g.add(door);
-  for (const x of [-n.width / 3, n.width / 3]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 0.08), frame);
-    w.position.set(x, plinth + 1.6, -n.depth / 2 - 0.03);
-    const pane = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 0.1), glass);
-    pane.position.copy(w.position);
-    g.add(w, pane);
+}
+
+/** A hipped roof: a four-sided pyramid stretched over the box. */
+function hipRoof(g: THREE.Group, m: THREE.Material, w: number, d: number, y: number): void {
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1), m);
+  roof.rotation.y = Math.PI / 4;
+  roof.scale.set(w + 0.8, d * 0.38, d + 0.8);
+  roof.position.set(0, y + (d * 0.38) / 2, 0);
+  roof.castShadow = true;
+  g.add(roof);
+}
+
+/** Windows (and a door) on the front, -z face, of a w-wide box. */
+function frontage(g: THREE.Group, w: number, d: number, y0: number, storeys: number, door: THREE.Material | null): void {
+  const frame = mats.white;
+  if (door) part(g, door, -0.5, 0.5, y0, y0 + 2.1, -d / 2 - 0.06, -d / 2 + 0.02);
+  for (let s = 0; s < storeys; s++)
+    for (const x of [-w / 3, w / 3]) {
+      const y = y0 + 1.1 + s * 2.8;
+      part(g, frame, x - 0.65, x + 0.65, y, y + 1.2, -d / 2 - 0.05, -d / 2 + 0.02);
+      part(g, mats.glass, x - 0.55, x + 0.55, y + 0.1, y + 1.1, -d / 2 - 0.08, -d / 2 + 0.02);
+    }
+}
+
+function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group {
+  const { g, plinth } = placed(s, n.at, n.facing, n.width, n.depth);
+  const wallH = 2.7 * n.storeys + 0.2;
+  const facade = worldMaterial(wallTexture(n.facade));
+  part(g, facade, -n.width / 2, n.width / 2, 0, wallH + plinth + 0.3, -n.depth / 2, n.depth / 2);
+  const top = wallH + plinth + 0.3;
+  const roofMat = toon({ color: ROOF_COLORS[n.roof % ROOF_COLORS.length] });
+  if (n.roofStyle === "gable") gable(g, roofMat, n.width, n.depth, top);
+  else if (n.roofStyle === "hip") hipRoof(g, roofMat, n.width, n.depth, top);
+  else part(g, roofMat, -n.width / 2 - 0.3, n.width / 2 + 0.3, top, top + 0.25, -n.depth / 2 - 0.3, n.depth / 2 + 0.3);
+  frontage(g, n.width, n.depth, plinth + 0.3, n.storeys, toon({ color: ROOF_COLORS[(n.roof + 1) % ROOF_COLORS.length] }));
+  return g;
+}
+
+/** A landmark: churches, windmills, barns, boathouses, a lighthouse, a ski lift and more. */
+function landmark(s: Scenery, l: Landmark): THREE.Group {
+  if (l.kind === "footbridge") return footbridge(s, l);
+  if (l.kind === "skiLift") return skiLift(s, l);
+  const size = { church: [9, 16], barn: [16, 10], boathouse: [4.5, 7], cabin: [6, 5], sauna: [3, 3], millRuin: [8, 7] }[l.kind as string] ?? [l.size, l.size];
+  const { g, plinth } = placed(s, l.at, l.facing, size[0], size[1]);
+  const y = plinth;
+  switch (l.kind) {
+    case "church": {
+      part(g, mats.plaster, -4, 4, 0, y + 7, -5, 8);
+      gable(g, mats.darkRoof, 8, 13, y + 7, 0.55, 0.3);
+      g.children[g.children.length - 1].position.z = 1.5;
+      part(g, mats.plaster, -1.8, 1.8, 0, y + 14, -8.5, -5);
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(2.4, 7, 4), mats.darkRoof);
+      spire.rotation.y = Math.PI / 4;
+      spire.position.set(0, y + 17.5, -6.75);
+      g.add(spire);
+      part(g, mats.wood, -0.8, 0.8, y, y + 2.8, -8.56, -8.4);
+      break;
+    }
+    case "windmill": {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.3, 9, 8), mats.white);
+      body.position.y = y + 4.5;
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(1.9, 2.2, 8), mats.red);
+      cap.position.y = y + 10.1;
+      g.add(body, cap);
+      for (let k = 0; k < 4; k++) {
+        const sail = part(g, mats.wood, -0.4, 0.4, 0, 6.5, -0.1, 0.1);
+        sail.geometry.translate(0, 3.25, 0);
+        sail.position.set(0, y + 8.5, -2.2);
+        sail.rotation.z = (k * Math.PI) / 2 + 0.4;
+      }
+      break;
+    }
+    case "barn":
+      part(g, mats.falu, -8, 8, 0, y + 6, -5, 5);
+      gable(g, mats.darkRoof, 16, 10, y + 6, 0.45);
+      part(g, mats.white, -2, 2, y, y + 4.2, -5.06, -4.98);
+      part(g, mats.falu, -1.8, 1.8, y, y + 4, -5.1, -5.02);
+      break;
+    case "silo": {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 11, 16), mats.steel);
+      body.position.y = y + 5.5;
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mats.steel);
+      dome.position.y = y + 11;
+      g.add(body, dome);
+      break;
+    }
+    case "boathouse":
+    case "sauna":
+    case "cabin": {
+      const [w, d] = size;
+      const h = l.kind === "boathouse" ? 3 : 2.6;
+      // A boathouse stands on posts over the water's edge.
+      const floor = Math.max(y, (s.water?.level ?? -9) + 0.6 - g.position.y);
+      for (const [px, pz] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) part(g, mats.wood, px - 0.12, px + 0.12, floor - 2, floor, pz - 0.12, pz + 0.12);
+      part(g, l.kind === "cabin" ? mats.logs : mats.falu, -w / 2, w / 2, floor, floor + h, -d / 2, d / 2);
+      gable(g, mats.darkRoof, w, d, floor + h, 0.5, 0.3);
+      part(g, mats.white, -0.5, 0.5, floor, floor + 2, -d / 2 - 0.05, -d / 2 + 0.02);
+      if (l.kind !== "boathouse") part(g, mats.stone, w / 4, w / 4 + 0.5, floor + h, floor + h + 1.6, 0, 0.5); // chimney
+      break;
+    }
+    case "lighthouse": {
+      for (let k = 0; k < 5; k++) {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(1.9 - (k + 1) * 0.12, 1.9 - k * 0.12, 2.8, 16), k % 2 ? mats.red : mats.white);
+        band.position.y = y + 1.4 + k * 2.8;
+        g.add(band);
+      }
+      const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.6, 12), mats.glass);
+      lantern.position.y = y + 14.8;
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1.4, 12), mats.red);
+      roof.position.y = y + 16.3;
+      g.add(lantern, roof);
+      break;
+    }
+    case "millRuin":
+      part(g, mats.stone, -4, 4, 0, y + 4.5, 3, 3.7);
+      part(g, mats.stone, -4, -3.3, 0, y + 3.2, -3.5, 3.7);
+      part(g, mats.stone, 3.3, 4, 0, y + 5.5, -1, 3.7);
+      part(g, mats.stone, -4, 0, 0, y + 1.8, -3.5, -2.8);
+      {
+        const wheel = new THREE.Mesh(new THREE.TorusGeometry(2, 0.25, 6, 16), mats.wood);
+        wheel.rotation.y = Math.PI / 2;
+        wheel.position.set(4.6, y + 1.5, 0.5);
+        g.add(wheel);
+      }
+      break;
+    case "playground": {
+      const sand = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 0.1, 24), mats.sand);
+      sand.position.y = y + 0.05;
+      g.add(sand);
+      part(g, mats.red, -2.5, -1.3, y, y + 2, -1, 0.2); // slide tower
+      const slide = part(g, mats.yellow, -1.3, 1.6, y + 1, y + 1.12, -0.8, 0);
+      slide.rotation.z = -0.55;
+      for (const x of [1.5, 3.5]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), mats.blue);
+        post.position.set(x, y + 1.2, 2);
+        g.add(post);
+      }
+      part(g, mats.blue, 1.5, 3.5, y + 2.35, y + 2.45, 1.95, 2.05);
+      part(g, mats.wood, 2.2, 2.8, y + 0.5, y + 0.58, 1.8, 2.2); // swing seat
+      break;
+    }
+    case "haybales":
+      for (const [x, z] of [[-1.5, 0], [0, 0.6], [1.5, -0.2]]) {
+        const bale = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 1.2, 14), mats.hay);
+        bale.rotation.z = Math.PI / 2;
+        bale.position.set(x, y + 0.75, z);
+        bale.castShadow = true;
+        g.add(bale);
+      }
+      break;
+    case "fountain": {
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.7, 0.7, 24), mats.stone);
+      basin.position.y = y + 0.35;
+      const pool = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 0.1, 24), mats.water);
+      pool.position.y = y + 0.66;
+      const column = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 1.8, 10), mats.stone);
+      column.position.y = y + 1.2;
+      g.add(basin, pool, column);
+      break;
+    }
   }
-  // Houses across the street face it: turn them around.
-  if (n.at.y < STREET.from) g.rotation.y = Math.PI;
-  g.position.set(n.at.x, base, n.at.y);
+  return g;
+}
+
+/** A footbridge over the river: a gently arched deck with railings. */
+function footbridge(s: Scenery, l: Landmark): THREE.Group {
+  const g = new THREE.Group();
+  const [a, b] = [l.at, l.to!];
+  const ends = [s.height(a.x, a.y), s.height(b.x, b.y)];
+  const top = Math.max(...ends, (s.water?.level ?? 0) + 1.2);
+  const n = 10;
+  const dir = b.sub(a);
+  const across = new Vec2(-dir.y, dir.x).normalize().scale(0.9);
+  for (let i = 0; i < n; i++) {
+    const [t0, t1] = [i / n, (i + 1) / n];
+    const h = (t: number) => ends[0] + (ends[1] - ends[0]) * t + (top - Math.max(...ends) + 0.6) * Math.sin(Math.PI * t);
+    const p = a.add(dir.scale((t0 + t1) / 2));
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, dir.length() / n + 0.05), mats.wood);
+    plank.position.set(p.x, (h(t0) + h(t1)) / 2 + 0.1, p.y);
+    plank.rotation.order = "YXZ";
+    plank.rotation.y = Math.atan2(dir.x, dir.y);
+    plank.rotation.x = -Math.atan2(h(t1) - h(t0), dir.length() / n);
+    plank.castShadow = true;
+    g.add(plank);
+    for (const side of [-1, 1]) {
+      const q = p.add(across.scale(side));
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 0.1), mats.wood);
+      post.position.set(q.x, (h(t0) + h(t1)) / 2 + 0.6, q.y);
+      g.add(post);
+    }
+  }
+  return g;
+}
+
+/** A chairlift up the slope: pylons with a cable, and a station at each end. */
+function skiLift(s: Scenery, l: Landmark): THREE.Group {
+  const g = new THREE.Group();
+  const [a, b] = [l.at, l.to!];
+  const n = Math.max(2, Math.round(a.distance(b) / 25));
+  const tops: THREE.Vector3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const p = a.add(b.sub(a).scale(i / n));
+    const h = s.height(p.x, p.y);
+    const pylon = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 8, 6), mats.steel);
+    pylon.position.set(p.x, h + 4, p.y);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 0.2), mats.steel);
+    arm.position.set(p.x, h + 8, p.y);
+    arm.rotation.y = Math.atan2(b.x - a.x, b.y - a.y) + Math.PI / 2;
+    pylon.castShadow = true;
+    g.add(pylon, arm);
+    tops.push(new THREE.Vector3(p.x, h + 7.9, p.y));
+  }
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tops), new THREE.LineBasicMaterial({ color: 0x2a2433 })));
+  for (const [p, facing] of [
+    [a, Math.atan2(b.y - a.y, b.x - a.x)],
+    [b, Math.atan2(a.y - b.y, a.x - b.x)],
+  ] as const) {
+    const station = placed(s, p, facing, 5, 4);
+    part(station.g, mats.logs, -2.5, 2.5, 0, station.plinth + 3, -2, 2);
+    gable(station.g, mats.red, 5, 4, station.plinth + 3, 0.5, 0.4);
+    g.add(station.g);
+  }
+  return g;
+}
+
+/** A dry-stone wall along a polyline. */
+function stoneWall(s: Scenery, points: readonly Vec2[]): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const mid = a.add(b).scale(0.5);
+    const block = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, a.distance(b) + 0.3), mats.stone);
+    block.position.set(mid.x, s.height(mid.x, mid.y) + 0.3, mid.y);
+    block.rotation.y = Math.atan2(b.x - a.x, b.y - a.y);
+    block.castShadow = block.receiveShadow = true;
+    g.add(block);
+  }
   return g;
 }
 

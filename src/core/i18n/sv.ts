@@ -296,6 +296,8 @@ export const sv: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
+      case "GarageDoorUnreachable":
+        return "Ingen uppfart kan nå den här garageporten från vägen; vänd den mot vägen eller ge den plats framför";
       case "VoidOnGroundFloor":
         return "En öppning ner ligger på bottenvåningen; det finns ingenting under att öppna ner till";
       case "BasementOutsideHouse":
@@ -514,12 +516,15 @@ export const sv: Messages = {
       open: "Vart går pengarna?",
       title: "Vart pengarna går",
       hint: "Ju större ruta, desto mer kostar det. Peka på en ruta för att se detaljerna.",
-      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor", extras: "Balkonger och växter", groundworks: "Markarbeten" },
+      groups: { facade: "Fasad", interiorWalls: "Innerväggar", openings: "Fönster och dörrar", roof: "Tak", floors: "Golv och bjälklag", stairs: "Trappor", extras: "Balkonger och växter", groundworks: "Markarbeten", access: "Uppfart och gångar" },
       terrace: "Terrasstak",
       earthworks: "Schaktning och fyllning",
       basementDig: "Källarschakt",
       basementWalls: "Källarväggar",
       retainingWalls: "Stödmurar",
+      driveway: "Uppfart",
+      gravelDriveway: "Grusad uppfart",
+      footpath: "Gång till ytterdörren",
       exposedFoundation: "Synlig grundmur",
       lightWells: "Ljusgårdar",
       balcony: "Balkong",
@@ -583,6 +588,7 @@ export const sv: Messages = {
       move: "Dra i huset för att flytta hela, med rum, trappor och möbler. Vrid det under Flytta och vrid i sidopanelen.",
     },
     street: "GATA",
+    roadName: { main: "STORGATAN", street: "GATA", lane: "LANDSVÄG" },
     room: "Rum",
 
     layout: "Vy",

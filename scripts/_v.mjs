@@ -1,0 +1,32 @@
+import { chromium } from "playwright";
+import { createServer } from "vite";
+const out = process.argv[2];
+const ids = process.argv[3].split(",");
+const server = await createServer({ server: { port: 0, host: "127.0.0.1" }, logLevel: "warn" });
+await server.listen();
+const b = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+const p = await b.newPage({ viewport: { width: 1300, height: 800 } });
+const errs = [];
+p.on("pageerror", (e) => errs.push(e.message));
+await p.goto(server.resolvedUrls.local[0]);
+await p.waitForFunction(() => window.architect !== undefined);
+await p.click('#modal [data-action="free"]');
+await p.click('#modal [data-action="plot-suburban"]');
+await p.evaluate(() => { const { store, core } = window.architect; store.load(new core.House()); });
+for (const id of ids) {
+  const t0 = Date.now();
+  await p.evaluate((id) => window.architect.store.setFreePlot(id), id);
+  await p.click(".layout-switch button[data-layout='plan']");
+  await p.waitForTimeout(500);
+  await p.locator("#plan").screenshot({ path: `${out}/${id}-plan.png` });
+  await p.click(".layout-switch button[data-layout='3d']");
+  await p.evaluate(() => { const v = window.architect.view3d; Object.assign(v.orbit, v.homeOrbit()); v.orbit.distance = 55; v.orbit.pitch = 0.35; v.requestRender(); });
+  await p.waitForTimeout(1500);
+  await p.locator("#view").screenshot({ path: `${out}/${id}-3d.png` });
+  console.log(id, Date.now() - t0, "ms");
+}
+await p.evaluate(() => { const v = window.architect.view3d; v.orbit.distance = 90; v.orbit.pitch = 0.08; v.requestRender(); });
+await p.waitForTimeout(1500);
+await p.locator("#view").screenshot({ path: `${out}/horizon.png` });
+console.log("errors", JSON.stringify(errs));
+await b.close(); await server.close();

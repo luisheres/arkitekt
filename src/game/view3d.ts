@@ -1,7 +1,7 @@
 /** The live 3D view of the house on its plot, with an orbit camera. */
 
 import * as THREE from "three";
-import { sceneryFor } from "../core";
+import { SIDE_YAW, sceneryFor } from "../core";
 import { type Orbit, applyPreset, attachOrbitControls, placeCamera } from "./camera";
 import { type CapturedView, captureThumbnail, captureViews } from "./capture";
 import { HAZE } from "./landscape";
@@ -17,7 +17,7 @@ export class View3D {
   onPick: (pick: Pick | null, x: number, y: number) => void = () => {};
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 1000);
+  private readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 3000);
   private world: World;
   private readonly toon: ToonRenderer;
   private readonly orbit: Orbit;
@@ -38,7 +38,9 @@ export class View3D {
 
     this.scene.background = HAZE;
     // Distant hills fade into a soft haze.
-    this.scene.fog = new THREE.Fog(HAZE, 150, 480);
+    // The land reaches far beyond this, so it never ends in sight: it fades into the haze,
+    // the same colour as the sky at the horizon.
+    this.scene.fog = new THREE.Fog(HAZE, 170, 1150);
     // Dark outlines on everything alike: the cartoon look.
     this.toon = new ToonRenderer(this.renderer);
     this.world = buildWorld(store.plot);
@@ -79,7 +81,9 @@ export class View3D {
 
   private homeOrbit(): Orbit {
     const { plot } = this.store;
-    const o: Orbit = { target: new THREE.Vector3(plot.width * 0.5, 2, plot.depth * 0.5), yaw: 0, pitch: 0, distance: 24 };
+    // The views look at the house from the side the road comes in.
+    const baseYaw = SIDE_YAW[plot.access.side] - Math.PI;
+    const o: Orbit = { target: new THREE.Vector3(plot.width * 0.5, 2, plot.depth * 0.5), yaw: 0, pitch: 0, distance: 24, baseYaw };
     applyPreset(o, 1);
     return o;
   }

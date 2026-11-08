@@ -195,7 +195,7 @@ try {
   const panel = page.locator(".cost-panel");
   await panel.locator(".cost-line").first().waitFor();
   const groups = await panel.locator(".cost-group").evaluateAll((gs) => gs.map((g) => g.dataset.group).sort());
-  assert.deepEqual(groups, ["facade", "floors", "interiorWalls", "openings", "roof"]);
+  assert.deepEqual(groups, ["access", "facade", "floors", "interiorWalls", "openings", "roof"]);
   assert.ok((await panel.locator(".cost-line").count()) >= 7, "a box per material, finish and kind of opening");
   const panelTotal = async () => (await panel.locator(".cost-summary b").first().textContent()).trim();
   assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));

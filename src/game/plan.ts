@@ -54,6 +54,9 @@ import {
   treeLook,
   money,
   technique,
+  accessRoutes,
+  sideEdge,
+  type Landmark,
   INDOOR_PLANTS,
   balconyOutline,
   clampBalcony,
@@ -192,8 +195,8 @@ export class PlanView {
   /** Fit the whole plot and the street into view. */
   fit(): void {
     const { plot } = this.store;
-    // The plot and street, with some of the surroundings (the lake, the neighbours).
-    const [x0, x1, y0, y1] = [-8, plot.width + 8, -9, plot.depth + 12];
+    // The plot and the road that reaches it, with a little of the surroundings.
+    const [x0, x1, y0, y1] = [-9, plot.width + 9, -10, plot.depth + 10];
     this.scale = Math.min(this.width / (x1 - x0), this.height / (y1 - y0)) * 0.92;
     this.center = new Vec2((x0 + x1) / 2, (y0 + y1) / 2);
     this.clampView();
@@ -743,14 +746,8 @@ export class PlanView {
     const br = this.toPlan(this.width, this.height);
     const [vx0, vx1] = [Math.min(tl.x, br.x), Math.max(tl.x, br.x)];
     const [vy0, vy1] = [Math.min(tl.y, br.y), Math.max(tl.y, br.y)];
-    // The street runs as far as the landscape does.
-    const b = this.bounds();
-    const [sx0, sx1] = [Math.max(vx0, b.x0), Math.min(vx1, b.x1)];
-    out.push(rect(sx0, -8, sx1, -1, "street"));
-    const streetY = this.toScreen(new Vec2(0, -4.5))[1];
-    const [lx0, lx1] = [this.toScreen(new Vec2(sx0, 0))[0], this.toScreen(new Vec2(sx1, 0))[0]].sort((a, c) => a - c);
-    out.push(`<line class="street-line" x1="${lx0.toFixed(1)}" x2="${lx1.toFixed(1)}" y1="${streetY}" y2="${streetY}"/>`);
-    out.push(this.label(new Vec2(plot.width / 2, -4.5), m.ui.street, "street-label"));
+    // The roads: streets, lanes and gravel tracks, a turning circle at a cul-de-sac.
+    out.push(this.roadsLayer());
     out.push(rect(0, 0, plot.width, plot.depth, "lawn"));
     // On sloping ground: contour lines every half metre (stronger every metre), as built.
     if (plot.terrain) {
@@ -913,9 +910,41 @@ export class PlanView {
   }
 
   /** Trees, rocks, the neighbours' houses and the jetty around the plot. */
+  /** The roads, drawn as broad strokes along their centrelines, and the name on the nearest. */
+  private roadsLayer(): string {
+    const { plot } = this.store;
+    const s = sceneryFor(plot);
+    const out: string[] = [];
+    const line = (pts: Vec2[]) => pts.map((p, i) => `${i ? "L" : "M"}${this.toScreen(p).map((v) => v.toFixed(1)).join(",")}`).join("");
+    for (const r of s.roads) {
+      const w = (r.width * this.scale).toFixed(1);
+      if (r.kind === "main" || r.kind === "street") out.push(`<path class="road-kerb" d="${line(r.points)}" style="stroke-width:${((r.width + 2.4) * this.scale).toFixed(1)}"/>`);
+      out.push(`<path class="road ${r.kind}" d="${line(r.points)}" style="stroke-width:${w}"/>`);
+      if (r.turning) {
+        const [cx, cy] = this.toScreen(r.turning.at);
+        out.push(`<circle class="road ${r.kind} turning" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r.turning.radius * this.scale).toFixed(1)}"/>`);
+        out.push(`<circle class="turning-island" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r.turning.radius * 0.35 * this.scale).toFixed(1)}"/>`);
+      }
+      if (r.kind === "main") out.push(`<path class="road-line" d="${line(r.points)}"/>`);
+      if (r.kind === "gravel") out.push(`<path class="road-grass" d="${line(r.points)}" style="stroke-width:${(0.5 * this.scale).toFixed(1)}"/>`);
+    }
+    // Name each paved road, where it passes closest to the plot.
+    const centre = new Vec2(plot.width / 2, plot.depth / 2);
+    for (const r of s.roads) {
+      if (r.kind === "gravel") continue;
+      const at = r.points.reduce((a, b) => (b.distance(centre) < a.distance(centre) ? b : a));
+      out.push(this.label(at, m.ui.roadName[r.kind], "street-label"));
+    }
+    return `<g class="roads">${out.join("")}</g>`;
+  }
+
   private sceneryLayer(vx0: number, vx1: number, vy0: number, vy1: number): string {
     const s = sceneryFor(this.store.plot);
     const out: string[] = [];
+    // Driveways and the path to the front door.
+    for (const r of accessRoutes(this.house, this.store.plot).routes)
+      out.push(`<polyline class="route ${r.surface}" style="stroke-width:${(r.width * this.scale).toFixed(1)}" points="${this.pts(r.points)}"/>`);
+    for (const wall of s.walls) out.push(`<polyline class="stone-wall" style="stroke-width:${Math.max(2, 0.6 * this.scale).toFixed(1)}" points="${this.pts(wall)}"/>`);
     const visible = (p: Vec2, r: number) => p.x > vx0 - r && p.x < vx1 + r && p.y > vy0 - r && p.y < vy1 + r;
     const circle = (p: Vec2, r: number, cls: string) => {
       const [x, y] = this.toScreen(p);
@@ -927,15 +956,25 @@ export class PlanView {
       out.push(`<polygon class="jetty" points="${this.pts([j.from.sub(n), j.from.add(n), j.to.add(n), j.to.sub(n)])}"/>`);
     }
     for (const n of s.neighbors) {
-      const [hw, hd] = [n.width / 2, n.depth / 2];
-      const c = n.at;
-      const corners = [new Vec2(c.x - hw, c.y - hd), new Vec2(c.x + hw, c.y - hd), new Vec2(c.x + hw, c.y + hd), new Vec2(c.x - hw, c.y + hd)];
-      out.push(`<polygon class="neighbor roof${n.roof % 4}" points="${this.pts(corners)}"/>`);
-      out.push(`<polyline class="ridge" points="${this.pts([new Vec2(c.x - hw, c.y), new Vec2(c.x + hw, c.y)])}"/>`);
+      if (!visible(n.at, 12)) continue;
+      // Turned to face its road: the front along `facing`, its width across it.
+      const f = new Vec2(Math.cos(n.facing), Math.sin(n.facing));
+      const side = new Vec2(-f.y, f.x);
+      const at = (u: number, v: number) => n.at.add(side.scale(u * n.width)).add(f.scale(v * n.depth));
+      out.push(`<polygon class="neighbor roof${n.roof % 4}" points="${this.pts([at(-0.5, -0.5), at(0.5, -0.5), at(0.5, 0.5), at(-0.5, 0.5)])}"/>`);
+      if (n.roofStyle === "gable") out.push(`<polyline class="ridge" points="${this.pts([at(-0.5, 0), at(0.5, 0)])}"/>`);
+      if (n.roofStyle === "hip")
+        out.push(`<polyline class="ridge" points="${this.pts([at(-0.5, -0.5), at(-0.25, 0), at(0.25, 0), at(0.5, -0.5)])}"/><polyline class="ridge" points="${this.pts([at(-0.5, 0.5), at(-0.25, 0), at(0.25, 0), at(0.5, 0.5)])}"/>`);
     }
+    for (const l of s.landmarks) if (visible(l.at, 30)) out.push(this.landmarkSymbol(l));
     for (const r of s.rocks) if (visible(r.at, 2)) out.push(circle(r.at, r.size * 0.8, "rock"));
-    // Hedges along the sides of the garden.
-    for (const x of [-0.4, this.store.plot.width + 0.4]) for (let y = 1; y < this.store.plot.depth - 0.5; y += 1.1) out.push(circle(new Vec2(x, y), 0.55, "hedge"));
+    // Hedges along the sides of the garden, but not where the road comes in.
+    const { plot } = this.store;
+    for (const side of s.hedgeSides) {
+      const e = sideEdge(plot, side);
+      const n = Math.max(1, Math.round(e.a.distance(e.b) / 1.1));
+      for (let k = 1; k < n; k++) out.push(circle(e.a.add(e.b.sub(e.a).scale(k / n)).add(e.out.scale(0.4)), 0.55, "hedge"));
+    }
     for (const t of s.trees) {
       const r = { round: 2.2, birch: 1.4, pine: 1.7, bush: 0.9 }[t.kind] * t.size;
       if (!visible(t.at, r)) continue;
@@ -944,6 +983,50 @@ export class PlanView {
       if (look === "apple") for (const [ax, ay] of [[-0.4, 0.2], [0.35, -0.35], [0.1, 0.5], [-0.2, -0.5]]) out.push(circle(t.at.add(new Vec2(ax * r, ay * r)), r * 0.12, "apple"));
     }
     return `<g class="scenery">${out.join("")}</g>`;
+  }
+
+  /** A landmark from above: a simple shape and a picture, so it reads at a glance. */
+  private landmarkSymbol(l: Landmark): string {
+    const [x, y] = this.toScreen(l.at);
+    const r = l.size * this.scale;
+    const f = new Vec2(Math.cos(l.facing), Math.sin(l.facing));
+    const side = new Vec2(-f.y, f.x);
+    const box = (w: number, d: number, cls: string) => {
+      const at = (u: number, v: number) => l.at.add(side.scale(u * w)).add(f.scale(v * d));
+      return `<polygon class="${cls}" points="${this.pts([at(-0.5, -0.5), at(0.5, -0.5), at(0.5, 0.5), at(-0.5, 0.5)])}"/>`;
+    };
+    const icon = (emoji: string) => (r > 10 ? `<text class="landmark-icon" x="${x.toFixed(1)}" y="${(y + Math.min(r, 30) * 0.35).toFixed(1)}" text-anchor="middle" style="font-size:${Math.min(r, 30).toFixed(0)}px">${emoji}</text>` : "");
+    const disc = (radius: number, cls: string) => `<circle class="${cls}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(radius * this.scale).toFixed(1)}"/>`;
+    switch (l.kind) {
+      case "church":
+        return `<g class="landmark">${box(9, 16, "lm-stone")}${icon("⛪")}</g>`;
+      case "windmill":
+        return `<g class="landmark">${disc(3, "lm-white")}${icon("🌬️")}</g>`;
+      case "barn":
+        return `<g class="landmark">${box(16, 10, "lm-red")}</g>`;
+      case "silo":
+        return `<g class="landmark">${disc(2.2, "lm-steel")}</g>`;
+      case "boathouse":
+      case "sauna":
+      case "cabin":
+        return `<g class="landmark">${box(l.size * 1.4, l.size, "lm-wood")}${l.kind === "sauna" ? icon("♨️") : ""}</g>`;
+      case "lighthouse":
+        return `<g class="landmark">${disc(2.5, "lm-white")}${disc(1.2, "lm-red")}</g>`;
+      case "millRuin":
+        return `<g class="landmark">${box(8, 7, "lm-ruin")}</g>`;
+      case "playground":
+        return `<g class="landmark">${disc(5, "lm-sand")}${icon("🛝")}</g>`;
+      case "fountain":
+        return `<g class="landmark">${disc(2.6, "lm-stone")}${disc(1.6, "lm-water")}</g>`;
+      case "haybales":
+        return `<g class="landmark">${[-1.5, 0, 1.5].map((u) => `<circle class="lm-hay" cx="${(x + u * this.scale).toFixed(1)}" cy="${y.toFixed(1)}" r="${(0.75 * this.scale).toFixed(1)}"/>`).join("")}</g>`;
+      case "footbridge":
+      case "skiLift": {
+        const to = l.to ?? l.at;
+        const cls = l.kind === "footbridge" ? "lm-bridge" : "lm-lift";
+        return `<polyline class="${cls}" style="stroke-width:${Math.max(2, (l.kind === "footbridge" ? 1.8 : 0.3) * this.scale).toFixed(1)}" points="${this.pts([l.at, to])}"/>`;
+      }
+    }
   }
 
   /** A piece of furniture: its outline and a detail or two so it reads at a glance. */

@@ -17,6 +17,7 @@ import {
   shapedGround,
   siteLevel,
   retainingWalls,
+  accessRoutes,
   exposedBase,
   siteOf,
   type Site,
@@ -177,6 +178,12 @@ function railing(group: THREE.Group, a: Vec2, b: Vec2, y: number): void {
 /** Stone for retaining walls, and dark metal for light-well gratings. */
 const retainingMaterial = worldMaterial(wallTexture("Stone"), { side: THREE.DoubleSide });
 const gratingMaterial = toon({ color: "#3a3d42" });
+/** Driveways and paths. */
+const routeMaterials = {
+  asphalt: worldMaterial(groundTexture("asphalt"), { side: THREE.DoubleSide }),
+  gravel: toon({ color: "#d9c79e", side: THREE.DoubleSide }),
+  paving: worldMaterial(floorTexture("Stone"), { side: THREE.DoubleSide, color: "#efe6d6" }),
+};
 /** Concrete for a foundation showing above the ground. */
 const baseMaterial = worldMaterial(wallTexture("Concrete"), { side: THREE.DoubleSide });
 
@@ -516,6 +523,33 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, retainingMaterial);
       mesh.castShadow = mesh.receiveShadow = true;
+      outside.push(mesh);
+    }
+    // The driveways and the path to the front door, on the ground.
+    for (const r of accessRoutes(house, options.plot).routes) {
+      const positions: number[] = [];
+      const index: number[] = [];
+      // Every half metre along the route, so it follows the ground.
+      const pts: Vec2[] = [];
+      r.points.forEach((p, i) => {
+        if (!i) return pts.push(p);
+        const a = r.points[i - 1];
+        const n = Math.max(1, Math.ceil(a.distance(p) / 0.5));
+        for (let k = 1; k <= n; k++) pts.push(a.add(p.sub(a).scale(k / n)));
+      });
+      pts.forEach((p, i) => {
+        const dir = pts[Math.min(i + 1, pts.length - 1)].sub(pts[Math.max(i - 1, 0)]).normalize();
+        const n = new Vec2Class(-dir.y, dir.x).scale(r.width / 2);
+        for (const q of [p.add(n), p.sub(n)]) positions.push(q.x, ground(q.x, q.y) + 0.03, q.y);
+        if (i) index.push((i - 1) * 2, (i - 1) * 2 + 1, i * 2, (i - 1) * 2 + 1, i * 2 + 1, i * 2);
+      });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((positions.length / 3) * 2), 2));
+      g.setIndex(index);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, routeMaterials[r.surface]);
+      mesh.receiveShadow = true;
       outside.push(mesh);
     }
     // Downhill, the house's base shows above the ground: concrete, flush with the facade,

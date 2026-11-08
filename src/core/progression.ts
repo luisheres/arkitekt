@@ -256,6 +256,9 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     basementWallM2: base.basementWallM2 * w,
     retainingWallM2: base.retainingWallM2 * all,
     lightWell: base.lightWell * all,
+    asphaltM2: base.asphaltM2 * all,
+    gravelM2: base.gravelM2 * all,
+    pathM2: base.pathM2 * all,
     plants: scale(base.plants as Record<string, number>, all),
   };
 }

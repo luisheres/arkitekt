@@ -6,6 +6,7 @@ import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { balconyOutline } from "./edit";
+import { accessRoutes } from "./access";
 import { type BalconyId, type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
 import { type Plot, isBuildable } from "./plot";
 import { buildRoof } from "./roof";
@@ -71,6 +72,8 @@ export type Issue =
   | { kind: "BalconyNotOnOuterWall"; balcony: BalconyId }
   | { kind: "BalconyNeedsDoor"; balcony: BalconyId }
   | { kind: "BalconyOutsidePlot"; balcony: BalconyId }
+  /** A garage door no driveway can reach from the road (it faces the edge of the plot, or is boxed in). */
+  | { kind: "GarageDoorUnreachable"; opening: OpeningId }
   /** An "open to below" on the ground floor or in the basement: there is nothing below to open to. */
   | { kind: "VoidOnGroundFloor"; room: RoomRef }
   /** The basement reaches beyond the ground floor above it. */
@@ -130,6 +133,7 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
   checkBasement(house, analysis, issues);
   checkStairs(house, analysis, issues);
   checkBalconies(house, plot, analysis, issues);
+  if (plot.access) for (const opening of accessRoutes(house, plot).unreachable) issues.push({ kind: "GarageDoorUnreachable", opening });
   if (analysis.levels.every((l) => l.ok) && (!analysis.basement || analysis.basement.ok)) {
     if (house.floorArea() < MIN_FLOOR_AREA) issues.push({ kind: "TooSmall" });
     checkRoof(house, issues);

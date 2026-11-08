@@ -29,3 +29,4 @@ export * from "./treemap";
 export * from "./progression";
 export * from "./difficulty";
 export * from "./site";
+export * from "./access";

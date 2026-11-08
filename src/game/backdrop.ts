@@ -4,8 +4,7 @@
  * Rendered once per plot into an image the plan draws underneath everything else.
  */
 
-import { type Plot, STREET, type Surface, inLake, sceneryFor } from "../core";
-import { Vec2 } from "../core";
+import { type Plot, type Surface, sceneryFor } from "../core";
 
 export interface Backdrop {
   url: string;
@@ -45,24 +44,31 @@ function draw(plot: Plot): Backdrop {
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   const img = ctx.createImageData(w, h);
+  // Heights once, one pixel wider, for the hill shading.
+  const heights = new Float32Array((w + 1) * (h + 1));
+  for (let j = 0; j <= h; j++) for (let i = 0; i <= w; i++) heights[j * (w + 1) + i] = s.height(x1 - i * res, y1 - j * res);
   for (let j = 0; j < h; j++) {
     // The plan shows +x to the left and +y up: column 0 is x1, row 0 is y1.
     const y = y1 - j * res;
     for (let i = 0; i < w; i++) {
       const x = x1 - i * res;
-      const z = s.height(x, y);
-      // Hill shading from the slope.
-      const dx = s.height(x + 1, y) - z;
-      const dy = s.height(x, y + 1) - z;
-      const shade = Math.max(-0.35, Math.min(0.35, (-dx * 0.7 + dy * 0.7) * 0.6));
+      const z = heights[j * (w + 1) + i];
+      // Hill shading from the slope (light from the top left).
+      const dx = heights[j * (w + 1) + i + 1] - z;
+      const dy = heights[(j + 1) * (w + 1) + i] - z;
+      const shade = Math.max(-0.35, Math.min(0.35, (dx * 0.7 - dy * 0.7) * 1.2));
       let [r, g, bl] = [118, 196, 82];
       if (z > 4) [r, g, bl] = [86, 160, 80];
-      if (s.lake && inLake(s.lake, new Vec2(x, y))) [r, g, bl] = s.lake.kind === "sea" ? [84, 176, 232] : [108, 200, 240];
-      else {
+      const wet = s.waterDistance(x, y);
+      if (wet < 0) {
+        // Deeper water is darker.
+        const deep = Math.min(1, -wet / 12);
+        [r, g, bl] = s.water?.kind === "sea" ? [84 - deep * 30, 176 - deep * 40, 232 - deep * 20] : [108 - deep * 30, 200 - deep * 40, 240 - deep * 20];
+      } else {
         const cover = s.surface(x, y);
         if (cover !== "grass") [r, g, bl] = COVER[cover];
       }
-      const k = 1 + shade;
+      const k = wet < 0 ? 1 : 1 + shade;
       const o = (j * w + i) * 4;
       img.data[o] = Math.min(255, r * k);
       img.data[o + 1] = Math.min(255, g * k);
@@ -71,6 +77,5 @@ function draw(plot: Plot): Backdrop {
     }
   }
   ctx.putImageData(img, 0, 0);
-  void STREET;
   return { url: canvas.toDataURL(), x0, x1, y0, y1 };
 }

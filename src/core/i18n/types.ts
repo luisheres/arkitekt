@@ -318,6 +318,9 @@ export interface Messages {
       basementWalls: string;
       retainingWalls: string;
       exposedFoundation: string;
+      driveway: string;
+      gravelDriveway: string;
+      footpath: string;
       lightWells: string;
       paint(color: string): string;
       empty: string;
@@ -374,6 +377,8 @@ export interface Messages {
 
     hints: Record<ToolName, string>;
     street: string;
+    /** Names written on the roads in the plan. */
+    roadName: Record<"main" | "street" | "lane", string>;
     /** Label of a room whose use is not set. */
     room: string;
 

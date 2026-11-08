@@ -6,6 +6,7 @@ import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMat
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
 import { earthworks, exposedFoundationArea, retainingArea } from "./site";
+import { accessRoutes, routeLength } from "./access";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -44,6 +45,10 @@ export interface PriceList {
   retainingWallM2: number;
   /** Per light well outside a basement window. */
   lightWell: number;
+  /** Per m² of driveway (asphalt or gravel) and of paved path. */
+  asphaltM2: number;
+  gravelM2: number;
+  pathM2: number;
   /** Per plant, by kind. */
   plants: Partial<Record<FurnitureKind, number>>;
 }
@@ -70,6 +75,9 @@ export function defaultPrices(): PriceList {
     basementWallM2: 160,
     retainingWallM2: 180,
     lightWell: 1_100,
+    asphaltM2: 55,
+    gravelM2: 22,
+    pathM2: 45,
     plants: { ...PLANT_PRICE },
   };
 }
@@ -97,7 +105,7 @@ export function totalCost(c: CostBreakdown): number {
 }
 
 /** The big groups of a cost breakdown. */
-export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs" | "extras" | "groundworks";
+export type CostGroup = "facade" | "interiorWalls" | "openings" | "roof" | "floors" | "stairs" | "extras" | "groundworks" | "access";
 
 /** What a line of the breakdown pays for. */
 export type CostWhat =
@@ -116,6 +124,8 @@ export type CostWhat =
   | { kind: "basementWalls" }
   | { kind: "retainingWalls" }
   | { kind: "exposedFoundation" }
+  | { kind: "driveway"; surface: "asphalt" | "gravel" }
+  | { kind: "footpath" }
   | { kind: "lightWells" }
   | { kind: "plant"; plant: FurnitureKind }
   | { kind: "paint"; color: PaintColor };
@@ -131,7 +141,7 @@ export interface CostLine {
 }
 
 /** The order the groups are listed in. */
-export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs", "extras", "groundworks"];
+export const COST_GROUPS: readonly CostGroup[] = ["facade", "roof", "floors", "openings", "interiorWalls", "stairs", "extras", "groundworks", "access"];
 
 /**
  * Every cost of the house, line by line (each material, finish and kind of opening on its
@@ -199,6 +209,14 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   if (retaining > 0.05) add("groundworks", { kind: "retainingWalls" }, retaining, "m2", retaining * prices.retainingWallM2);
   const foundation = plot ? exposedFoundationArea(house, plot) : 0;
   if (foundation > 0.05) add("groundworks", { kind: "exposedFoundation" }, foundation, "m2", foundation * prices.basementWallM2);
+
+  // The driveway to each garage and the path to the front door, from the road.
+  if (plot)
+    for (const r of accessRoutes(house, plot).routes) {
+      const m2 = routeLength(r) * r.width;
+      if (r.kind === "path") add("access", { kind: "footpath" }, m2, "m2", m2 * prices.pathM2);
+      else add("access", { kind: "driveway", surface: r.surface === "gravel" ? "gravel" : "asphalt" }, m2, "m2", m2 * (r.surface === "gravel" ? prices.gravelM2 : prices.asphaltM2));
+    }
   // A window in a basement's outer wall looks out into a light well dug beside it.
   const basementLayout = layouts.get(-1);
   const wells = house.openings.filter((o) => o.kind === "Window" && house.levelOf(o.wall) === -1 && basementLayout?.ok && basementLayout.value.exterior.has(o.wall)).length;
@@ -246,6 +264,8 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     basementWalls: "groundworks",
     retainingWalls: "groundworks",
     exposedFoundation: "groundworks",
+    driveway: "groundworks",
+    footpath: "groundworks",
     lightWells: "groundworks",
   };
   for (const l of costLines(house, prices, plot)) {

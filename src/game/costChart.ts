@@ -19,6 +19,7 @@ export const GROUP_COLORS: Record<CostGroup, string> = {
   stairs: "#a77de0",
   extras: "#cf6fb5",
   groundworks: "#9a7b5c",
+  access: "#6b7a8f",
 };
 
 const HEADER = 22;
@@ -58,6 +59,10 @@ export function lineName(l: CostLine, short = false): string {
       return m.ui.costChart.retainingWalls;
     case "exposedFoundation":
       return m.ui.costChart.exposedFoundation;
+    case "driveway":
+      return w.surface === "gravel" ? m.ui.costChart.gravelDriveway : m.ui.costChart.driveway;
+    case "footpath":
+      return m.ui.costChart.footpath;
     case "lightWells":
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.lightWells}`;
     case "plant":

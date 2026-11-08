@@ -2531,3 +2531,131 @@ button.locked::after,
   stroke: rgba(255, 255, 255, 0.85);
   stroke-width: 3px;
 }
+
+/* Roads, routes and landmarks in the plan */
+.plan .roads path,
+.plan .roads circle {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plan .road-kerb {
+  stroke: #e9e4da;
+}
+
+.plan .road.main,
+.plan .road.street {
+  stroke: #8a909c;
+}
+
+.plan .road.lane {
+  stroke: #9a9ea6;
+}
+
+.plan .road.gravel {
+  stroke: #d8c8a4;
+}
+
+.plan .roads circle.road.turning {
+  fill: #8a909c;
+  stroke: none;
+}
+
+.plan .roads .turning-island {
+  fill: #7cc35a;
+  stroke: #e9e4da;
+  stroke-width: 2;
+}
+
+.plan .road-line {
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  stroke-dasharray: 10 10;
+}
+
+.plan .road-grass {
+  stroke: #9cc46a;
+}
+
+.plan .route {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: butt;
+}
+
+.plan .route.asphalt {
+  stroke: #9196a0;
+}
+
+.plan .route.gravel {
+  stroke: #d8c8a4;
+}
+
+.plan .route.paving {
+  stroke: #d9cdb8;
+}
+
+.plan .stone-wall {
+  fill: none;
+  stroke: #a39d92;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plan .landmark polygon,
+.plan .landmark circle {
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 1;
+}
+
+.plan .lm-stone {
+  fill: #c9c3b7;
+}
+
+.plan .lm-white {
+  fill: #f6f4ee;
+}
+
+.plan .lm-red {
+  fill: #b5382c;
+}
+
+.plan .lm-steel {
+  fill: #b8bdc2;
+}
+
+.plan .lm-wood {
+  fill: #9a6a42;
+}
+
+.plan .lm-ruin {
+  fill: #a8a196;
+}
+
+.plan .lm-sand {
+  fill: #ead9a8;
+}
+
+.plan .lm-water {
+  fill: #6cc8f0;
+}
+
+.plan .lm-hay {
+  fill: #e8cf5f;
+}
+
+.plan .lm-bridge {
+  stroke: #9a6a42;
+  fill: none;
+}
+
+.plan .lm-lift {
+  stroke: #4a4f57;
+  stroke-dasharray: 6 4;
+  fill: none;
+}
+
+.plan .landmark-icon {
+  pointer-events: none;
+}

@@ -293,6 +293,8 @@ export const en: Messages = {
       }
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
+      case "GarageDoorUnreachable":
+        return "No driveway can reach this garage door from the road; turn it towards the road or give it room in front";
       case "VoidOnGroundFloor":
         return "An opening to the floor below is on the ground floor; there is nothing below it to open to";
       case "BasementOutsideHouse":
@@ -506,12 +508,15 @@ export const en: Messages = {
       open: "Where does the money go?",
       title: "Where the money goes",
       hint: "The bigger the box, the more it costs. Point at a box for the details.",
-      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs", extras: "Balconies and plants", groundworks: "Groundworks" },
+      groups: { facade: "Facade", interiorWalls: "Interior walls", openings: "Windows and doors", roof: "Roof", floors: "Floors", stairs: "Stairs", extras: "Balconies and plants", groundworks: "Groundworks", access: "Driveway and paths" },
       terrace: "Terrace roof",
       earthworks: "Levelling the ground",
       basementDig: "Digging the basement",
       basementWalls: "Basement walls",
       retainingWalls: "Retaining walls",
+      driveway: "Driveway",
+      gravelDriveway: "Gravel driveway",
+      footpath: "Path to the front door",
       exposedFoundation: "Foundation walls above ground",
       lightWells: "Light wells",
       balcony: "Balcony",
@@ -575,6 +580,7 @@ export const en: Messages = {
       move: "Drag the house to move all of it, rooms, stairs and furniture too. Turn it from Move & turn in the sidebar.",
     },
     street: "STREET",
+    roadName: { main: "MAIN STREET", street: "STREET", lane: "LANE" },
     room: "Room",
 
     layout: "Layout",

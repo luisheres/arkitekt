@@ -12,6 +12,8 @@ export interface Orbit {
   /** Angle above the horizon. */
   pitch: number;
   distance: number;
+  /** Turns the fixed views, so "front" is the side the road comes from. */
+  baseYaw?: number;
 }
 
 /** The fixed viewpoints used for screenshots: front, front-right ¾, back, front-left ¾. */
@@ -24,7 +26,7 @@ export const PRESET_VIEWS = [
 
 export function applyPreset(orbit: Orbit, index: number): void {
   const view = PRESET_VIEWS[index % PRESET_VIEWS.length];
-  orbit.yaw = view.yaw;
+  orbit.yaw = view.yaw + (orbit.baseYaw ?? 0);
   orbit.pitch = view.pitch;
 }
 

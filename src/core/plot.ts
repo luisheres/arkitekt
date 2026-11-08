@@ -25,7 +25,43 @@ export interface Plot {
   tiers: readonly number[];
   /** How the land lies, when it is not flat. */
   terrain?: Terrain;
+  /** How you get to the plot: which side the road (or track, or drive) reaches, and what kind. */
+  access: Access;
 }
+
+/** The sides of a plot: front is the plan's bottom edge (y = 0), back the top, left the +x side (on the left in the plan), right the x = 0 side. */
+export type Side = "front" | "back" | "left" | "right";
+
+/** Main street, residential street, country lane, gravel track. */
+export type RoadKind = "main" | "street" | "lane" | "gravel";
+
+/**
+ * How the road reaches a plot: running along one side (or two, at a corner), ending in a
+ * turning circle in front of it, winding in as a track, or as a private drive off a lane
+ * further away.
+ */
+export interface Access {
+  side: Side;
+  road: RoadKind;
+  layout: "along" | "corner" | "culdesac" | "track" | "drive";
+}
+
+/** A side of a plot: its two ends (anticlockwise), the outward normal and the middle. */
+export function sideEdge(plot: Plot, side: Side): { a: Vec2; b: Vec2; out: Vec2; mid: Vec2 } {
+  const { width: w, depth: d } = plot;
+  const [a, b, out] =
+    side === "front"
+      ? [new Vec2(0, 0), new Vec2(w, 0), new Vec2(0, -1)]
+      : side === "back"
+        ? [new Vec2(w, d), new Vec2(0, d), new Vec2(0, 1)]
+        : side === "left"
+          ? [new Vec2(w, 0), new Vec2(w, d), new Vec2(1, 0)]
+          : [new Vec2(0, d), new Vec2(0, 0), new Vec2(-1, 0)];
+  return { a, b, out, mid: a.add(b).scale(0.5) };
+}
+
+/** The camera's yaw looking at a side from outside (0 looks from +y, PI from -y). */
+export const SIDE_YAW: Record<Side, number> = { front: Math.PI, back: 0, left: Math.PI / 2, right: -Math.PI / 2 };
 
 /**
  * The lie of the land on a plot, made of a few clear landforms so it reads like real ground:
@@ -145,8 +181,54 @@ const TERRAIN: Record<string, Terrain> = {
   skislope: { back: 0.18, side: 0 },
 };
 
+/** How each plot is reached (see the scenery for what surrounds it). */
+const ACCESS: Record<string, Access> = {
+  suburban: { side: "front", road: "street", layout: "along" },
+  corner: { side: "front", road: "street", layout: "corner" },
+  narrow: { side: "front", road: "street", layout: "along" },
+  culdesac: { side: "front", road: "street", layout: "culdesac" },
+  townplot: { side: "front", road: "main", layout: "along" },
+  oldtown: { side: "left", road: "street", layout: "along" },
+  square: { side: "front", road: "main", layout: "corner" },
+  lakeside: { side: "front", road: "street", layout: "along" },
+  bay: { side: "right", road: "lane", layout: "along" },
+  reeds: { side: "front", road: "lane", layout: "along" },
+  lakeview: { side: "back", road: "gravel", layout: "drive" },
+  riverside: { side: "front", road: "street", layout: "along" },
+  mill: { side: "left", road: "lane", layout: "along" },
+  rivermeadow: { side: "front", road: "gravel", layout: "track" },
+  clearing: { side: "front", road: "gravel", layout: "track" },
+  pinewood: { side: "right", road: "gravel", layout: "track" },
+  birchgrove: { side: "front", road: "gravel", layout: "track" },
+  farm: { side: "front", road: "lane", layout: "along" },
+  meadow: { side: "left", road: "lane", layout: "along" },
+  orchard: { side: "front", road: "lane", layout: "drive" },
+  seaside: { side: "front", road: "street", layout: "along" },
+  dunes: { side: "right", road: "gravel", layout: "track" },
+  clifftop: { side: "front", road: "gravel", layout: "drive" },
+  harbour: { side: "front", road: "main", layout: "along" },
+  hillside: { side: "front", road: "street", layout: "along" },
+  slope: { side: "back", road: "street", layout: "along" },
+  valley: { side: "front", road: "lane", layout: "along" },
+  mountain: { side: "front", road: "lane", layout: "along" },
+  alpine: { side: "back", road: "gravel", layout: "track" },
+  skislope: { side: "front", road: "lane", layout: "along" },
+};
+
 const PLOTS: readonly Plot[] = SPECS.map(([id, en, sv, setting, width, depth, setback, price, tiers]) =>
-  Object.freeze({ id, name: { en, sv }, setting, width, depth, setback, price, locationMultiplier: LOCATION[setting], tiers, ...(TERRAIN[id] ? { terrain: TERRAIN[id] } : {}) }),
+  Object.freeze({
+    id,
+    name: { en, sv },
+    setting,
+    width,
+    depth,
+    setback,
+    price,
+    locationMultiplier: LOCATION[setting],
+    tiers,
+    access: ACCESS[id] ?? { side: "front", road: "street", layout: "along" },
+    ...(TERRAIN[id] ? { terrain: TERRAIN[id] } : {}),
+  }),
 );
 
 /** Every plot, the same objects each time (scenery is worked out once per plot). */

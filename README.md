@@ -35,7 +35,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -74,26 +74,37 @@ saturated hand-drawn textures, a gradient sky with puffy clouds and haze in the
 distance. Every plot has its own surroundings, generated from fixed seeds
 (`src/core/scenery.ts`) and shown both in 3D and in the plan:
 
-There are 30 plots in nine kinds of surroundings, each plot with its own size and its
-own seed, so no two look the same:
+There are 30 plots in nine kinds of surroundings, and each has its own layout
+(`LAYOUTS` in `src/core/scenery.ts`), so no two feel the same:
 
-- **Suburbs**: a street with pavements, neighbours' houses on either side and across the
-  road, rolling gardens and trees (suburban, corner, narrow and cul-de-sac lots).
-- **Town**: flat, with houses close all around (town plot, old town garden, square-side).
-- **By a lake**: a lake behind the garden, with a sandy shore, reeds and a jetty (four plots,
-  up to a large lake-view estate).
-- **By a river**: a river running past the back of the garden.
-- **Forest**: a clearing in dense pine and birch woods.
-- **Countryside**: striped fields of wheat, crops and ploughed earth, a farmhouse and a red
-  barn, and an old orchard of apple trees.
-- **By the sea**: the sea behind the garden, with a beach, dunes, a cliff top or a harbour
-  with a jetty.
-- **Hillside**: wooded hills rising behind, and the land falling away in front.
-- **Mountains**: steep slopes all round, pines up to the tree line, then rock and snow.
+- **Roads** reach a plot from any side, in different ways: a street along the front, two
+  streets meeting at a corner, a cul-de-sac ending in a turning circle with houses round
+  it, a gravel track winding in through the woods from a lane further off, or a private
+  drive. Main streets have a centre line and pavements, lanes are narrower, gravel tracks
+  have grass down the middle. The plan names each road.
+- **Water**: lakes have irregular shores with bays, some with islands, reeds in clumps or
+  sandy beaches; rivers wind and change width, with a footbridge; the sea has a curving
+  coast, a beach, a cliff or a harbour pier. Water always stays a few metres from the plot.
+- **Woods** grow in patches with bushy edges (pines and birches in their own stands),
+  birches along the water, avenues of trees along country lanes, orchards and fields in
+  parcels with stone walls.
+- **Landmarks**: churches, a fountain, playgrounds, windmills, barns and silos, hay bales,
+  boathouses and saunas on the shore, lighthouses, an old mill ruin, a cabin in the woods,
+  ski lifts up the slopes.
+- **Neighbours** line the roads, facing them, with gable, hip or flat roofs, one or two
+  storeys.
 
 Each plot is bought by certain client tiers, so better plots come with bigger clients; free
-play can build on any of them. In 3D the camera never sinks into a hillside: it rises to
-see over the land to the house.
+play can build on any of them. In 3D the land reaches far beyond the camera and rolls into
+hazy hills on the horizon (mountains, in mountain country), so its edge is never seen; the
+views face the house from the road. The camera never sinks into a hillside: it rises to see
+over the land to the house.
+
+**Getting to the house.** A driveway leads from where the road reaches the plot to each
+garage door, and a path to the front door, going round the house where they must. They are
+asphalt (gravel off a gravel track) and priced per m², so where the road is matters: a
+garage facing away from the road needs a long drive round the house. A garage door no car
+can reach (facing the edge of the plot, or boxed in) is a building problem.
 
 **Sloping ground.** Most of the newer plots are not flat. Each has a clear lie of the
 land, built from a few natural landforms: an even slope rising towards the back (or
