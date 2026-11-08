@@ -35,7 +35,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `features.ts` chimneys, dormers, skylights and steps; `sun.ts` sun positions and sun hours; `decor.ts` lamps, rugs, pictures, cabinets and stair rails; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `features.ts` chimneys, dormers, skylights and steps; `sun.ts` sun positions and sun hours; `decor.ts` lamps, rugs, pictures, cabinets and stair rails; `street.ts` lamps, cars, signs and crossings along the roads; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` + `interior3d.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -156,6 +156,10 @@ autumn colours, bare trees, snow on the ground and roofs, and frozen lakes in wi
 The landscape has oaks, maples, willows and stumps, and long grass, wildflowers and ferns.
 The Garden menu adds a shed, a greenhouse, a pond, a vegetable patch, a swing and a
 trampoline (in the back garden), and a picket or board fence with a gate.
+
+**Streets.** Roads have street lamps that light up at dusk, parked cars, give-way and 30
+signs, a bus stop by main roads, letterboxes, zebra crossings, rounded corners where they
+meet, and a farm gate on gravel tracks (`src/core/street.ts`).
 
 **Doors, openings and roofs.** Outer walls take windows, doors, **glass doors** (wide, and
 they let daylight in like windows) and garage doors; inside walls take doors or an

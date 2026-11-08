@@ -5,7 +5,8 @@
  */
 
 import * as THREE from "three";
-import { type Landmark, type Plot, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, treeLook } from "../core";
+import { type Landmark, type Plot, type Street, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, sceneryFor, streetFor, treeLook } from "../core";
+import { buildFurniture } from "./furniture3d";
 import { currentSeason, groundTexture, seasonal, snowy, toon, wallTexture, worldMaterial } from "./textures";
 
 const SKY_TOP = new THREE.Color("#3f8fe0");
@@ -42,6 +43,7 @@ export function buildWorld(plot: Plot): World {
   root.add(skyMesh, cloudGroup, hemi, sun, target);
   root.add(terrain(scenery, center, plot));
   root.add(roads(scenery));
+  root.add(streetFurniture(scenery, streetFor(plot)));
   const waterGroup = scenery.water ? water(scenery) : null;
   if (waterGroup) root.add(waterGroup);
   const waterColour = waterGroup ? (waterGroup.userData.surface as THREE.MeshToonMaterial).color.clone() : new THREE.Color();
@@ -1129,6 +1131,212 @@ function groundCover(s: Scenery, plot: Plot): THREE.Group {
       m.setMatrixAt(i, f.m);
       m.setColorAt(i, f.c);
     });
+  }
+  return g;
+}
+
+// --- Along the streets -------------------------------------------------------------------
+
+const street = {
+  pole: toon({ color: "#5a5f66" }),
+  lampGlass: toon({ color: "#fff6dc", emissive: "#ffcf70", emissiveIntensity: 0 }),
+  red: toon({ color: "#d8342a" }),
+  white: toon({ color: "#ffffff" }),
+  yellow: toon({ color: "#ffd23f" }),
+  glass: toon({ color: "#bfe3f2", transparent: true, opacity: 0.45 }),
+  bench: toon({ color: "#8a5a3a" }),
+  boxes: ["#3f7f4a", "#2f5f9f", "#d8342a", "#f2f1ec"].map((c) => toon({ color: c })),
+  gate: toon({ color: "#c9c4b8" }),
+};
+const pool = new THREE.MeshBasicMaterial({ color: "#ffc977", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+
+/** Street lamps light up as it gets dark, and throw a pool of light on the road. */
+export function setStreetDusk(amount: number): void {
+  street.lampGlass.emissiveIntensity = amount * 1.6;
+  pool.opacity = amount * 0.35;
+}
+
+function signFace(kind: "giveWay" | "speed30" | "busStop"): THREE.Texture {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d")!;
+  if (kind === "giveWay") {
+    g.fillStyle = "#d8342a";
+    g.beginPath();
+    g.moveTo(4, 8);
+    g.lineTo(60, 8);
+    g.lineTo(32, 58);
+    g.fill();
+    g.fillStyle = "#ffd23f";
+    g.beginPath();
+    g.moveTo(15, 14);
+    g.lineTo(49, 14);
+    g.lineTo(32, 46);
+    g.fill();
+  } else if (kind === "speed30") {
+    g.fillStyle = "#d8342a";
+    g.beginPath();
+    g.arc(32, 32, 30, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#ffd23f";
+    g.beginPath();
+    g.arc(32, 32, 23, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#111";
+    g.font = "bold 26px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("30", 32, 34);
+  } else {
+    // A Swedish bus stop: a yellow-green sign with a bus.
+    g.fillStyle = "#ffd23f";
+    g.fillRect(2, 2, 60, 60);
+    g.fillStyle = "#2f8a3f";
+    g.fillRect(8, 8, 48, 48);
+    g.fillStyle = "#ffd23f";
+    g.fillRect(14, 20, 36, 20);
+    g.fillRect(16, 42, 8, 6);
+    g.fillRect(40, 42, 8, 6);
+    g.fillStyle = "#2f8a3f";
+    g.fillRect(18, 24, 12, 8);
+    g.fillRect(34, 24, 12, 8);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+let signMats: Record<string, THREE.Material> | null = null;
+const signMaterial = (kind: "giveWay" | "speed30" | "busStop") => {
+  signMats ??= Object.fromEntries((["giveWay", "speed30", "busStop"] as const).map((k) => [k, new THREE.MeshBasicMaterial({ map: signFace(k), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide })]));
+  return signMats[kind];
+};
+
+/** Lamps, parked cars, signs, a bus stop, letterboxes, zebra crossings, rounded corners and track gates. */
+function streetFurniture(s: Scenery, st: Street): THREE.Group {
+  const g = new THREE.Group();
+  const roadY = (p: Vec2) => s.height(p.x, p.y) + 0.14;
+  const box = (parent: THREE.Object3D, m: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
+  /** A group standing at `at` with local +x along `dir` and +z towards `side`. */
+  const placed = (at: Vec2, dir: Vec2, y: number) => {
+    const o = new THREE.Group();
+    o.position.set(at.x, y, at.y);
+    o.rotation.y = Math.atan2(-dir.y, dir.x);
+    g.add(o);
+    return o;
+  };
+
+  // Rounded corners where roads meet: a disc of tarmac (and kerb) at each mouth.
+  for (const j of st.junctions) {
+    const y = s.height(j.at.x, j.at.y);
+    if (j.kerb) {
+      const kerb = new THREE.Mesh(new THREE.CircleGeometry(j.radius + 1.2, 32), kerbMat);
+      kerb.rotation.x = -Math.PI / 2;
+      kerb.position.set(j.at.x, y + 0.1, j.at.y);
+      kerb.receiveShadow = true;
+      g.add(kerb);
+    }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(j.radius, 32), asphalt);
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(j.at.x, y + 0.135, j.at.y);
+    disc.receiveShadow = true;
+    g.add(disc);
+  }
+
+  for (const l of st.lamps) {
+    const o = placed(l.at, l.dir, s.height(l.at.x, l.at.y));
+    // The pole stands at the road's edge; the arm reaches out over the road.
+    const toRoad = l.side.scale(-1);
+    // (Local +x runs along `dir`, local +z to its left.)
+    const local = (v: Vec2) => new THREE.Vector3(v.dot(l.dir), 0, v.dot(new Vec2(-l.dir.y, l.dir.x)));
+    const arm = local(toRoad);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 6, 8), street.pole);
+    pole.position.y = 3;
+    pole.castShadow = true;
+    o.add(pole);
+    const reach = arm.clone().multiplyScalar(1.2);
+    const armMesh = box(o, street.pole, reach.x / 2, 5.95, reach.z / 2, Math.abs(reach.x) + 0.08, 0.08, Math.abs(reach.z) + 0.08);
+    armMesh.castShadow = false;
+    box(o, street.pole, reach.x, 5.85, reach.z, 0.45, 0.14, 0.45);
+    const glow = box(o, street.lampGlass, reach.x, 5.75, reach.z, 0.35, 0.06, 0.35);
+    glow.castShadow = false;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(4.5, 24), pool);
+    disc.rotation.x = -Math.PI / 2;
+    const foot = l.at.add(toRoad.scale(1.2));
+    disc.position.set(foot.x, roadY(foot) + 0.04, foot.y);
+    disc.userData.noOutline = true;
+    disc.renderOrder = 2;
+    g.add(disc);
+  }
+
+  for (const c of st.cars) {
+    const car = buildFurniture({ kind: "Car", level: 0, at: c.at, facing: c.dir, width: 1.8, depth: 4.4, height: 1.45 });
+    car.position.y = roadY(c.at);
+    g.add(car);
+  }
+
+  for (const sign of st.signs) {
+    const o = placed(sign.at, sign.facing, s.height(sign.at.x, sign.at.y));
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.4, 6), street.pole);
+    pole.position.y = 1.2;
+    pole.castShadow = true;
+    o.add(pole);
+    // The face, turned to look along `facing` (local +x).
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.75), signMaterial(sign.kind));
+    face.rotation.y = Math.PI / 2;
+    face.position.set(0.05, 2.3, 0);
+    o.add(face);
+  }
+
+  if (st.busStop) {
+    const b = st.busStop;
+    const o = placed(b.at, b.dir, s.height(b.at.x, b.at.y));
+    // Local +z is to the left of `dir`: the back wall on the side away from the road.
+    const back = new Vec2(-b.dir.y, b.dir.x).dot(b.side) > 0 ? 1 : -1;
+    box(o, street.pole, -1.6, 1.15, 0, 0.08, 2.3, 1.4);
+    box(o, street.pole, 1.6, 1.15, 0, 0.08, 2.3, 1.4);
+    box(o, street.glass, 0, 1.25, back * 0.68, 3.2, 1.9, 0.04);
+    box(o, street.glass, -1.6, 1.25, 0, 0.04, 1.9, 1.3);
+    box(o, street.pole, 0, 2.35, 0, 3.5, 0.1, 1.7);
+    box(o, street.bench, 0, 0.48, back * 0.45, 2.4, 0.06, 0.4);
+    box(o, street.yellow, 0, 2.47, back * -0.82, 3.5, 0.18, 0.04);
+  }
+
+  for (const lb of st.letterboxes) {
+    const o = placed(lb.at, lb.dir, s.height(lb.at.x, lb.at.y));
+    box(o, street.bench, 0, 0.55, 0, 0.08, 1.1, 0.08);
+    const colour = street.boxes[Math.abs(Math.round(lb.at.x * 3 + lb.at.y * 7)) % street.boxes.length];
+    box(o, colour, 0, 1.2, 0, 0.32, 0.3, 0.45);
+  }
+
+  // Zebra crossings: white stripes along the road, side by side across it.
+  for (const c of st.crossings) {
+    const o = placed(c.at, c.dir, roadY(c.at) + 0.012);
+    for (let z = -c.width / 2 + 0.45; z < c.width / 2 - 0.2; z += 1.0) {
+      const stripe = box(o, paint, 0, 0, z, 2.6, 0.02, 0.5);
+      stripe.castShadow = false;
+    }
+  }
+
+  // A farm gate across a gravel track, swung open.
+  for (const gate of st.gates) {
+    const side = new Vec2(-gate.dir.y, gate.dir.x);
+    const hinge = gate.at.add(side.scale(gate.width / 2));
+    const y = s.height(hinge.x, hinge.y);
+    for (const p of [hinge, gate.at.sub(side.scale(gate.width / 2))]) box(g, street.bench, p.x, s.height(p.x, p.y) + 0.65, p.y, 0.16, 1.3, 0.16);
+    const leaf = new THREE.Group();
+    leaf.position.set(hinge.x, y, hinge.y);
+    leaf.rotation.y = Math.atan2(side.y, -side.x) - 1.2;
+    g.add(leaf);
+    for (const h of [0.35, 0.65, 0.95, 1.15]) box(leaf, street.gate, gate.width / 2, h, 0, gate.width, 0.07, 0.05);
+    box(leaf, street.gate, gate.width - 0.05, 0.75, 0, 0.08, 0.9, 0.05);
+    const brace = box(leaf, street.gate, gate.width / 2, 0.75, 0, Math.hypot(gate.width, 0.8), 0.06, 0.05);
+    brace.rotation.z = Math.atan2(0.8, gate.width);
   }
   return g;
 }

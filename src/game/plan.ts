@@ -67,6 +67,7 @@ import {
   wallThickness,
   doorApproaches,
   fenceLayout,
+  streetFor,
   FLOOR_SLAB_HEIGHT,
   siteLevel,
 } from "../core";
@@ -978,6 +979,21 @@ export class PlanView {
       }
       if (r.kind === "main") out.push(`<path class="road-line" d="${line(r.points)}"/>`);
       if (r.kind === "gravel") out.push(`<path class="road-grass" d="${line(r.points)}" style="stroke-width:${(0.5 * this.scale).toFixed(1)}"/>`);
+    }
+    // Zebra crossings and the bus stop (the roads' round caps already round their corners).
+    const st = streetFor(plot);
+    for (const c of st.crossings) {
+      const side = new Vec2(-c.dir.y, c.dir.x);
+      for (let z = -c.width / 2 + 0.45; z < c.width / 2 - 0.2; z += 1.0) {
+        const mid = c.at.add(side.scale(z));
+        out.push(`<polyline class="zebra" style="stroke-width:${(0.5 * this.scale).toFixed(1)}" points="${this.pts([mid.sub(c.dir.scale(1.3)), mid.add(c.dir.scale(1.3))])}"/>`);
+      }
+    }
+    if (st.busStop) {
+      const b = st.busStop;
+      const side = new Vec2(-b.dir.y, b.dir.x);
+      const at = (u: number, v: number) => b.at.add(b.dir.scale(u)).add(side.scale(v));
+      out.push(`<polygon class="bus-stop" points="${this.pts([at(-1.7, -0.75), at(1.7, -0.75), at(1.7, 0.75), at(-1.7, 0.75)])}"/>`);
     }
     // Name each paved road, where it passes closest to the plot.
     const centre = new Vec2(plot.width / 2, plot.depth / 2);

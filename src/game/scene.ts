@@ -140,6 +140,7 @@ function beam(a: THREE.Vector3, b: THREE.Vector3, w: number, h: number, mat: THR
 const v3 = (p: Vec3) => new THREE.Vector3(p.x, p.y, p.z);
 const FRAME_WIDTH = 0.07;
 export { type World, buildWorld } from "./landscape";
+import { setStreetDusk } from "./landscape";
 import type { World } from "./landscape";
 
 /** Free a world's geometry and per-world materials. */
@@ -824,6 +825,24 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       }
     }
     if (house.fence) outside.push(buildFence(house, options.plot, ground));
+    // The house's own letterbox, by the road where the path comes in.
+    const path = accessRoutes(house, options.plot).routes.find((r) => r.kind === "path");
+    if (path && path.points.length > 1) {
+      const [a, b] = [path.points[0], path.points[1]];
+      const d = b.sub(a).normalize();
+      const at = a.add(d.scale(0.8)).add(new Vec2Class(-d.y, d.x).scale(path.width / 2 + 0.5));
+      const box = new THREE.Group();
+      box.position.set(at.x, ground(at.x, at.y), at.y);
+      box.rotation.y = Math.atan2(d.x, d.y);
+      const post = solid(unitBox, palette.stairs);
+      post.position.y = 0.55;
+      post.scale.set(0.08, 1.1, 0.08);
+      const mailbox = solid(unitBox, palette.door);
+      mailbox.position.y = 1.2;
+      mailbox.scale.set(0.45, 0.3, 0.32);
+      box.add(post, mailbox);
+      outside.push(box);
+    }
     // Steps (or a ramp) up to raised outside doors.
     for (const a of doorApproaches(house, platform + FLOOR_SLAB_HEIGHT, ground)) outside.push(approach(a, ground));
     // A light well outside each basement window: a grating at ground level.
@@ -872,6 +891,7 @@ export function disposeHouse(group: THREE.Group): void {
 /** Windows glow warm when it gets dark (0: daylight, 1: night). */
 export function setDusk(amount: number): void {
   setLampsDusk(amount);
+  setStreetDusk(amount);
   const glass = palette.glass as THREE.MeshToonMaterial;
   glass.emissiveIntensity = amount * 0.9;
   glass.opacity = 0.6 + amount * 0.35;

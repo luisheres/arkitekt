@@ -1574,6 +1574,7 @@ svg.plan {
 }
 
 .plan .ridge {
+  fill: none;
   stroke: rgba(0, 0, 0, 0.35);
   stroke-width: 1.5;
 }
@@ -2534,6 +2535,17 @@ button.locked::after,
 
 .plan .piece .trampoline polygon.mat {
   fill: #2b2b30;
+}
+
+.plan .zebra {
+  stroke: #ffffff;
+  fill: none;
+}
+
+.plan .bus-stop {
+  fill: #ffd23f;
+  stroke: #2f8a3f;
+  stroke-width: 1.5;
 }
 
 .plan .fence {
