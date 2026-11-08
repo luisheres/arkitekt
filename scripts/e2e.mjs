@@ -490,6 +490,29 @@ try {
   assert.equal(await page.evaluate(() => window.architect.store.house.dormers.length), 1);
   assert.doesNotMatch(await status(), /dormer/i);
   await page.keyboard.press("Escape");
+  // And a skylight, also from the Roof menu.
+  await page.click('#sidebar .house button:has-text("Roof")');
+  await page.click('.popover button:has-text("+ Skylight")');
+  assert.equal(await page.evaluate(() => window.architect.store.house.dormers.filter((d) => d.skylight).length), 1);
+  assert.match(await page.locator(".popover h2").textContent(), /Skylight/);
+  await page.keyboard.press("Escape");
+  // A window's style and frame colour, from its menu.
+  const win = await page.evaluate(() => {
+    const h = window.architect.store.house;
+    const w = h.openings.find((o) => o.kind === "Window" && h.wall(o.wall).level === 0);
+    const wall = h.wall(w.wall);
+    const p = wall.start.add(wall.direction().scale(w.offset));
+    return [p.x, p.y];
+  });
+  await click(win[0], win[1]);
+  await page.click('.popover .choices button[title="Cottage"]');
+  await page.click('.popover .choices button[title="Green"]');
+  assert.deepEqual(await page.evaluate(() => {
+    const h = window.architect.store.house;
+    const w = h.openings.find((o) => o.kind === "Window" && h.wall(o.wall).level === 0);
+    return [w.style, w.color];
+  }), ["Cottage", "Green"]);
+  await page.keyboard.press("Escape");
   await page.click(".level-switch button[data-level='1']");
   await shot("extras");
   await page.click(".level-switch button[data-level='0']");

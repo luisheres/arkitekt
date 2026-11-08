@@ -103,10 +103,12 @@ export function dormerShape(house: House, d: Dormer, roof: RoofGeometry | null =
 export const dormerSizeOk = (d: Dormer): boolean => d.width >= DORMER_WIDTH[0] - 1e-9 && d.width <= DORMER_WIDTH[1] + 1e-9;
 
 /** Put a dormer in the middle of a wall of the top storey. */
-export function placeDormer(house: House, wallId: number): number | null {
+export function placeDormer(house: House, wallId: number, skylight = false): number | null {
   const wall = house.wall(wallId);
   if (!wall || wall.boundary) return null;
-  return house.addDormer(wallId, wall.length() / 2, Math.min(1.8, Math.max(DORMER_WIDTH[0], wall.length() - 1)));
+  const id = house.addDormer(wallId, wall.length() / 2, Math.min(skylight ? 1.2 : 1.8, Math.max(DORMER_WIDTH[0], wall.length() - 1)));
+  if (skylight) house.dormer(id)!.skylight = true;
+  return id;
 }
 
 /** A dormer's outline in plan: across its width, from the wall's face 2 m into the roof. */
@@ -125,7 +127,7 @@ export function dormerOutline(house: House, d: Dormer): Vec2[] {
  * Put a dormer where one fits: in the middle of a top-floor outer wall under a roof slope,
  * preferring the side facing `side` (where the road is), then the longest wall.
  */
-export function placeDormerAnywhere(house: House, side: "front" | "back" | "left" | "right"): number | null {
+export function placeDormerAnywhere(house: House, side: "front" | "back" | "left" | "right", skylight = false): number | null {
   const layout = analyzeLayout(house, house.topLevel());
   if (!layout.ok || !house.roof || house.roof.style === "Flat") return null;
   const facing = { front: new Vec2(0, -1), back: new Vec2(0, 1), left: new Vec2(1, 0), right: new Vec2(-1, 0) }[side];
@@ -134,7 +136,7 @@ export function placeDormerAnywhere(house: House, side: "front" | "back" | "left
     .filter((w) => !w.boundary && layout.value.exterior.has(w.id))
     .sort((a, b) => interiorNormal(house, a).dot(facing) - interiorNormal(house, b).dot(facing) || b.length() - a.length());
   for (const w of walls) {
-    const id = placeDormer(house, w.id);
+    const id = placeDormer(house, w.id, skylight);
     if (id === null) continue;
     if (dormerShape(house, house.dormer(id)!)) return id;
     house.removeDormer(id);
@@ -151,4 +153,53 @@ export function balconySun(house: House, b: Balcony): { hours: number; sunset: b
   const at = outline.reduce((s, p) => s.add(p), new Vec2(0, 0)).scale(1 / outline.length);
   const height = house.levelBase(wall.level) + 1;
   return { hours: sunHours(house, at, height, SEASON_DAY.spring), sunset: sunsetSun(house, at, height) };
+}
+
+/**
+ * The way up to a ground-floor outside door, when the floor is above the ground in front of
+ * it: how high, and how many steps (or how long a ramp, at 1 in 12).
+ */
+export interface DoorApproach {
+  opening: number;
+  /** The door's middle on the outer face, and the direction out. */
+  at: Vec2;
+  out: Vec2;
+  along: Vec2;
+  width: number;
+  /** From the ground up to the floor. */
+  rise: number;
+  ground: number;
+  steps: number;
+  ramp: boolean;
+  /** How far the steps reach out from the wall; or how long the ramp is, running along the wall from a landing at the door. */
+  length: number;
+  /** Which way along the wall a ramp runs: towards the wall's longer side. */
+  side: 1 | -1;
+}
+
+const STEP_RISE = 0.17;
+const STEP_GOING = 0.3;
+
+export function doorApproaches(house: House, floor: number, ground: (x: number, y: number) => number): DoorApproach[] {
+  const layout = analyzeLayout(house, 0);
+  if (!layout.ok) return [];
+  const out: DoorApproach[] = [];
+  for (const o of house.openings) {
+    if (o.kind !== "Door" && o.kind !== "GlassDoor") continue;
+    const wall = house.wall(o.wall);
+    if (!wall || wall.level !== 0 || !layout.value.exterior.has(wall.id)) continue;
+    // Not where a terrace already meets the door.
+    if (house.balconies.some((b) => b.wall === wall.id && Math.abs(b.offset - o.offset) < b.width / 2)) continue;
+    const along = wall.direction();
+    const outward = interiorNormal(house, wall).scale(-1);
+    const at = wall.start.add(along.scale(o.offset)).add(outward.scale(wall.thickness / 2));
+    const g = ground(at.x + outward.x * 0.6, at.y + outward.y * 0.6);
+    const rise = floor - g;
+    if (rise < 0.12) continue;
+    const steps = Math.max(1, Math.round(rise / STEP_RISE));
+    const ramp = !!o.ramp;
+    const side = o.offset < wall.length() / 2 ? 1 : -1;
+    out.push({ opening: o.id, at, out: outward, along, width: o.width + 0.4, rise, ground: g, steps, ramp, length: ramp ? Math.max(1.2, rise * 12) : steps * STEP_GOING + 0.4, side });
+  }
+  return out;
 }

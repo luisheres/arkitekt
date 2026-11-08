@@ -49,6 +49,7 @@ export const TECHNIQUE_IDS = [
   "fireplace",
   "terraces",
   "dormers",
+  "skylights",
   "prefab",
   "carpenters",
   "marketing",
@@ -82,6 +83,7 @@ export type Unlock =
   | { kind: "fireplace" }
   | { kind: "terraces" }
   | { kind: "dormers" }
+  | { kind: "skylights" }
   /** Cheaper parts: a share off what they cost. */
   | { kind: "discount"; on: "walls" | "floors" | "all"; share: number }
   /** A larger fee: this many percentage points of the budget on top. */
@@ -120,6 +122,7 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "fireplace", branch: "interiors", price: 6_000, unlocks: { kind: "fireplace" } },
   { id: "terraces", branch: "garden", price: 3_500, unlocks: { kind: "terraces" } },
   { id: "dormers", branch: "roofs", price: 7_000, unlocks: { kind: "dormers" } },
+  { id: "skylights", branch: "roofs", price: 3_000, unlocks: { kind: "skylights" } },
   { id: "prefab", branch: "business", price: 12_000, unlocks: { kind: "discount", on: "walls", share: 0.1 } },
   { id: "carpenters", branch: "business", price: 14_000, unlocks: { kind: "discount", on: "floors", share: 0.1 } },
   { id: "marketing", branch: "business", price: 25_000, unlocks: { kind: "fee", points: 2 } },
@@ -147,6 +150,7 @@ export interface Abilities {
   fireplace: boolean;
   terraces: boolean;
   dormers: boolean;
+  skylights: boolean;
   /** Price factors (1 = full price). */
   wallFactor: number;
   floorFactor: number;
@@ -185,6 +189,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       fireplace: true,
       terraces: true,
       dormers: true,
+      skylights: true,
       wallFactor: 1,
       floorFactor: 1,
       allFactor: 1,
@@ -196,7 +201,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
   const roofStyles = new Set(STARTER.roofStyles);
   const roofMaterials = new Set(STARTER.roofMaterials);
   const floors = new Set(STARTER.floors);
-  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, doubleHeight: false, glassDoors: false, fireplace: false, terraces: false, dormers: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
+  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, doubleHeight: false, glassDoors: false, fireplace: false, terraces: false, dormers: false, skylights: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
   for (const id of owned) {
     const u = technique(id)?.unlocks;
     if (!u) continue;
@@ -232,6 +237,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       case "fireplace":
       case "terraces":
       case "dormers":
+      case "skylights":
         a[u.kind] = true;
         break;
       case "discount":
@@ -282,6 +288,9 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     chimneyM: base.chimneyM * all,
     dormerBase: base.dormerBase * all,
     dormerM: base.dormerM * all,
+    skylight: base.skylight * all,
+    step: base.step * all,
+    rampM: base.rampM * all,
     paintM2: base.paintM2 * all,
     earthM3: base.earthM3 * all,
     basementDigM3: base.basementDigM3 * all,
@@ -339,7 +348,7 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
     if (house.wall(b.wall)?.level === 0) want(a.terraces, { kind: "terraces" });
     else want(a.balconies, { kind: "balconies" });
   }
-  if (house.dormers.length) want(a.dormers, { kind: "dormers" });
+  for (const d of house.dormers) want(d.skylight ? a.skylights : a.dormers, { kind: d.skylight ? "skylights" : "dormers" });
   for (const o of house.openings) {
     if (o.kind === "GlassDoor") want(a.glassDoors, { kind: "glassDoors" });
     if (o.kind === "Passage") want(a.openPlan, { kind: "openPlan" });
@@ -441,6 +450,7 @@ export function canBuild(a: Abilities, u: Unlock): boolean {
     case "fireplace":
     case "terraces":
     case "dormers":
+    case "skylights":
       return a[u.kind];
     default:
       return a.all;

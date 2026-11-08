@@ -140,6 +140,12 @@ light really falls into the rooms. A terrace's or balcony's menu shows its hours
 and some clients want a sunny terrace or a balcony with the evening sun. The sprints that
 improve the 3D views are documented in [`sprints/`](sprints/README.md).
 
+**Details.** Windows come in three styles (standard, cottage with shutters, modern) and
+five frame colours. Houses get sills, lintels or trim, door canopies, a plinth, corner
+boards on wooden facades, and gutters and down pipes along the eaves. **Skylights** lie in
+the roof slope, cheaper than dormers. A door above the ground gets steps, or a ramp,
+which are paid for.
+
 **Doors, openings and roofs.** Outer walls take windows, doors, **glass doors** (wide, and
 they let daylight in like windows) and garage doors; inside walls take doors or an
 **opening**: a gap with no door that joins two rooms. Gable and hip roofs work on any

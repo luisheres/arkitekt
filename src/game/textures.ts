@@ -5,7 +5,7 @@
  */
 
 import * as THREE from "three";
-import type { FloorFinish, PaintColor, RoofMaterial, WallMaterial } from "../core";
+import type { FloorFinish, FrameColor, PaintColor, RoofMaterial, WallMaterial } from "../core";
 
 const PX = 512;
 
@@ -191,6 +191,9 @@ export function wallTexture(m: WallMaterial): THREE.Texture {
 }
 
 /** What each wall paint looks like (multiplies the white interior finish). */
+/** Window and door frame colours, as painted. */
+export const FRAME_HEX: Record<FrameColor, string> = { White: "#f4f1ea", Black: "#2b2b2e", Green: "#3f6b4a", Blue: "#3d5f8c", Red: "#9c3a2e" };
+
 export const PAINT_HEX: Record<PaintColor, string> = {
   White: "#ffffff",
   Cream: "#fbe6bd",

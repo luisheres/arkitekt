@@ -6,6 +6,11 @@
 
 import {
   DEFAULT_OPENING,
+  FRAME_COLORS,
+  WINDOW_STYLES,
+  doorApproaches,
+  shapedGround,
+  siteLevel,
   FLOOR_FINISHES,
   FURNITURE_KINDS,
   type FurnitureKind,
@@ -71,7 +76,7 @@ import {
 } from "../core";
 import { m } from "./i18n";
 import type { Selection, Store } from "./store";
-import { PAINT_HEX, floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
+import { FRAME_HEX, PAINT_HEX, floorTexture, roofTexture, swatchUrl, wallTexture } from "./textures";
 import { type Field, button, choices, el, numberField, readout, setLocked, slider } from "./ui";
 
 const DEFAULT_ROOF: Roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Shingles" };
@@ -391,6 +396,20 @@ function wallInspector(store: Store, id: number): Inspector | null {
       },
     });
     buttons.push(b);
+    const { button: sb, field: sf } = lockable(store, m.ui.addSkylight, { kind: "skylights" }, () => {
+      let dormer: number | null = null;
+      store.edit((h) => (dormer = placeDormer(h, id, true)));
+      if (dormer !== null) store.select({ kind: "dormer", id: dormer });
+    });
+    fields.push({
+      el: sb,
+      update: () => {
+        sf.update();
+        sb.disabled = !pitched();
+        if (!pitched()) sb.title = m.ui.dormerNeedsRoof;
+      },
+    });
+    buttons.push(sb);
   }
   return {
     el: el("div", {}, el("h2", {}, exterior ? m.ui.exteriorWall : m.ui.interiorWall), fields[0].el, ...parts, height.el, el("div", { className: "row" }, ...buttons, deleteButton(store))),
@@ -464,7 +483,18 @@ function openingInspector(store: Store, id: number): Inspector | null {
     ...(o.kind === "Window" ? [numberField(m.ui.sill, { min: 0, max: 3, step: 0.1 }, () => op()?.sill ?? 0, (v) => editOp((cur) => (cur.sill = v), "sill"))] : []),
     numberField(m.ui.position, { min: 0, max: 100, step: 0.05 }, () => op()?.offset ?? 0, (v) => editOp((cur) => (cur.offset = v), "offset")),
   ];
-  return { el: el("div", {}, el("h2", {}, m.opening[o.kind]), ...fields.map((f) => f.el), el("div", { className: "row" }, deleteButton(store))), fields };
+  if (o.kind === "Window")
+    fields.push(choices(m.ui.windowStyle, WINDOW_STYLES.map((s) => ({ value: s, label: m.ui.windowStyles[s] })), () => op()?.style ?? "Standard", (v) => editOp((cur) => (cur.style = v === "Standard" ? undefined : v), "style"), "segmented"));
+  if (outer && o.kind !== "Passage")
+    fields.push(choices(m.ui.frameColor, FRAME_COLORS.map((c) => ({ value: c, label: m.ui.frameColors[c], color: FRAME_HEX[c] })), () => op()?.color ?? "White", (v) => editOp((cur) => (cur.color = v === "White" ? undefined : v), "color")));
+  // A raised door: steps or a ramp up to it.
+  const approach = () => doorApproaches(store.house, siteLevel(store.house, store.plot) + 0.05, shapedGround(store.house, store.plot)).find((a) => a.opening === id);
+  const a = approach();
+  if (a) {
+    fields.push(choices(m.ui.approach, [{ value: "steps" as const, label: m.ui.steps }, { value: "ramp" as const, label: m.ui.ramp }], () => (approach() ? (op()?.ramp ? "ramp" : "steps") : null), (v) => editOp((cur) => (cur.ramp = v === "ramp" || undefined), "ramp"), "segmented"));
+  }
+  const note = a ? [el("p", { className: "sub" }, m.ui.approachNote(a.steps, meters(m, a.rise)))] : [];
+  return { el: el("div", {}, el("h2", {}, m.opening[o.kind]), ...fields.map((f) => f.el), ...note, el("div", { className: "row" }, deleteButton(store))), fields };
 }
 
 // --- Stairs and furniture ----------------------------------------------------------
@@ -558,8 +588,20 @@ function roofInspector(store: Store): Inspector {
       dormerBtn.disabled = !pitched();
     },
   });
+  const { button: skyBtn, field: skyField } = lockable(store, m.ui.addSkylight, { kind: "skylights" }, () => {
+    let dormer: number | null = null;
+    store.edit((h) => (dormer = placeDormerAnywhere(h, store.plot.access.side === "front" ? "back" : "front", true)));
+    if (dormer !== null) store.select({ kind: "dormer", id: dormer });
+  });
+  fields.push({
+    el: skyBtn,
+    update: () => {
+      skyField.update();
+      skyBtn.disabled = !pitched();
+    },
+  });
   return {
-    el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.slice(0, -1).map((f) => f.el), el("div", { className: "row" }, dormerBtn), el("p", { className: "sub" }, m.ui.dormerHint)),
+    el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.slice(0, -2).map((f) => f.el), el("div", { className: "row" }, dormerBtn, skyBtn), el("p", { className: "sub" }, m.ui.dormerHint)),
     fields,
   };
 }
@@ -697,7 +739,7 @@ function dormerInspector(store: Store, id: number): Inspector | null {
   ];
   const ok = !!dormerShape(store.house, dormer()!);
   return {
-    el: el("div", {}, el("h2", {}, m.ui.dormer), ...fields.map((f) => f.el), el("p", { className: ok ? "sub" : "sub bad" }, ok ? m.ui.dormerNote : m.issue({ kind: "DormerNotOnSlope", dormer: id })), el("div", { className: "row" }, deleteButton(store))),
+    el: el("div", {}, el("h2", {}, dormer()!.skylight ? m.ui.skylight : m.ui.dormer), ...fields.map((f) => f.el), el("p", { className: ok ? "sub" : "sub bad" }, ok ? (dormer()!.skylight ? m.ui.skylightNote : m.ui.dormerNote) : m.issue({ kind: "DormerNotOnSlope", dormer: id })), el("div", { className: "row" }, deleteButton(store))),
     fields,
   };
 }

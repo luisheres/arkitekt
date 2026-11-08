@@ -5,9 +5,9 @@ import { type FurnitureKind, PLANT_PRICE } from "./furniture";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
-import { earthworks, exposedFoundationArea, retainingArea } from "./site";
+import { earthworks, exposedFoundationArea, retainingArea, shapedGround, siteLevel } from "./site";
 import { accessRoutes, routeLength } from "./access";
-import { chimneyLength } from "./features";
+import { chimneyLength, doorApproaches } from "./features";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -45,6 +45,10 @@ export interface PriceList {
   /** Per dormer, plus per metre of its width. */
   dormerBase: number;
   dormerM: number;
+  skylight: number;
+  /** Per outside step, and per metre of ramp. */
+  step: number;
+  rampM: number;
   /** Per m² of painted wall (any colour but white). */
   paintM2: number;
   /** Per m³ of earth dug away or filled in to level the ground. */
@@ -89,6 +93,9 @@ export function defaultPrices(): PriceList {
     chimneyM: 450,
     dormerBase: 2_400,
     dormerM: 900,
+    skylight: 1_300,
+    step: 140,
+    rampM: 260,
     paintM2: 8,
     earthM3: 55,
     basementDigM3: 45,
@@ -143,6 +150,9 @@ export type CostWhat =
   | { kind: "fireplace" }
   | { kind: "chimney" }
   | { kind: "dormer" }
+  | { kind: "skylight" }
+  | { kind: "steps" }
+  | { kind: "ramp" }
   | { kind: "earthworks" }
   | { kind: "basementDig" }
   | { kind: "basementWalls" }
@@ -273,7 +283,18 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
     const length = chimneyLength(house);
     add("extras", { kind: "chimney" }, length, "m", length * prices.chimneyM);
   }
-  for (const d of house.dormers) add("roof", { kind: "dormer" }, 1, "pieces", prices.dormerBase + d.width * prices.dormerM);
+  for (const d of house.dormers) {
+    if (d.skylight) add("roof", { kind: "skylight" }, 1, "pieces", prices.skylight + d.width * prices.dormerM * 0.3);
+    else add("roof", { kind: "dormer" }, 1, "pieces", prices.dormerBase + d.width * prices.dormerM);
+  }
+  // Steps (or a ramp) up to raised outside doors.
+  if (plot) {
+    const ground = shapedGround(house, plot);
+    for (const a of doorApproaches(house, siteLevel(house, plot) + 0.05, ground)) {
+      if (a.ramp) add("access", { kind: "ramp" }, a.length, "m", a.length * prices.rampM);
+      else add("access", { kind: "steps" }, a.steps, "pieces", a.steps * prices.step);
+    }
+  }
   for (const f of house.furniture) {
     const price = prices.plants[f.kind];
     if (price) add("extras", { kind: "plant", plant: f.kind }, 1, "pieces", price);
@@ -306,6 +327,9 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     fireplace: "extras",
     chimney: "extras",
     dormer: "roof",
+    skylight: "roof",
+    steps: "groundworks",
+    ramp: "groundworks",
     plant: "extras",
     paint: "extras",
     earthworks: "groundworks",

@@ -9,7 +9,7 @@ import type { Difficulty } from "../difficulty";
 import type { Setting } from "../plot";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
-import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial } from "../model";
+import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial, FrameColor, WindowStyle } from "../model";
 import type { Issue } from "../validate";
 
 export const LANGS = ["en", "sv"] as const;
@@ -318,6 +318,9 @@ export interface Messages {
       fireplace: string;
       chimney: string;
       dormer: string;
+      skylight: string;
+      steps: string;
+      ramp: string;
       earthworks: string;
       basementDig: string;
       basementWalls: string;
@@ -377,6 +380,17 @@ export interface Messages {
     terraceNote: string;
     dormer: string;
     addDormer: string;
+    skylight: string;
+    addSkylight: string;
+    skylightNote: string;
+    windowStyle: string;
+    windowStyles: Record<WindowStyle, string>;
+    frameColor: string;
+    frameColors: Record<FrameColor, string>;
+    approach: string;
+    steps: string;
+    ramp: string;
+    approachNote(steps: number, rise: string): string;
     dormerNote: string;
     dormerNeedsRoof: string;
     dormerHint: string;

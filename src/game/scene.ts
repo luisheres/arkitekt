@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
-import { PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
+import { FRAME_HEX, PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
   FLOOR_FINISHES,
@@ -46,6 +46,15 @@ import {
   buildRoof,
   wallPieces,
   wallThickness,
+  doorApproaches,
+  roofHeightAt,
+  FRAME_COLORS,
+  type FrameColor,
+  type Opening,
+  type RoofLine,
+  type RoofEdges,
+  type RoofGeometry,
+  type DoorApproach,
 } from "../core";
 
 const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -86,6 +95,45 @@ const palette = {
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 unitBox.userData.shared = true;
+/** A pipe one metre long along z, for gutters and down pipes. */
+const unitPipe = new THREE.CylinderGeometry(0.5, 0.5, 1, 10).rotateX(Math.PI / 2);
+unitPipe.userData.shared = true;
+
+/** Painted frames, one per colour; and shutters a shade deeper. */
+const frames = each(FRAME_COLORS, (c) => toon({ color: FRAME_HEX[c] }));
+const shutters = each(FRAME_COLORS, (c) => toon({ color: new THREE.Color(FRAME_HEX[c]).multiplyScalar(c === "White" ? 0.92 : 0.85) }));
+const details = {
+  /** A sheet-metal window sill, gutters and down pipes. */
+  metal: toon({ color: "#6f757c" }),
+  /** Stone lintels over openings in brick and stone. */
+  lintel: toon({ color: "#d8d2c4" }),
+  /** The plinth round the foot of the house. */
+  plinth: toon({ color: "#8c8982" }),
+  /** Steps and ramps up to raised doors. */
+  steps: worldMaterial(wallTexture("Concrete")),
+};
+
+/** The frame material for an opening: its own colour, else black for modern windows, else white. */
+function frameOf(o: Opening, outer: boolean): THREE.Material {
+  if (!outer) return palette.frame;
+  const c: FrameColor = o.color ?? (o.style === "Modern" ? "Black" : "White");
+  return frames[c];
+}
+
+/** A box from `a` to `b` (its length), `w` wide and `h` high. */
+function beam(a: THREE.Vector3, b: THREE.Vector3, w: number, h: number, mat: THREE.Material, geometry: THREE.BufferGeometry = unitBox): THREE.Mesh {
+  const mesh = new THREE.Mesh(geometry, mat);
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.position.lerpVectors(a, b, 0.5);
+  // Straight up or down, "up" must not be the direction itself.
+  const dir = b.clone().sub(a).normalize();
+  if (Math.abs(dir.y) > 0.99) mesh.up.set(0, 0, 1);
+  else mesh.up.set(0, 1, 0);
+  mesh.lookAt(b);
+  mesh.scale.set(w, h, a.distanceTo(b));
+  return mesh;
+}
+const v3 = (p: Vec3) => new THREE.Vector3(p.x, p.y, p.z);
 const FRAME_WIDTH = 0.07;
 export { type World, buildWorld } from "./landscape";
 import type { World } from "./landscape";
@@ -314,6 +362,10 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       return [facade, facade, facade, facade, leftIsInside ? l : facade, leftIsInside ? facade : r];
     };
     const faces = facesAt(wall.length() / 2);
+    // On the outside face: `z` metres out from the wall's middle.
+    const outSign = exterior && interiorNormal(house, wall).dot(left) > 0 ? -1 : 1;
+    const atOut = (z: number) => (u: number, v: number) => at(u, v).add(new THREE.Vector3(left.x * z * outSign, 0, left.y * z * outSign));
+    const face = t / 2;
     pick = { kind: "wall", id: wall.id };
     for (const p of wallPieces(wall, openings, t)) {
       box((p.u0 + p.u1) * 0.5, (p.v0 + p.v1) * 0.5, at, size(p.u1 - p.u0, p.v1 - p.v0, t), rotY, facesAt((p.u0 + p.u1) * 0.5));
@@ -325,24 +377,67 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const len = wall.length();
       box(len / 2, (v0 + v1) / 2, at, size(len + t, v1 - v0, t), rotY, faces);
     }
+    if (exterior) {
+      const len = wall.length();
+      const fullHeight = wall.level < top && visible(wall.level + 1) ? house.storeyHeight(wall.level) + FLOOR_STRUCTURE : wall.height;
+      // Board facades get white corner boards.
+      if (wall.material === "Wood" || wall.material === "FaluRed") {
+        for (const u of [-face + 0.07, len + face - 0.07]) box(u, fullHeight / 2, atOut(face + 0.015), size(0.15, fullHeight, 0.035), rotY, palette.frame);
+      }
+      // A plinth round the foot of the ground floor (not across doors).
+      if (wall.level === 0 && wall.material !== "Stone") {
+        const PLINTH = 0.32;
+        let u = -face - 0.03;
+        const stops = openings.filter((o) => o.sill < PLINTH).sort((a, b) => a.left() - b.left());
+        for (const o of [...stops, null]) {
+          const end = o ? o.left() : len + face + 0.03;
+          if (end - u > 0.05) box((u + end) / 2, (PLINTH - 0.08) / 2, atOut(face + 0.02), size(end - u, PLINTH + 0.08, 0.04), rotY, details.plinth);
+          if (o) u = o.right();
+        }
+      }
+    }
 
     for (const o of openings) {
       pick = { kind: "opening", id: o.id };
       const [w, h, fw] = [o.width, o.height, FRAME_WIDTH];
       const midV = o.sill + h * 0.5;
       const frameDepth = t + 0.1; // a chunky lip, so it outlines as a solid line
+      const frame = frameOf(o, exterior);
       // Frame: top, left and right bars (plus a sill bar for windows).
-      box(o.offset, o.top() - fw * 0.5, at, size(w, fw, frameDepth), rotY, palette.frame);
+      box(o.offset, o.top() - fw * 0.5, at, size(w, fw, frameDepth), rotY, frame);
       for (const side of [o.left() + fw * 0.5, o.right() - fw * 0.5]) {
-        box(side, midV, at, size(fw, h, frameDepth), rotY, palette.frame);
+        box(side, midV, at, size(fw, h, frameDepth), rotY, frame);
+      }
+      if (exterior && o.kind !== "Passage") {
+        // Over the opening: a stone lintel in brick and stone, a trim board on wooden facades.
+        if (wall.material === "Brick" || wall.material === "Stone") box(o.offset, o.top() + 0.09, atOut(face + 0.015), size(w + 0.3, 0.18, 0.04), rotY, details.lintel);
+        else if (wall.material === "Wood" || wall.material === "FaluRed") {
+          box(o.offset, o.top() + 0.07, atOut(face + 0.02), size(w + 0.26, 0.14, 0.04), rotY, palette.frame);
+          for (const u of [o.left() - 0.05, o.right() + 0.05]) box(u, midV, atOut(face + 0.015), size(0.1, h, 0.03), rotY, palette.frame);
+        }
+      }
+      if (o.kind === "Window" && exterior) {
+        // An outside sill that sheds the rain.
+        box(o.offset, o.sill - 0.02, atOut(face + 0.06), size(w + 0.14, 0.04, 0.16), rotY, details.metal);
+        if (o.style === "Cottage") {
+          // Shutters folded back each side.
+          const sh = shutters[o.color ?? "Green"];
+          for (const s of [-1, 1]) box(o.offset + s * (w / 2 + w / 4 + 0.08), midV, atOut(face + 0.04), size(w / 2, h, 0.04), rotY, sh);
+        }
       }
       if (o.kind === "Window") {
-        box(o.offset, o.sill + fw * 0.5, at, size(w, fw, frameDepth + 0.06), rotY, palette.frame);
-        if (w >= 1.6) {
+        box(o.offset, o.sill + fw * 0.5, at, size(w, fw, frameDepth + 0.06), rotY, frame);
+        if (o.style === "Cottage") {
+          // Small panes: glazing bars across and up.
+          const across = Math.max(2, Math.round(w / 0.45));
+          const up = Math.max(2, Math.round(h / 0.45));
+          for (let i = 1; i < across; i++) box(o.left() + (w * i) / across, midV, at, size(0.035, h, frameDepth * 0.5), rotY, frame);
+          for (let i = 1; i < up; i++) box(o.offset, o.sill + (h * i) / up, at, size(w, 0.035, frameDepth * 0.5), rotY, frame);
+        } else if (w >= 1.6 && o.style !== "Modern") {
           // Split wide windows with mullions roughly every metre.
           const panes = Math.round(w);
           for (let i = 1; i < panes; i++) {
-            box(o.left() + (w * i) / panes, midV, at, size(fw * 0.8, h, frameDepth * 0.6), rotY, palette.frame);
+            box(o.left() + (w * i) / panes, midV, at, size(fw * 0.8, h, frameDepth * 0.6), rotY, frame);
           }
         }
         const glass = solid(unitBox, palette.glass);
@@ -354,8 +449,8 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         group.add(glass);
       } else if (o.kind === "GlassDoor") {
         // Two tall glass panels in a frame, with a bar between them.
-        box(o.offset, midV, at, size(fw, h, frameDepth * 0.6), rotY, palette.frame);
-        box(o.offset, o.sill + 0.04, at, size(w, 0.08, frameDepth), rotY, palette.frame);
+        box(o.offset, midV, at, size(fw, h, frameDepth * 0.6), rotY, frame);
+        box(o.offset, o.sill + 0.04, at, size(w, 0.08, frameDepth), rotY, frame);
         const glass = solid(unitBox, palette.glass);
         glass.userData.pick = pick;
         glass.castShadow = false;
@@ -371,6 +466,20 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         for (let v = 0.5; v < h - 0.2; v += 0.5) box(o.offset, v, at, size(w - fw * 2, 0.03, 0.07), rotY, palette.frame);
       } else {
         box(o.offset, midV - fw * 0.5, at, size(w - fw * 2, h - fw, 0.06), rotY, palette.door);
+      }
+      // A little roof over a ground-floor front or back door, on two brackets.
+      if (exterior && wall.level === 0 && o.kind === "Door" && !house.balconies.some((b) => b.wall === wall.id && Math.abs(b.offset - o.offset) < b.width / 2 + o.width / 2)) {
+        const deep = 0.85;
+        const canopy = house.roof ? palette.roof[house.roof.material] : palette.slab;
+        const mesh = new THREE.Mesh(unitBox, canopy);
+        mesh.castShadow = mesh.receiveShadow = true;
+        mesh.userData.pick = pick;
+        mesh.position.copy(atOut(face + deep / 2)(o.offset, o.top() + 0.28));
+        mesh.rotation.set(0, rotY, 0);
+        mesh.rotateX(0.18 * outSign);
+        mesh.scale.set(w + 0.6, 0.07, deep);
+        group.add(mesh);
+        for (const s of [-1, 1]) box(o.offset + s * (w / 2 + 0.2), o.top() + 0.12, atOut(face + 0.3), size(0.06, 0.3, 0.55), rotY, frame);
       }
     }
   }
@@ -547,6 +656,10 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       const wall = house.wall(d.wall);
       if (!shape || !wall) continue;
       const pickD = { kind: "dormer", id: d.id } satisfies Pick;
+      if (d.skylight) {
+        group.add(skylight(shape, roof.value, pickD));
+        continue;
+      }
       const facade = palette.gable[wall.material];
       const covering = palette.roof[house.roof.material];
       const { front, along, inward, width: w, sill, eave, ridge, depth } = shape;
@@ -592,6 +705,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     const surface = solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]);
     surface.userData.pick = { kind: "roof" } satisfies Pick;
     group.add(surface);
+    group.add(roofTrim(roof.value.edges, house.roof.material === "Metal" ? details.metal : palette.roof[house.roof.material], (x, y) => ground(x, y) - platform));
     if (!roof.value.gables.isEmpty()) {
       const topLayout = layoutOf(top);
       const exteriorWall = house.wallsOn(top).find((w) => !w.boundary && (!topLayout || topLayout.exterior.has(w.id)));
@@ -677,6 +791,8 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         outside.push(mesh);
       }
     }
+    // Steps (or a ramp) up to raised outside doors.
+    for (const a of doorApproaches(house, platform + FLOOR_SLAB_HEIGHT, ground)) outside.push(approach(a, ground));
     // A light well outside each basement window: a grating at ground level.
     const basement = analyses.get(-1);
     for (const o of house.openings) {
@@ -790,4 +906,95 @@ function contactShade(outline: readonly Vec2[], ground: (x: number, y: number) =
   const mesh = new THREE.Mesh(g, shadeMaterial);
   mesh.renderOrder = 1;
   return mesh;
+}
+
+/** A skylight lying in the roof slope: a dark frame and glass, a hand's breadth proud of the covering. */
+function skylight(shape: NonNullable<ReturnType<typeof dormerShape>>, roof: RoofGeometry, pick: Pick): THREE.Group {
+  const g = new THREE.Group();
+  const { front, along, inward, width } = shape;
+  const quad = (inset: number, lift: number, mat: THREE.Material) => {
+    const corner = (u: number, v: number) => {
+      const q = front.add(along.scale(u)).add(inward.scale(v));
+      return new Vec3(q.x, (roofHeightAt(roof, q) ?? shape.sill) + lift, q.y);
+    };
+    const hw = width / 2 - inset;
+    const [v0, v1] = [0.4 + inset, 1.7 - inset];
+    const m = new TriMesh();
+    m.pushQuadFacing(corner(-hw, v0), corner(hw, v0), corner(hw, v1), corner(-hw, v1), new Vec3(0, 1, 0));
+    const mesh = solid(toGeometry(m), mat);
+    mesh.userData.pick = pick;
+    g.add(mesh);
+  };
+  quad(0, 0.06, frames.Black);
+  quad(0.08, 0.075, palette.glass);
+  return g;
+}
+
+/** Gutters and down pipes along the eaves, barge boards up the gables and caps on the ridges. */
+function roofTrim(edges: RoofEdges, capMaterial: THREE.Material, groundAt: (x: number, y: number) => number): THREE.Group {
+  const g = new THREE.Group();
+  const shift = (l: RoofLine, out: number, down: number) => [l.a, l.b].map((p) => new THREE.Vector3(p.x + l.out.x * out, p.y - down, p.z + l.out.y * out));
+  for (const l of edges.eaves) {
+    const [fa, fb] = shift(l, 0.02, 0.08);
+    g.add(beam(fa, fb, 0.04, 0.16, palette.frame));
+    const [ga, gb] = shift(l, 0.12, 0.12);
+    g.add(beam(ga, gb, 0.14, 0.12, details.metal, unitPipe));
+  }
+  for (const l of edges.verges) {
+    const [a, b] = shift(l, 0.03, 0.06);
+    g.add(beam(a, b, 0.04, 0.2, palette.frame));
+  }
+  for (const l of edges.ridges) g.add(beam(v3(l.a).setY(l.a.y + 0.04), v3(l.b).setY(l.b.y + 0.04), 0.2, 0.09, capMaterial));
+  for (const d of edges.downpipes) {
+    const top = new THREE.Vector3(d.at.x, d.from.y - 0.45, d.at.y);
+    // From the gutter's end back to the wall, then straight down to the ground.
+    g.add(beam(new THREE.Vector3(d.from.x, d.from.y - 0.12, d.from.z), top, 0.09, 0.09, details.metal, unitPipe));
+    g.add(beam(top, new THREE.Vector3(d.at.x, groundAt(d.at.x, d.at.y) + 0.05, d.at.y), 0.09, 0.09, details.metal, unitPipe));
+  }
+  g.traverse((o) => (o.userData.pick = { kind: "roof" } satisfies Pick));
+  return g;
+}
+
+/** Concrete steps, or a ramp with handrails, from the ground up to a raised door. */
+const RAMP_LANDING = 1.5;
+function approach(a: DoorApproach, ground: (x: number, y: number) => number): THREE.Group {
+  const g = new THREE.Group();
+  const floor = a.ground + a.rise;
+  const P = (along: number, out: number, y: number) => new THREE.Vector3(a.at.x + a.along.x * along + a.out.x * out, y, a.at.y + a.along.y * along + a.out.y * out);
+  const rotY = Math.atan2(-a.along.y, a.along.x);
+  const block = (out0: number, out1: number, topY: number) => {
+    const mid = P(0, (out0 + out1) / 2, 0);
+    const bottom = Math.min(ground(mid.x, mid.z), topY) - 0.3;
+    const mesh = solid(unitBox, details.steps);
+    mesh.position.set(mid.x, (topY + bottom) / 2, mid.z);
+    mesh.scale.set(a.width, topY - bottom, out1 - out0);
+    mesh.rotation.y = rotY;
+    g.add(mesh);
+  };
+  if (!a.ramp) {
+    // A landing at the door, then a tread for each step down.
+    block(0, 0.4, floor);
+    for (let k = 1; k < a.steps; k++) block(0.4 + (k - 1) * 0.3, 0.4 + k * 0.3, floor - (a.rise * k) / a.steps);
+    return g;
+  }
+  // A landing at the door, then a ramp at 1 in 12 running along the facade, with rails.
+  block(0, RAMP_LANDING, floor);
+  const mid = RAMP_LANDING / 2;
+  const start = a.side * (a.width / 2);
+  const end = start + a.side * a.length;
+  const along = (u: number, out: number, y: number) => P(u, out, y);
+  // The ramp's own floor, from the landing down to the ground.
+  const [top, foot] = [along(start, mid, floor - 0.06), along(end, mid, a.ground - 0.06)];
+  g.add(beam(top, foot, RAMP_LANDING, 0.12, details.steps));
+  const rail = (out: number) => {
+    const [ra, rb] = [along(start, out, floor + 0.9), along(end, out, a.ground + 0.9)];
+    g.add(beam(ra, rb, 0.05, 0.05, palette.frame));
+    for (const t of [0, 0.5, 1]) {
+      const u = start + (end - start) * t;
+      const y = floor + (a.ground - floor) * t;
+      g.add(beam(along(u, out, y), along(u, out, y + 0.9), 0.05, 0.05, palette.frame));
+    }
+  };
+  rail(RAMP_LANDING - 0.05);
+  return g;
 }

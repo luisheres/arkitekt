@@ -90,6 +90,8 @@ export type DormerId = number;
 export interface Dormer {
   id: DormerId;
   wall: WallId;
+  /** A roof window lying flat in the slope, instead of a dormer standing out of it. */
+  skylight?: boolean;
   /** Distance along the wall from its start to the dormer's middle. */
   offset: number;
   width: number;
@@ -160,7 +162,22 @@ export class Wall {
 }
 
 /** A window or door cut into a wall. */
+/** How a window looks: plain, small panes with shutters, or a slim dark modern frame. */
+export const WINDOW_STYLES = ["Standard", "Cottage", "Modern"] as const;
+export type WindowStyle = (typeof WINDOW_STYLES)[number];
+
+/** Colours for window and door frames. */
+export const FRAME_COLORS = ["White", "Black", "Green", "Blue", "Red"] as const;
+export type FrameColor = (typeof FRAME_COLORS)[number];
+
 export class Opening {
+  /** A window's style (windows only). */
+  style?: WindowStyle;
+  /** The frame's colour; white when unset. */
+  color?: FrameColor;
+  /** A raised outside door reached by a ramp instead of steps. */
+  ramp?: boolean;
+
   constructor(
     readonly id: OpeningId,
     public wall: WallId,
@@ -222,7 +239,7 @@ export interface HouseJson {
     boundary?: boolean;
     level?: number;
   }[];
-  openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number }[];
+  openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number; style?: WindowStyle; color?: FrameColor; ramp?: boolean }[];
   roof: Roof | null;
   labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish; paint?: PaintColor }[];
   levels?: number;
@@ -230,7 +247,7 @@ export interface HouseJson {
   platformOffset?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
-  dormers?: { id: number; wall: number; offset: number; width: number }[];
+  dormers?: { id: number; wall: number; offset: number; width: number; skylight?: boolean }[];
   /** Missing in saves from before furniture could be edited. */
   furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
@@ -515,7 +532,7 @@ export class House {
         ...(w.boundary ? { boundary: true } : {}),
         level: w.level,
       })),
-      openings: this.openings.map((o) => ({ ...o })),
+      openings: this.openings.map((o) => ({ id: o.id, wall: o.wall, kind: o.kind, offset: o.offset, width: o.width, height: o.height, sill: o.sill, ...(o.style ? { style: o.style } : {}), ...(o.color ? { color: o.color } : {}), ...(o.ramp ? { ramp: true } : {}) })),
       roof: this.roof ? { ...this.roof } : null,
       labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) })),
       levels: this.levels,
@@ -532,7 +549,13 @@ export class House {
   static fromJSON(j: HouseJson): House {
     const h = new House();
     h.walls = j.walls.map((w) => new Wall(w.id, Vec2.from(w.start), Vec2.from(w.end), w.height, w.thickness, w.material, w.boundary ?? false, w.level ?? 0));
-    h.openings = j.openings.map((o) => new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill));
+    h.openings = j.openings.map((o) => {
+      const op = new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill);
+      if (o.style) op.style = o.style;
+      if (o.color) op.color = o.color;
+      if (o.ramp) op.ramp = true;
+      return op;
+    });
     h.roof = j.roof ? { ...j.roof } : null;
     h.labels = (j.labels ?? []).map((l) => ({ id: l.id, type: l.type, at: Vec2.from(l.at), level: l.level ?? 0, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) }));
     h.levels = j.levels ?? 1;

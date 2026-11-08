@@ -33,7 +33,29 @@ export interface RoofGeometry {
   gables: TriMesh;
   /** Highest point of the roof above the ground. */
   peakHeight: number;
+  /** The lines along a pitched roof's edges and tops, for gutters, fascia and caps. */
+  edges: RoofEdges;
 }
+
+/** A straight roof edge; `out` points away from the roof, level, in plan. */
+export interface RoofLine {
+  a: Vec3;
+  b: Vec3;
+  out: Vec2;
+}
+
+export interface RoofEdges {
+  /** The low edges, where the rain runs off: gutters hang here. */
+  eaves: RoofLine[];
+  /** The ridge along the top, and the hips running down from it. */
+  ridges: RoofLine[];
+  /** The sloping edges over a gable: barge boards. */
+  verges: RoofLine[];
+  /** Down pipes: where they meet the ground in plan, just outside a corner, and the gutter end they come from. */
+  downpipes: { at: Vec2; from: Vec3 }[];
+}
+
+const noEdges = (): RoofEdges => ({ eaves: [], ridges: [], verges: [], downpipes: [] });
 
 /** Area of roof covering to pay for. Excludes the slab's underside. */
 export function coveringArea(g: RoofGeometry): number {
@@ -100,8 +122,10 @@ export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
   if (!blocks) return err({ kind: "NeedsRectangle", style: roof.style });
   const surface = new TriMesh();
   const gables = new TriMesh();
+  const edges = noEdges();
   let peak = 0;
   const built = blocks.map((b) => pitchedRoof(b.rect, eave, halfThickness, roof, b.ends, b.alongU));
+  const grown = offsetPolygon(fp.value, halfThickness + 0.02);
   built.forEach((g, k) => {
     // Only what is not under another block's roof: where wings meet, a clean valley.
     const others = built.filter((_, j) => j !== k).flatMap((o) => triangles(o.surface));
@@ -109,8 +133,17 @@ export function buildRoof(house: House): Result<RoofGeometry, RoofError> {
     gables.positions.push(...g.gables.positions);
     gables.normals.push(...g.gables.normals);
     peak = Math.max(peak, g.peakHeight);
+    // Edges too: only the parts not under another block's roof.
+    const otherMesh = new TriMesh();
+    for (const o of built) if (o !== g) otherMesh.positions.push(...o.surface.positions);
+    const clip = (lines: RoofLine[]) => lines.flatMap((l) => visibleParts(l, otherMesh));
+    edges.eaves.push(...clip(g.edges.eaves));
+    edges.ridges.push(...clip(g.edges.ridges));
+    edges.verges.push(...clip(g.edges.verges));
+    // A down pipe inside another wing (an inner corner) is dropped.
+    edges.downpipes.push(...g.edges.downpipes.filter((d) => !pointInPolygon(d.at, grown)));
   });
-  return ok({ surface, gables, peakHeight: peak });
+  return ok({ surface, gables, peakHeight: peak, edges });
 }
 
 /** A roof block: a rectangle, which way its ridge runs, and how its two ends finish. */
@@ -233,7 +266,7 @@ function flatRoof(outline: readonly Vec2[], eave: number): RoofGeometry {
     const out = new Vec3(d.y, 0, -d.x);
     gables.pushQuadFacing(a.atHeight(eave), b.atHeight(eave), b.atHeight(top), a.atHeight(top), out);
   }
-  return { surface, gables, peakHeight: top };
+  return { surface, gables, peakHeight: top, edges: noEdges() };
 }
 
 /**
@@ -287,7 +320,38 @@ function pitchedRoof(rect: PlanRect, wallTop: number, halfThickness: number, roo
     gables.pushTriFacing(p(at, 0, eave), p(at, span, eave), p(at, half, ridgeH), out);
   }
 
-  return { surface, gables, peakHeight: ridgeH };
+  // Its edges: eaves along both sides (and round a hip end), the ridge and hips, the
+  // verges over gables, and a down pipe at each closed corner.
+  const edges = noEdges();
+  const flatDir = (a: Vec3, b: Vec3) => new Vec2(b.x - a.x, b.z - a.z).normalize();
+  const line = (a: Vec3, b: Vec3, outTo: Vec3, from: Vec3): RoofLine => ({ a, b, out: flatDir(from, outTo) });
+  const mid = p((a0 + a1) / 2, half, eaveOut);
+  for (const edge of [-o, span + o]) {
+    const [a, b] = [p(a0, edge, eaveOut), p(a1, edge, eaveOut)];
+    edges.eaves.push(line(a, b, p((a0 + a1) / 2, edge, eaveOut), mid));
+  }
+  if (e0.kind === "hip") edges.eaves.push(line(p(-o, -o, eaveOut), p(-o, span + o, eaveOut), p(-o, half, eaveOut), mid));
+  if (e1.kind === "hip") edges.eaves.push(line(p(long + o, -o, eaveOut), p(long + o, span + o, eaveOut), p(long + o, half, eaveOut), mid));
+  const up = (a: Vec3, b: Vec3): RoofLine => ({ a, b, out: new Vec2(0, 0) });
+  if (r1 - r0 > 1e-6) edges.ridges.push(up(p(r0, half, ridgeH), p(r1, half, ridgeH)));
+  if (e0.kind === "hip") for (const c of [-o, span + o]) edges.ridges.push(up(p(-o, c, eaveOut), p(r0, half, ridgeH)));
+  if (e1.kind === "hip") for (const c of [-o, span + o]) edges.ridges.push(up(p(long + o, c, eaveOut), p(r1, half, ridgeH)));
+  for (const [at, e] of [[a0, e0], [a1, e1]] as const) {
+    if (e.kind !== "gable") continue;
+    const outTo = p(at === a0 ? at - 1 : at + 1, half, eaveOut);
+    for (const c of [-o, span + o]) edges.verges.push(line(p(at, c, eaveOut), p(at, half, ridgeH), outTo, p(at, half, eaveOut)));
+  }
+  // Down pipes, just round the corner from where each gutter ends, on the long sides.
+  const pipe = halfThickness + 0.08;
+  for (const [end, e, inward] of [[0, e0, 1], [long, e1, -1]] as const) {
+    if (e.kind === "open") continue;
+    for (const [c, sign] of [[0, -1], [span, 1]] as const) {
+      const at = p(end + inward * (0.15 + halfThickness), c + sign * pipe, 0);
+      const gutterEnd = p(end - inward * o, c + sign * (o + 0.1), eaveOut);
+      edges.downpipes.push({ at: new Vec2(at.x, at.z), from: gutterEnd });
+    }
+  }
+  return { surface, gables, peakHeight: ridgeH, edges };
 }
 
 /** The floor slab: the footprint triangulated just above the ground. */
@@ -307,9 +371,35 @@ export function buildFloor(house: House): Result<TriMesh, FootprintError> {
   return ok(mesh);
 }
 
+/** The parts of a line that are not under (or inside) another roof surface. */
+function visibleParts(l: RoofLine, other: TriMesh): RoofLine[] {
+  const len = Math.hypot(l.b.x - l.a.x, l.b.z - l.a.z, l.b.y - l.a.y);
+  const n = Math.max(1, Math.ceil(len / 0.25));
+  const at = (t: number) => new Vec3(l.a.x + (l.b.x - l.a.x) * t, l.a.y + (l.b.y - l.a.y) * t, l.a.z + (l.b.z - l.a.z) * t);
+  const out: RoofLine[] = [];
+  let start: number | null = null;
+  for (let i = 0; i <= n; i++) {
+    let shown = false;
+    if (i < n) {
+      const m = at((i + 0.5) / n);
+      const h = surfaceHeightAt(other.positions, new Vec2(m.x, m.z));
+      shown = h === null || h < m.y - 0.03;
+    }
+    if (shown && start === null) start = i;
+    if (!shown && start !== null) {
+      out.push({ a: at(start / n), b: at(i / n), out: l.out });
+      start = null;
+    }
+  }
+  return out;
+}
+
 /** The roof's height above a plan point (the highest roof surface over it), or null where there is none. */
 export function roofHeightAt(g: RoofGeometry, p: Vec2): number | null {
-  const pos = g.surface.positions;
+  return surfaceHeightAt(g.surface.positions, p);
+}
+
+function surfaceHeightAt(pos: readonly number[], p: Vec2): number | null {
   let best: number | null = null;
   for (let i = 0; i < pos.length; i += 9) {
     const [ax, ay, az, bx, by, bz, cx, cy, cz] = pos.slice(i, i + 9);

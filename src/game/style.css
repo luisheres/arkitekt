@@ -2687,6 +2687,24 @@ button.locked::after,
   stroke: var(--error);
 }
 
+.plan .dormer.skylight {
+  fill: rgba(168, 220, 255, 0.45);
+  stroke: #3a5a7a;
+}
+
+.plan .approach {
+  fill: #d9d6cf;
+  stroke: #8c8982;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.plan .approach-step {
+  stroke: #8c8982;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 .plan .passage {
   stroke: #6f6b63;
   stroke-width: 1.5;

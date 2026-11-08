@@ -65,6 +65,9 @@ import {
   snapPoint,
   validate,
   wallThickness,
+  doorApproaches,
+  FLOOR_SLAB_HEIGHT,
+  siteLevel,
 } from "../core";
 import { m } from "./i18n";
 import { backdropFor } from "./backdrop";
@@ -855,11 +858,26 @@ export class PlanView {
       out.push(`<polygon class="${cls}" points="${this.pts(outline)}"/>`);
     }
 
+    // Steps and ramps up to raised outside doors: a line for each step's nosing.
+    if (this.level === 0) {
+      const { plot } = this.store;
+      for (const a of doorApproaches(house, siteLevel(house, plot) + FLOOR_SLAB_HEIGHT, shapedGround(house, plot))) {
+        const half = a.along.scale(a.width / 2);
+        const at = (d: number) => a.at.add(a.out.scale(d));
+        const rect = a.ramp
+          ? // The landing, and the ramp running along the wall from it.
+            [at(0).sub(half.scale(a.side)), at(0).add(half.scale(a.side)).add(a.along.scale(a.side * a.length)), at(1.5).add(half.scale(a.side)).add(a.along.scale(a.side * a.length)), at(1.5).sub(half.scale(a.side))]
+          : [at(0).sub(half), at(0).add(half), at(a.length).add(half), at(a.length).sub(half)];
+        out.push(`<polygon class="approach${a.ramp ? " ramp" : ""}" points="${this.pts(rect)}"/>`);
+        if (!a.ramp) for (let k = 1; k < a.steps; k++) out.push(`<polyline class="approach-step" points="${this.pts([at(0.4 + (k - 1) * 0.3).sub(half), at(0.4 + (k - 1) * 0.3).add(half)])}"/>`);
+      }
+    }
+
     // Dormers, in the roof over their wall (top storey only).
     for (const d of house.dormers) {
       const wall = house.wall(d.wall);
       if (wall?.level !== this.level) continue;
-      const cls = ["dormer", badDormers.has(d.id) && "bad", hoverId("dormer") === d.id && "hover", selId("dormer") === d.id && "selected"].filter(Boolean).join(" ");
+      const cls = ["dormer", d.skylight && "skylight", badDormers.has(d.id) && "bad", hoverId("dormer") === d.id && "hover", selId("dormer") === d.id && "selected"].filter(Boolean).join(" ");
       out.push(`<polygon class="${cls}" points="${this.pts(dormerOutline(house, d))}"/>`);
     }
 
