@@ -39,11 +39,11 @@ describe("balconies", () => {
     expect(kinds()).not.toContain("BalconyNeedsDoor");
   });
 
-  it("belong upstairs, and go when their wall goes", () => {
+  it("on the ground floor are terraces, and go when their wall goes", () => {
     const { h } = twoStoreys();
     const ground = h.wallsOn(0)[0];
     placeBalcony(h, ground.id);
-    expect(validate(h, plot, Infinity, defaultPrices()).map((i) => i.kind)).toContain("BalconyOnGroundFloor");
+    expect(validate(h, plot, Infinity, defaultPrices()).map((i) => i.kind)).not.toContain("BalconyOnGroundFloor");
     h.removeWall(ground.id);
     expect(h.balconies).toHaveLength(0);
   });

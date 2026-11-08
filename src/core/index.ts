@@ -30,3 +30,4 @@ export * from "./progression";
 export * from "./difficulty";
 export * from "./site";
 export * from "./access";
+export * from "./features";

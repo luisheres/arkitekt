@@ -45,7 +45,8 @@ export type RoofStyle = (typeof ROOF_STYLES)[number];
 export const ROOF_MATERIALS = ["Shingles", "Metal", "Tiles"] as const;
 export type RoofMaterial = (typeof ROOF_MATERIALS)[number];
 
-export const OPENING_KINDS = ["Window", "Door", "GarageDoor"] as const;
+/** Windows; doors (a glass door also lets daylight in); garage doors; and passages: an opening in an inside wall with no door. */
+export const OPENING_KINDS = ["Window", "Door", "GlassDoor", "GarageDoor", "Passage"] as const;
 export type OpeningKind = (typeof OPENING_KINDS)[number];
 
 /** What rooms are for. "Void" is not a room: it is an opening in the floor, making the room below double height. */
@@ -82,6 +83,19 @@ export interface Balcony {
 }
 
 export const BALCONY_LIMITS = { width: [1.2, 8] as const, depth: [0.8, 2.5] as const };
+
+export type DormerId = number;
+
+/** A dormer: a window with its own little roof, standing in the roof slope over an outer wall of the top storey. */
+export interface Dormer {
+  id: DormerId;
+  wall: WallId;
+  /** Distance along the wall from its start to the dormer's middle. */
+  offset: number;
+  width: number;
+}
+
+export const DORMER_WIDTH = [1, 3.5] as const;
 
 /**
  * A straight flight of stairs from `level` up to the level above. `at` is the center of
@@ -216,6 +230,7 @@ export interface HouseJson {
   platformOffset?: number;
   stairs?: { id: number; level: number; at: { x: number; y: number }; facing: number }[];
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
+  dormers?: { id: number; wall: number; offset: number; width: number }[];
   /** Missing in saves from before furniture could be edited. */
   furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
@@ -228,6 +243,7 @@ export class House {
   labels: RoomLabel[] = [];
   stairs: Stair[] = [];
   balconies: Balcony[] = [];
+  dormers: Dormer[] = [];
   /** Furniture placed in the house (every piece has an id). */
   furniture: Furniture[] = [];
   /** Number of storeys above ground (0 is the ground floor), including empty ones being started. */
@@ -293,6 +309,20 @@ export class House {
 
   removeBalcony(id: BalconyId): void {
     this.balconies = this.balconies.filter((b) => b.id !== id);
+  }
+
+  addDormer(wall: WallId, offset: number, width: number): DormerId {
+    const id = this.freshId();
+    this.dormers.push({ id, wall, offset, width });
+    return id;
+  }
+
+  dormer(id: DormerId): Dormer | undefined {
+    return this.dormers.find((d) => d.id === id);
+  }
+
+  removeDormer(id: DormerId): void {
+    this.dormers = this.dormers.filter((d) => d.id !== id);
   }
 
   addFurniture(f: Furniture): number {
@@ -363,6 +393,7 @@ export class House {
     this.walls = this.walls.filter((w) => w.id !== id);
     this.openings = this.openings.filter((o) => o.wall !== id);
     this.balconies = this.balconies.filter((b) => b.wall !== id);
+    this.dormers = this.dormers.filter((d) => d.wall !== id);
   }
 
   addWindow(wall: WallId, offset: number, width: number, height: number, sill: number): OpeningId {
@@ -371,6 +402,14 @@ export class House {
 
   addDoor(wall: WallId, offset: number, width: number, height: number): OpeningId {
     return this.addOpening(wall, "Door", offset, width, height, 0);
+  }
+
+  addGlassDoor(wall: WallId, offset: number, width: number, height: number): OpeningId {
+    return this.addOpening(wall, "GlassDoor", offset, width, height, 0);
+  }
+
+  addPassage(wall: WallId, offset: number, width: number, height: number): OpeningId {
+    return this.addOpening(wall, "Passage", offset, width, height, 0);
   }
 
   addGarageDoor(wall: WallId, offset: number, width: number, height: number): OpeningId {
@@ -484,6 +523,7 @@ export class House {
       ...(this.platformOffset ? { platformOffset: this.platformOffset } : {}),
       stairs: this.stairs.map((s) => ({ id: s.id, level: s.level, at: s.at.toJSON(), facing: s.facing })),
       ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
+      ...(this.dormers.length ? { dormers: this.dormers.map((d) => ({ ...d })) } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
       nextId: this.nextId,
     };
@@ -500,6 +540,7 @@ export class House {
     h.platformOffset = j.platformOffset ?? 0;
     h.stairs = (j.stairs ?? []).map((s) => ({ id: s.id, level: s.level, at: Vec2.from(s.at), facing: s.facing }));
     h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
+    h.dormers = (j.dormers ?? []).map((d) => ({ ...d }));
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));
     h.nextId = j.nextId;
     return h;

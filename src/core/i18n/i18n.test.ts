@@ -99,7 +99,7 @@ describe("languages", () => {
     expect(sv.requirement(REQUIREMENTS[10])).toBe("Minst 4 m² fönster i vardagsrummet");
     const issue = (kind: Issue["kind"]) => sv.issue(ISSUES.find((i) => i.kind === kind)!);
     expect(issue("RoomTooSmall")).toBe("Sovrum (6,3 m²) är mindre än 7 m²");
-    expect(issue("RoofNeedsRectangle")).toBe("Ett sadeltak kräver ett rektangulärt hus; välj platt tak för andra former");
+    expect(issue("RoofNeedsRectangle")).toBe("Ett sadeltak kräver ett hus med räta hörn; välj platt tak där väggarna möts i andra vinklar");
   });
 
   it("the client's verdict comes in the player's language", () => {

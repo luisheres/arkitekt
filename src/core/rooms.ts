@@ -83,7 +83,7 @@ export interface Room {
   daylit: boolean;
 }
 
-export type MisplacedReason = "InteriorWindow" | "AcrossJunction" | "InBoundary";
+export type MisplacedReason = "InteriorWindow" | "AcrossJunction" | "InBoundary" | "OuterPassage";
 
 export interface RoomAnalysis {
   layout: Layout;
@@ -164,9 +164,13 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
     if (o.kind === "Window") {
       if (l !== OUTSIDE && r !== OUTSIDE) misplaced.push({ opening: o, reason: "InteriorWindow" });
       else rooms[l === OUTSIDE ? r : l]?.windows.push(o);
+    } else if (o.kind === "Passage" && (l === OUTSIDE || r === OUTSIDE)) {
+      misplaced.push({ opening: o, reason: "OuterPassage" });
     } else {
       if (l !== OUTSIDE) rooms[l].doors.push({ opening: o, to: r });
       if (r !== OUTSIDE) rooms[r].doors.push({ opening: o, to: l });
+      // A glass door in an outer wall lets daylight in, like a window.
+      if (o.kind === "GlassDoor" && (l === OUTSIDE || r === OUTSIDE)) rooms[l === OUTSIDE ? r : l]?.windows.push(o);
     }
   }
 
@@ -181,9 +185,23 @@ export function analyzeRooms(house: House, level = 0): Result<RoomAnalysis, Foot
     }
   }
 
+  // A dormer in a pitched roof lights the top-storey room it stands over.
+  if (level === house.topLevel() && house.roof && house.roof.style !== "Flat")
+    for (const d of house.dormers) {
+      const wall = house.wall(d.wall);
+      if (!wall || wall.level !== level) continue;
+      const along = wall.direction();
+      const left = new Vec2(-along.y, along.x);
+      const at = wall.start.add(along.scale(d.offset));
+      for (const p of [at.add(left.scale(0.5)), at.sub(left.scale(0.5))]) {
+        const room = roomAt(rooms, p);
+        if (room && room.type !== "Void") room.daylit = true;
+      }
+    }
+
   // Daylight spreads through an open-plan space.
   for (const start of rooms) {
-    if (start.daylit || start.windows.length === 0) continue;
+    if (start.windows.length === 0 && !start.daylit) continue;
     const queue = [start];
     start.daylit = true;
     while (queue.length) {

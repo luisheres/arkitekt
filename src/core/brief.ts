@@ -38,6 +38,10 @@ export type Requirement =
   | { kind: "underBudget"; share: number }
   /** At least one balcony. */
   | { kind: "balcony" }
+  /** A terrace on the ground, against the house. */
+  | { kind: "terrace" }
+  /** A fireplace (with its chimney). */
+  | { kind: "fireplace" }
   /** At least this many trees, shrubs, flower beds or hedges in the garden. */
   | { kind: "gardenPlants"; min: number }
   /** At least this many plants in pots indoors. */
@@ -93,7 +97,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
   const sameLevel = (r: Room, index: number) => rooms.find((x) => x.level === r.level && x.index === index);
   const storeys = Array.from({ length: house.levels }, (_, k) => k).filter((k) => house.wallsOn(k).length > 0).length;
   const cost = totalCost(estimate(house, prices, client.plot));
-  const doors = house.openings.filter((o) => o.kind === "Door");
+  const doors = house.openings.filter((o) => o.kind === "Door" || o.kind === "GlassDoor" || o.kind === "Passage");
 
   const check = (r: Requirement): [boolean, string] => {
     switch (r.kind) {
@@ -147,8 +151,18 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
       }
       case "underBudget":
         return [house.floorArea() > 0 && cost <= r.share * client.budget, percent(m, cost / client.budget)];
-      case "balcony":
-        return [house.balconies.length > 0, String(house.balconies.length)];
+      case "balcony": {
+        const n = house.balconies.filter((b) => (house.wall(b.wall)?.level ?? 0) > 0).length;
+        return [n > 0, String(n)];
+      }
+      case "terrace": {
+        const n = house.balconies.filter((b) => house.wall(b.wall)?.level === 0).length;
+        return [n > 0, String(n)];
+      }
+      case "fireplace": {
+        const n = house.furniture.filter((f) => f.kind === "Fireplace").length;
+        return [n > 0, String(n)];
+      }
       case "gardenPlants": {
         const n = house.furniture.filter((f) => GARDEN_PLANTS.includes(f.kind)).length;
         return [n >= r.min, m.brief.countOf(Math.min(n, r.min), r.min)];

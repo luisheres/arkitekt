@@ -58,6 +58,7 @@ import {
   type Landmark,
   INDOOR_PLANTS,
   balconyOutline,
+  dormerOutline,
   clampBalcony,
   shapedGround,
   moveHouse,
@@ -84,6 +85,7 @@ type Drag =
   | { kind: "stair"; id: number; grab: Vec2 }
   | { kind: "furniture"; id: number; grab: Vec2 }
   | { kind: "balcony"; id: number; grab: number }
+  | { kind: "dormer"; id: number; grab: number }
   | { kind: "house"; grab: Vec2; moved: Vec2 }
   | { kind: "room"; start: Vec2 };
 
@@ -95,6 +97,7 @@ type Hit =
   | { kind: "stair"; id: number }
   | { kind: "furniture"; id: number }
   | { kind: "balcony"; id: number }
+  | { kind: "dormer"; id: number }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -388,6 +391,10 @@ export class PlanView {
     }
     const hit = nearestWall(this.house, p, 1, this.level);
     if (hit && hit.distance <= this.thickness(hit.wall) / 2 + PICK_PX * px) return { kind: "wall", id: hit.wall.id };
+    for (const d of this.house.dormers) {
+      if (this.house.wall(d.wall)?.level !== this.level) continue;
+      if (pointInPolygon(p, dormerOutline(this.house, d))) return { kind: "dormer", id: d.id };
+    }
     for (const b of this.house.balconies) {
       if (this.house.wall(b.wall)?.level !== this.level) continue;
       const outline = balconyOutline(this.house, b);
@@ -506,6 +513,11 @@ export class PlanView {
         } else if (hit.kind === "furniture") {
           store.select(hit);
           this.drag = { kind: "furniture", id: hit.id, grab: p.sub(this.house.furniturePiece(hit.id)!.at) };
+        } else if (hit.kind === "dormer") {
+          store.select(hit);
+          const dm = this.house.dormer(hit.id)!;
+          const wall = this.house.wall(dm.wall)!;
+          this.drag = { kind: "dormer", id: dm.id, grab: p.sub(wall.start).dot(wall.direction()) - dm.offset };
         } else if (hit.kind === "balcony") {
           store.select(hit);
           const b = this.house.balcony(hit.id)!;
@@ -595,6 +607,13 @@ export class PlanView {
       if (Math.abs(delta.x) > 1e-9 || Math.abs(delta.y) > 1e-9) {
         store.gestureEdit((h) => moveHouse(h, delta));
         drag.moved = want;
+      }
+    } else if (drag.kind === "dormer") {
+      const dm = this.house.dormer(drag.id);
+      const wall = dm && this.house.wall(dm.wall);
+      if (dm && wall) {
+        const offset = roundTo(clampBalcony(wall, { offset: p.sub(wall.start).dot(wall.direction()) - drag.grab, width: dm.width }), 0.1);
+        if (Math.abs(offset - dm.offset) > 1e-9) store.gestureEdit((h) => (h.dormer(drag.id)!.offset = offset));
       }
     } else if (drag.kind === "balcony") {
       // Slide the balcony along its wall.
@@ -788,9 +807,11 @@ export class PlanView {
     const badOpenings = new Set<number>();
     const badRooms = new Set<Room>();
     const badBalconies = new Set<number>();
+    const badDormers = new Set<number>();
     for (const i of this.issues) {
       if ("wall" in i) badWalls.add(i.wall);
       if ("balcony" in i) badBalconies.add(i.balcony);
+      if ("dormer" in i) badDormers.add(i.dormer);
       if ("opening" in i) badOpenings.add(i.opening);
       if (i.kind === "OpeningsOverlap") [i.a, i.b].forEach((id) => badOpenings.add(id));
       if ("room" in i && i.room.level === this.level) {
@@ -826,8 +847,16 @@ export class PlanView {
       if (house.wall(b.wall)?.level !== this.level) continue;
       const outline = balconyOutline(house, b);
       if (!outline) continue;
-      const cls = ["balcony", badBalconies.has(b.id) && "bad", hoverId("balcony") === b.id && "hover", selId("balcony") === b.id && "selected"].filter(Boolean).join(" ");
+      const cls = ["balcony", house.wall(b.wall)?.level === 0 && "terrace", badBalconies.has(b.id) && "bad", hoverId("balcony") === b.id && "hover", selId("balcony") === b.id && "selected"].filter(Boolean).join(" ");
       out.push(`<polygon class="${cls}" points="${this.pts(outline)}"/>`);
+    }
+
+    // Dormers, in the roof over their wall (top storey only).
+    for (const d of house.dormers) {
+      const wall = house.wall(d.wall);
+      if (wall?.level !== this.level) continue;
+      const cls = ["dormer", badDormers.has(d.id) && "bad", hoverId("dormer") === d.id && "hover", selId("dormer") === d.id && "selected"].filter(Boolean).join(" ");
+      out.push(`<polygon class="${cls}" points="${this.pts(dormerOutline(house, d))}"/>`);
     }
 
     // Walls, then openings cut into them.
@@ -1063,6 +1092,10 @@ export class PlanView {
       case "Shelf":
         parts.push(line(0, 0.5, 1, 0.5));
         break;
+      case "Fireplace":
+        // The hearth in front, the firebox in the wall.
+        parts.push(rect(0.25, 0.75, 0.15, 0.7), line(0.25, 1, 0.75, 1));
+        break;
       case "Plant":
       case "TallPlant":
       case "GardenTree":
@@ -1166,6 +1199,14 @@ export class PlanView {
       parts.push(`<polyline class="glass" points="${this.pts([at(left, 0), at(right, 0)])}"/>`);
     } else if (kind === "GarageDoor") {
       parts.push(`<polyline class="garage-door" points="${this.pts([at(left, 0), at(right, 0)])}"/>`);
+    } else if (kind === "GlassDoor") {
+      // Two sliding glass panels, overlapping in the middle.
+      const mid = (left + right) / 2;
+      parts.push(`<polyline class="glass" points="${this.pts([at(left, -0.04), at(mid + 0.1, -0.04)])}"/>`);
+      parts.push(`<polyline class="glass" points="${this.pts([at(mid - 0.1, 0.04), at(right, 0.04)])}"/>`);
+    } else if (kind === "Passage") {
+      // Just the opening: dashed lines where the wall's faces carry on overhead.
+      parts.push(`<polyline class="passage" points="${this.pts([at(left, half), at(right, half)])}"/><polyline class="passage" points="${this.pts([at(left, -half), at(right, -half)])}"/>`);
     } else {
       // Door leaf hinged at the left jamb, swinging into the house.
       const inward = interiorNormal(house, wall);

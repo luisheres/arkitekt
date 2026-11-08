@@ -7,6 +7,7 @@ import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
 import { earthworks, exposedFoundationArea, retainingArea } from "./site";
 import { accessRoutes, routeLength } from "./access";
+import { chimneyLength } from "./features";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -21,6 +22,10 @@ export interface PriceList {
   doorM2: number;
   garageDoorBase: number;
   garageDoorM2: number;
+  glassDoorBase: number;
+  glassDoorM2: number;
+  /** A passage: a lintel and trim round the opening. */
+  passageBase: number;
   /** Per m² of roof covering. */
   roofM2: Record<RoofMaterial, number>;
   /** Per m² of floor finish. */
@@ -33,6 +38,13 @@ export interface PriceList {
   stairs: number;
   /** Per m² of balcony (floor and railing). */
   balconyM2: number;
+  /** Per m² of terrace on the ground. */
+  terraceM2: number;
+  fireplace: number;
+  chimneyM: number;
+  /** Per dormer, plus per metre of its width. */
+  dormerBase: number;
+  dormerM: number;
   /** Per m² of painted wall (any colour but white). */
   paintM2: number;
   /** Per m³ of earth dug away or filled in to level the ground. */
@@ -63,12 +75,20 @@ export function defaultPrices(): PriceList {
     doorM2: 300,
     garageDoorBase: 1500,
     garageDoorM2: 250,
+    glassDoorBase: 900,
+    glassDoorM2: 520,
+    passageBase: 250,
     roofM2: { Shingles: 60, Metal: 90, Tiles: 110 },
     floorM2: { Wood: 70, Laminate: 35, Tiles: 80, Stone: 140, Carpet: 30, Concrete: 15 },
     foundationM2: 180,
     upperFloorM2: 140,
     stairs: 3500,
     balconyM2: 900,
+    terraceM2: 180,
+    fireplace: 3_800,
+    chimneyM: 450,
+    dormerBase: 2_400,
+    dormerM: 900,
     paintM2: 8,
     earthM3: 55,
     basementDigM3: 45,
@@ -119,6 +139,10 @@ export type CostWhat =
   | { kind: "finish"; finish: FloorFinish }
   | { kind: "stairs" }
   | { kind: "balcony" }
+  | { kind: "deck" }
+  | { kind: "fireplace" }
+  | { kind: "chimney" }
+  | { kind: "dormer" }
   | { kind: "earthworks" }
   | { kind: "basementDig" }
   | { kind: "basementWalls" }
@@ -136,7 +160,7 @@ export interface CostLine {
   what: CostWhat;
   /** m² for surfaces; a count for windows, doors and stairs. */
   quantity: number;
-  unit: "m2" | "m3" | "pieces";
+  unit: "m2" | "m3" | "m" | "pieces";
   amount: number;
 }
 
@@ -175,7 +199,15 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
 
   for (const o of house.openings) {
     const [base, perM2] =
-      o.kind === "Window" ? [prices.windowBase, prices.windowM2] : o.kind === "Door" ? [prices.doorBase, prices.doorM2] : [prices.garageDoorBase, prices.garageDoorM2];
+      o.kind === "Window"
+        ? [prices.windowBase, prices.windowM2]
+        : o.kind === "Door"
+          ? [prices.doorBase, prices.doorM2]
+          : o.kind === "GlassDoor"
+            ? [prices.glassDoorBase, prices.glassDoorM2]
+            : o.kind === "Passage"
+              ? [prices.passageBase, 0]
+              : [prices.garageDoorBase, prices.garageDoorM2];
     add("openings", { kind: "opening", opening: o.kind }, 1, "pieces", base + o.area() * perM2);
   }
 
@@ -228,7 +260,20 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   if (house.stairs.length) add("stairs", { kind: "stairs" }, house.stairs.length, "pieces", house.stairs.length * prices.stairs);
 
   // Balconies, plants, and paint on the walls of coloured rooms.
-  for (const b of house.balconies) add("extras", { kind: "balcony" }, b.width * b.depth, "m2", b.width * b.depth * prices.balconyM2);
+  for (const b of house.balconies) {
+    const m2 = b.width * b.depth;
+    // On the ground floor a balcony is a terrace: a deck on the ground, much cheaper.
+    if (house.wall(b.wall)?.level === 0) add("extras", { kind: "deck" }, m2, "m2", m2 * prices.terraceM2);
+    else add("extras", { kind: "balcony" }, m2, "m2", m2 * prices.balconyM2);
+  }
+  // Fireplaces and their chimneys, and dormers.
+  const fireplaces = house.furniture.filter((f) => f.kind === "Fireplace").length;
+  if (fireplaces) {
+    add("extras", { kind: "fireplace" }, fireplaces, "pieces", fireplaces * prices.fireplace);
+    const length = chimneyLength(house);
+    add("extras", { kind: "chimney" }, length, "m", length * prices.chimneyM);
+  }
+  for (const d of house.dormers) add("roof", { kind: "dormer" }, 1, "pieces", prices.dormerBase + d.width * prices.dormerM);
   for (const f of house.furniture) {
     const price = prices.plants[f.kind];
     if (price) add("extras", { kind: "plant", plant: f.kind }, 1, "pieces", price);
@@ -257,6 +302,10 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     finish: "finishes",
     stairs: "stairs",
     balcony: "extras",
+    deck: "extras",
+    fireplace: "extras",
+    chimney: "extras",
+    dormer: "roof",
     plant: "extras",
     paint: "extras",
     earthworks: "groundworks",
@@ -269,7 +318,7 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     lightWells: "groundworks",
   };
   for (const l of costLines(house, prices, plot)) {
-    c[l.what.kind === "opening" && l.what.opening === "Window" ? "windows" : field[l.what.kind]] += l.amount;
+    c[l.what.kind === "opening" && (l.what.opening === "Window" || l.what.opening === "GlassDoor") ? "windows" : field[l.what.kind]] += l.amount;
   }
   return c;
 }

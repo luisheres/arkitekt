@@ -123,7 +123,7 @@ export function accessRoutes(house: House, plot: Plot): { routes: Route[]; unrea
   // A path to the front door: the door that is quickest to reach from the road.
   const length = (r: Route) => r.points.reduce((s, p, i) => (i ? s + p.distance(r.points[i - 1]) : 0), 0);
   const paths = outside
-    .filter((o) => o.kind === "Door")
+    .filter((o) => o.kind === "Door" || o.kind === "GlassDoor")
     .map((o) => routeTo(o.id, "path"))
     .filter((r): r is Route => r !== null)
     .sort((a, b) => length(a) - length(b));

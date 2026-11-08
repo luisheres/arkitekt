@@ -28,6 +28,9 @@ const M = {
   cars: ["#a32c2c", "#2c4f8c", "#d8d8d8", "#2f2f33", "#3f6b4f"].map((c) => mat(c, 0.35, 0.5)),
   tyre: mat("#1b1b1d", 0.9),
   pot: mat("#c7643a"),
+  stone: mat("#b9b2a6"),
+  logs: mat("#7a4d2c"),
+  fire: toon({ color: srgb("#ffb03b"), emissive: srgb("#ff7a1a"), emissiveIntensity: 0.9 }),
   soil: mat("#5a3d2b"),
   bark: mat("#8a5a3a"),
   leaves: ["#4caf50", "#5cbf3f", "#3f9f4a"].map((c) => mat(c)),
@@ -206,6 +209,17 @@ export function buildFurniture(f: Furniture): THREE.Group {
       legs(g, M.dark, w, d, h - 0.06, 0.06);
       box(g, M.lightWood, x0, x1, h, h + 0.8, z0, z0 + 0.02);
       break;
+    case "Fireplace": {
+      // A stone surround with a dark firebox, logs and a glowing fire, and a mantel shelf.
+      box(g, M.stone, x0, x1, 0, h, z0, z0 + 0.45);
+      box(g, M.dark, x0 + 0.35, x1 - 0.35, 0.15, 0.75, z0 + 0.3, z0 + 0.46);
+      box(g, M.lightWood, x0 - 0.05, x1 + 0.05, h, h + 0.08, z0, z0 + 0.55);
+      box(g, M.stone, x0 - 0.1, x1 + 0.1, 0, 0.12, z0 + 0.45, z1);
+      cyl(g, M.logs, -0.15, 0.25, z0 + 0.4, 0.07, 0.5, true);
+      cyl(g, M.logs, 0.12, 0.3, z0 + 0.38, 0.07, 0.45, true);
+      box(g, M.fire, -0.18, 0.18, 0.3, 0.55, z0 + 0.42, z0 + 0.44);
+      break;
+    }
     case "Plant":
     case "TallPlant": {
       const r = Math.min(w, d) / 2;

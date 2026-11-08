@@ -473,12 +473,18 @@ try {
   await click(14.2, 5);
   await page.click('.popover button:has-text("+ Balcony")');
   assert.equal(await page.evaluate(() => window.architect.store.house.balconies.length), 1);
-  assert.match(await status(), /A balcony has no door out to it/);
+  assert.match(await status(), /A balcony or terrace has no door out to it/);
   await page.keyboard.press("Escape");
   await page.keyboard.press("d");
   await click(11, 5); // behind the balcony, in the middle of the wall
   await page.keyboard.press("v");
   assert.doesNotMatch(await status(), /balcony/);
+  // A glass door and a terrace on the outside, an opening between rooms inside.
+  await page.click(".level-switch button[data-level='0']");
+  await click(14.2, 5);
+  for (const b of ["Add glass door", "+ Terrace"]) assert.equal(await page.locator(`.popover button:has-text("${b}")`).count(), 1, b);
+  await page.keyboard.press("Escape");
+  await page.click(".level-switch button[data-level='1']");
   await shot("extras");
   await page.click(".level-switch button[data-level='0']");
   await shot("two-storeys");

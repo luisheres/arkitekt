@@ -50,11 +50,11 @@ describe("validation", () => {
     expect(issues.some((i) => i.kind === "WallOutsidePlot")).toBe(true);
   });
 
-  it("reports a gable on an L-shape", () => {
+  it("accepts a gable on an L-shape", () => {
     const p = plot();
     const house = lShapedModern(p);
-    house.roof!.style = "Gable";
+    house.roof = { ...house.roof!, style: "Gable", pitchDeg: 30 };
     const issues = validate(house, p, 1e9, prices);
-    expect(issues).toContainEqual({ kind: "RoofNeedsRectangle", style: "Gable" });
+    expect(issues.map((i) => i.kind)).not.toContain("RoofNeedsRectangle");
   });
 });

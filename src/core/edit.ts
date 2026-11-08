@@ -23,6 +23,8 @@ export const DEFAULT_OPENING: Record<OpeningKind, { width: number; height: numbe
   Window: { width: 1.2, height: 1.3, sill: 0.9 },
   Door: { width: 0.9, height: 2.1, sill: 0 },
   GarageDoor: { width: 2.5, height: 2.1, sill: 0 },
+  GlassDoor: { width: 1.8, height: 2.1, sill: 0 },
+  Passage: { width: 1.4, height: 2.2, sill: 0 },
 };
 
 export const roundTo = (x: number, step: number): number => Math.round(x / step) * step;
@@ -209,13 +211,15 @@ export function placeOpening(house: House, wallId: WallId, kind: OpeningKind, of
   const wall = house.wall(wallId);
   if (!wall || wall.boundary) return null; // a boundary has no wall to put it in
   const d = DEFAULT_OPENING[kind];
-  const minWidth = kind === "Door" ? DOOR_WIDTH[0] : kind === "GarageDoor" ? GARAGE_DOOR_WIDTH[0] : MIN_OPENING_SIZE;
+  const minWidth = kind === "Door" || kind === "GlassDoor" || kind === "Passage" ? DOOR_WIDTH[0] : kind === "GarageDoor" ? GARAGE_DOOR_WIDTH[0] : MIN_OPENING_SIZE;
   const width = Math.min(d.width, roundTo(wall.length() - 2 * OPENING_END_MARGIN, 0.1));
   const height = Math.min(d.height, roundTo(wall.height - MIN_LINTEL - d.sill, 0.1));
   if (width < minWidth || height < MIN_OPENING_SIZE) return null;
   const at = roundTo(clampOffset(wall, width, offset), OPENING_STEP);
   if (kind === "Door") return house.addDoor(wallId, at, width, height);
   if (kind === "GarageDoor") return house.addGarageDoor(wallId, at, width, height);
+  if (kind === "GlassDoor") return house.addGlassDoor(wallId, at, width, height);
+  if (kind === "Passage") return house.addPassage(wallId, at, width, height);
   return house.addWindow(wallId, at, width, height, d.sill);
 }
 
@@ -512,4 +516,12 @@ export function clearDoubleHeight(house: House, at: Vec2, level: number): boolea
   if (!opening) return false;
   setRoomType(house, opening.anchor, null, level + 1);
   return true;
+}
+
+/** Put a terrace outside a ground-floor outer wall: a deck as wide as fits (at most 4 m), 2.5 m deep. */
+export function placeTerrace(house: House, wallId: WallId): BalconyId | null {
+  const wall = house.wall(wallId);
+  if (!wall || wall.boundary) return null;
+  const width = Math.min(4, Math.max(BALCONY_LIMITS.width[0], wall.length() - 0.6));
+  return house.addBalcony(wallId, wall.length() / 2, width, 2.5);
 }

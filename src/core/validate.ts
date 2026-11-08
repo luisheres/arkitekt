@@ -6,8 +6,9 @@ import { type Vec2, pointInPolygon, projectOntoSegment, segmentsIntersect } from
 import { en } from "./i18n/en";
 import type { Messages } from "./i18n/types";
 import { balconyOutline } from "./edit";
+import { dormerShape, dormerSizeOk } from "./features";
 import { accessRoutes } from "./access";
-import { type BalconyId, type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
+import { type BalconyId, type DormerId, type FloorFinish, type FootprintError, type House, type LabelId, type OpeningId, type RoofStyle, type RoomType, type StairId, type WallId, stairOutline } from "./model";
 import { type Plot, isBuildable } from "./plot";
 import { buildRoof } from "./roof";
 import { type HouseAnalysis, ROOM_INFO, type Room, type RoomAnalysis, analyzeHouse } from "./rooms";
@@ -25,8 +26,7 @@ import {
   MIN_WALL_HEIGHT,
   MIN_WALL_LENGTH,
   OPENING_END_MARGIN,
-  PITCH_RANGE,
-} from "./rules";
+  PITCH_RANGE, GLASS_DOOR_WIDTH, PASSAGE_WIDTH } from "./rules";
 
 
 /** Enough to identify a room in a message and to find it again in the plan. */
@@ -50,6 +50,10 @@ export type Issue =
   | { kind: "OpeningAcrossJunction"; opening: OpeningId }
   | { kind: "WindowInInteriorWall"; opening: OpeningId }
   | { kind: "OpeningInBoundary"; opening: OpeningId }
+  /** A passage (an opening without a door) in an outer wall. */
+  | { kind: "PassageInOuterWall"; opening: OpeningId }
+  | { kind: "BadGlassDoorSize"; opening: OpeningId }
+  | { kind: "BadPassageSize"; opening: OpeningId }
   | { kind: "BoundaryOnOutside"; wall: WallId }
   | { kind: "BadDoorSize"; opening: OpeningId }
   | { kind: "BadGarageDoorSize"; opening: OpeningId }
@@ -82,6 +86,9 @@ export type Issue =
   | { kind: "NoStairsToBasement" }
   /** A door or window in a basement's outer wall would be under the ground. */
   | { kind: "OpeningBelowGround"; opening: OpeningId }
+  /** A dormer where there is no roof slope rising from the wall (a flat roof, a gable end, not the top storey). */
+  | { kind: "DormerNotOnSlope"; dormer: DormerId }
+  | { kind: "BadDormerSize"; dormer: DormerId }
   /** The design uses a technique not learned yet (campaign only). */
   | { kind: "NotLearned"; technique: TechniqueId }
   | { kind: "GarageNeedsGarageDoor"; room: RoomRef }
@@ -114,7 +121,7 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
 
   checkOpenings(house, issues);
 
-  if (!house.openings.some((o) => o.kind === "Door" && house.levelOf(o.wall) === 0)) issues.push({ kind: "NoDoor" });
+  if (!house.openings.some((o) => (o.kind === "Door" || o.kind === "GlassDoor") && house.levelOf(o.wall) === 0)) issues.push({ kind: "NoDoor" });
 
   const analysis = analyzeHouse(house);
   analysis.levels.forEach((result, level) => {
@@ -133,6 +140,10 @@ export function validate(house: House, plot: Plot, budget: number, prices: Price
   checkBasement(house, analysis, issues);
   checkStairs(house, analysis, issues);
   checkBalconies(house, plot, analysis, issues);
+  for (const d of house.dormers) {
+    if (!dormerShape(house, d)) issues.push({ kind: "DormerNotOnSlope", dormer: d.id });
+    if (!dormerSizeOk(d)) issues.push({ kind: "BadDormerSize", dormer: d.id });
+  }
   if (plot.access) for (const opening of accessRoutes(house, plot).unreachable) issues.push({ kind: "GarageDoorUnreachable", opening });
   if (analysis.levels.every((l) => l.ok) && (!analysis.basement || analysis.basement.ok)) {
     if (house.floorArea() < MIN_FLOOR_AREA) issues.push({ kind: "TooSmall" });
@@ -163,6 +174,8 @@ function checkOpenings(house: House, issues: Issue[]): void {
     if (o.kind === "GarageDoor" && (!within(o.width, GARAGE_DOOR_WIDTH) || o.height < GARAGE_DOOR_MIN_HEIGHT)) {
       issues.push({ kind: "BadGarageDoorSize", opening: o.id });
     }
+    if (o.kind === "GlassDoor" && (!within(o.width, GLASS_DOOR_WIDTH) || o.height < DOOR_MIN_HEIGHT)) issues.push({ kind: "BadGlassDoorSize", opening: o.id });
+    if (o.kind === "Passage" && (!within(o.width, PASSAGE_WIDTH) || o.height < DOOR_MIN_HEIGHT)) issues.push({ kind: "BadPassageSize", opening: o.id });
   }
   for (const wall of house.walls) {
     const ops = house.openingsIn(wall.id);
@@ -179,7 +192,7 @@ function checkRooms(house: House, analysis: RoomAnalysis, level: number, issues:
 
   for (const end of layout.looseEnds) issues.push({ kind: "LooseWallEnd", wall: end.wall, x: end.at.x, y: end.at.y });
   for (const m of misplaced) {
-    const kind = m.reason === "InteriorWindow" ? "WindowInInteriorWall" : m.reason === "InBoundary" ? "OpeningInBoundary" : "OpeningAcrossJunction";
+    const kind = m.reason === "InteriorWindow" ? "WindowInInteriorWall" : m.reason === "InBoundary" ? "OpeningInBoundary" : m.reason === "OuterPassage" ? "PassageInOuterWall" : "OpeningAcrossJunction";
     issues.push({ kind, opening: m.opening.id });
   }
   for (const wall of layout.outerBoundaries) issues.push({ kind: "BoundaryOnOutside", wall });
@@ -269,10 +282,11 @@ function checkBalconies(house: House, plot: Plot, analysis: HouseAnalysis, issue
     const wall = house.wall(b.wall);
     if (!wall) continue;
     const level = analysis.levels[wall.level];
-    if (wall.level <= 0) issues.push({ kind: "BalconyOnGroundFloor", balcony: b.id });
+    // (On the ground floor it is a terrace; only in the basement is it out of place.)
+    if (wall.level < 0) issues.push({ kind: "BalconyOnGroundFloor", balcony: b.id });
     else if (level?.ok && !level.value.layout.exterior.has(wall.id)) issues.push({ kind: "BalconyNotOnOuterWall", balcony: b.id });
     const [from, to] = [b.offset - b.width / 2, b.offset + b.width / 2];
-    const door = house.openings.some((o) => o.wall === wall.id && o.kind === "Door" && o.offset + o.width / 2 > from && o.offset - o.width / 2 < to);
+    const door = house.openings.some((o) => o.wall === wall.id && (o.kind === "Door" || o.kind === "GlassDoor") && o.offset + o.width / 2 > from && o.offset - o.width / 2 < to);
     if (!door) issues.push({ kind: "BalconyNeedsDoor", balcony: b.id });
     const outline = balconyOutline(house, b) ?? [];
     if (outline.some((p) => p.x < -1e-6 || p.y < -1e-6 || p.x > plot.width + 1e-6 || p.y > plot.depth + 1e-6)) issues.push({ kind: "BalconyOutsidePlot", balcony: b.id });

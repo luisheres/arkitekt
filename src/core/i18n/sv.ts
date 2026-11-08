@@ -57,6 +57,7 @@ export const sv: Messages = {
     Car: "Bil",
     Workbench: "Arbetsbänk",
     Shelf: "Hyllor",
+    Fireplace: "Öppen spis",
     Plant: "Krukväxt",
     TallPlant: "Hög krukväxt",
     GardenTree: "Träd",
@@ -74,7 +75,7 @@ export const sv: Messages = {
   },
   roofStyle: { Flat: "Platt", Gable: "Sadeltak", Hip: "Valmat" },
   roofMaterial: { Shingles: "Shingel", Metal: "Plåt", Tiles: "Takpannor" },
-  opening: { Window: "Fönster", Door: "Dörr", GarageDoor: "Garageport" },
+  opening: { Window: "Fönster", Door: "Dörr", GlassDoor: "Glasdörr", GarageDoor: "Garageport", Passage: "Öppning" },
 
   technique: {
     faluRed: { name: "Falu rödfärg", text: "Träfasader i klassisk falu röd." },
@@ -89,6 +90,10 @@ export const sv: Messages = {
     houseplants: { name: "Krukväxter", text: "Växter i kruka som gör rummen mysiga." },
     landscaping: { name: "Trädgårdsdesign", text: "Plantera träd, buskar, rabatter och häckar i trädgården." },
     doubleHeight: { name: "Dubbel takhöjd", text: "Öppna upp en del av en övre våning, så att rummet under blir två våningar högt, med ett galleri runt." },
+    glassDoors: { name: "Glasdörrar", text: "Breda glasdörrar ut mot trädgården eller en terrass; de släpper in dagsljus som fönster." },
+    fireplace: { name: "Öppna spisar", text: "En öppen spis i ett rum, med en tegelskorsten upp genom taket." },
+    terraces: { name: "Terrasser", text: "Ett trädäck på marken, utanför en dörr." },
+    dormers: { name: "Takkupor", text: "Fönster med egna små tak i ett lutande tak: ljus åt rummen under." },
     basement: { name: "Källare", text: "Gräv ut en våning under huset, för förråd, tvättstuga eller verkstad." },
     balconies: { name: "Balkonger", text: "Balkonger på övervåningarna, med en dörr ut." },
     woodFloor: { name: "Trägolv", text: "Varma golv av trä." },
@@ -256,6 +261,16 @@ export const sv: Messages = {
         return "En rumsgräns ligger i husets ytterkant; utsidan behöver riktiga väggar";
       case "BadDoorSize":
         return `Dörrar måste vara ${num(this, R.DOOR_WIDTH[0])}–${meters(this, R.DOOR_WIDTH[1])} breda och minst ${meters(this, R.DOOR_MIN_HEIGHT)} höga`;
+      case "BadGlassDoorSize":
+        return `Glasdörrar måste vara ${num(this, R.GLASS_DOOR_WIDTH[0])}–${meters(this, R.GLASS_DOOR_WIDTH[1])} breda och minst ${meters(this, R.DOOR_MIN_HEIGHT)} höga`;
+      case "BadPassageSize":
+        return `Öppningar mellan rum måste vara ${num(this, R.PASSAGE_WIDTH[0])}–${meters(this, R.PASSAGE_WIDTH[1])} breda och minst ${meters(this, R.DOOR_MIN_HEIGHT)} höga`;
+      case "PassageInOuterWall":
+        return "En öppning utan dörr sitter i en yttervägg; använd en dörr eller glasdörr där";
+      case "DormerNotOnSlope":
+        return "En takkupa behöver ett lutande tak som stiger från väggen (inte en gavel), på översta våningen";
+      case "BadDormerSize":
+        return "Takkupor måste vara 1–3,5 m breda";
       case "BadGarageDoorSize":
         return `Garageportar måste vara ${num(this, R.GARAGE_DOOR_WIDTH[0])}–${meters(this, R.GARAGE_DOOR_WIDTH[1])} breda och minst ${meters(this, R.GARAGE_DOOR_MIN_HEIGHT)} höga`;
       case "GarageDoorNotToGarage":
@@ -307,11 +322,11 @@ export const sv: Messages = {
       case "OpeningBelowGround":
         return "En dörr eller ett fönster i källarens yttervägg skulle hamna under marken; ta bort den";
       case "BalconyOnGroundFloor":
-        return "En balkong sitter på bottenvåningen; balkonger hör hemma på övervåningarna (använd väggens meny där uppe)";
+        return "En balkong eller terrass sitter i källaren; den hör hemma på bottenvåningen eller högre upp";
       case "BalconyNotOnOuterWall":
         return "En balkong sitter på en innervägg; sätt den på en yttervägg";
       case "BalconyNeedsDoor":
-        return "En balkong saknar dörr ut; lägg till en dörr i väggen bakom den";
+        return "En balkong eller terrass saknar dörr ut; lägg till en dörr eller glasdörr i väggen bakom";
       case "BalconyOutsidePlot":
         return "En balkong sticker ut utanför tomten";
       case "NotLearned":
@@ -319,7 +334,7 @@ export const sv: Messages = {
       case "LabelOutsideRooms":
         return `Etiketten "${this.rooms[i.type].name}" ligger inte längre i något rum (rummet har flyttats eller tagits bort); dra in den i ett rum eller ta bort den`;
       case "RoofNeedsRectangle":
-        return `${cap(ROOF_NOUN[i.style])} kräver ett rektangulärt hus; välj platt tak för andra former`;
+        return `${cap(ROOF_NOUN[i.style])} kräver ett hus med räta hörn; välj platt tak där väggarna möts i andra vinklar`;
       case "RoofPitchOutOfRange":
         return `Taklutningen måste vara mellan ${R.PITCH_RANGE[0]}° och ${R.PITCH_RANGE[1]}°`;
       case "RoofOverhangOutOfRange":
@@ -371,6 +386,10 @@ export const sv: Messages = {
         return `Kostar högst ${percent(this, r.share)} av budgeten`;
       case "balcony":
         return "En balkong";
+      case "terrace":
+        return "En terrass";
+      case "fireplace":
+        return "En öppen spis";
       case "gardenPlants":
         return `Minst ${r.min} träd, buskar eller rabatter i trädgården`;
       case "indoorPlants":
@@ -527,6 +546,10 @@ export const sv: Messages = {
       footpath: "Gång till ytterdörren",
       exposedFoundation: "Synlig grundmur",
       lightWells: "Ljusgårdar",
+      deck: "Terrass",
+      fireplace: "Öppen spis",
+      chimney: "Skorsten",
+      dormer: "Takkupa",
       balcony: "Balkong",
       paint: (color) => `Färg: ${color.toLowerCase()}`,
       empty: "Inget är byggt än, så inget kostar något.",
@@ -558,6 +581,12 @@ export const sv: Messages = {
     balcony: "Balkong",
     addBalcony: "+ Balkong",
     balconyNote: "En balkong behöver en dörr ut i väggen bakom.",
+    terrace: "Terrass",
+    addTerrace: "+ Terrass",
+    terraceNote: "En terrass behöver en dörr eller glasdörr ut i väggen bakom.",
+    dormer: "Takkupa",
+    addDormer: "+ Takkupa",
+    dormerNote: "En takkupa står i takfallet ovanför väggen och ger ljus åt rummet under.",
     buildingProblems: "Byggproblem",
     noBuildingProblems: "Inga byggproblem",
 

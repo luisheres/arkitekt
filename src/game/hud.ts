@@ -18,6 +18,7 @@ function issueTarget(i: Issue): Selection {
   if (i.kind === "LabelOutsideRooms") return { kind: "label", id: i.label };
   if ("stair" in i) return { kind: "stair", id: i.stair };
   if ("balcony" in i) return { kind: "balcony", id: i.balcony };
+  if ("dormer" in i) return { kind: "dormer", id: i.dormer };
   return null;
 }
 
@@ -28,6 +29,7 @@ function issueLevel(i: Issue, store: Store): number | null {
   if ("opening" in i) return store.house.levelOf(store.house.opening(i.opening)?.wall ?? -1);
   if ("stair" in i) return store.house.stair(i.stair)?.level ?? null;
   if ("balcony" in i) return store.house.wall(store.house.balcony(i.balcony)?.wall ?? -1)?.level ?? null;
+  if ("dormer" in i) return store.house.wall(store.house.dormer(i.dormer)?.wall ?? -1)?.level ?? null;
   if ("level" in i) return i.level;
   return null;
 }

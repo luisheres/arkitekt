@@ -54,6 +54,7 @@ export const en: Messages = {
     Car: "Car",
     Workbench: "Workbench",
     Shelf: "Shelves",
+    Fireplace: "Fireplace",
     Plant: "Potted plant",
     TallPlant: "Tall plant",
     GardenTree: "Tree",
@@ -71,7 +72,7 @@ export const en: Messages = {
   },
   roofStyle: { Flat: "Flat", Gable: "Gable", Hip: "Hip" },
   roofMaterial: { Shingles: "Shingles", Metal: "Metal", Tiles: "Tiles" },
-  opening: { Window: "Window", Door: "Door", GarageDoor: "Garage door" },
+  opening: { Window: "Window", Door: "Door", GlassDoor: "Glass door", GarageDoor: "Garage door", Passage: "Opening" },
 
   technique: {
     faluRed: { name: "Falu red panels", text: "Wooden facades painted the classic Swedish red." },
@@ -86,6 +87,10 @@ export const en: Messages = {
     houseplants: { name: "Houseplants", text: "Plants in pots to make rooms cosy." },
     landscaping: { name: "Garden design", text: "Plant trees, shrubs, flower beds and hedges in the garden." },
     doubleHeight: { name: "Double height", text: "Open up part of an upper floor, so the room below is two storeys high, with a gallery round it." },
+    glassDoors: { name: "Glass doors", text: "Wide glass doors out to the garden or a terrace; they let daylight in like windows." },
+    fireplace: { name: "Fireplaces", text: "A fireplace in a room, with a brick chimney up through the roof." },
+    terraces: { name: "Terraces", text: "A wooden terrace on the ground, outside a door." },
+    dormers: { name: "Dormers", text: "Windows with their own little roofs in a sloping roof: light for the rooms under it." },
     basement: { name: "Basements", text: "Dig a storey below the house, for storage, a utility room or a workshop." },
     balconies: { name: "Balconies", text: "Balconies on the upper floors, with a door out." },
     woodFloor: { name: "Wooden floors", text: "Warm wooden floorboards." },
@@ -253,6 +258,16 @@ export const en: Messages = {
         return "A room boundary is on the outside of the house; the outside needs real walls";
       case "BadDoorSize":
         return `Doors must be ${num(this, R.DOOR_WIDTH[0])}–${meters(this, R.DOOR_WIDTH[1])} wide and at least ${meters(this, R.DOOR_MIN_HEIGHT)} tall`;
+      case "BadGlassDoorSize":
+        return `Glass doors must be ${num(this, R.GLASS_DOOR_WIDTH[0])}–${meters(this, R.GLASS_DOOR_WIDTH[1])} wide and at least ${meters(this, R.DOOR_MIN_HEIGHT)} tall`;
+      case "BadPassageSize":
+        return `Openings between rooms must be ${num(this, R.PASSAGE_WIDTH[0])}–${meters(this, R.PASSAGE_WIDTH[1])} wide and at least ${meters(this, R.DOOR_MIN_HEIGHT)} tall`;
+      case "PassageInOuterWall":
+        return "An opening without a door is in an outer wall; use a door or glass door there";
+      case "DormerNotOnSlope":
+        return "A dormer needs a sloping roof rising from its wall (not a gable end), on the top floor";
+      case "BadDormerSize":
+        return "Dormers must be 1–3.5 m wide";
       case "BadGarageDoorSize":
         return `Garage doors must be ${num(this, R.GARAGE_DOOR_WIDTH[0])}–${meters(this, R.GARAGE_DOOR_WIDTH[1])} wide and at least ${meters(this, R.GARAGE_DOOR_MIN_HEIGHT)} tall`;
       case "GarageDoorNotToGarage":
@@ -304,11 +319,11 @@ export const en: Messages = {
       case "OpeningBelowGround":
         return "A door or window in the basement's outer wall would be under the ground; remove it";
       case "BalconyOnGroundFloor":
-        return "A balcony is on the ground floor; balconies belong on upper floors (use the wall menu upstairs)";
+        return "A balcony or terrace is in the basement; it belongs on the ground floor or above";
       case "BalconyNotOnOuterWall":
         return "A balcony is on an inside wall; put it on an outer wall";
       case "BalconyNeedsDoor":
-        return "A balcony has no door out to it; add a door in the wall behind it";
+        return "A balcony or terrace has no door out to it; add a door or glass door in the wall behind it";
       case "BalconyOutsidePlot":
         return "A balcony sticks out past the edge of the plot";
       case "NotLearned":
@@ -317,7 +332,7 @@ export const en: Messages = {
         return `The label "${this.rooms[i.type].name}" is no longer inside a room (its room was moved or removed); drag it into a room or delete it`;
       case "RoofNeedsRectangle": {
         const style = this.roofStyle[i.style].toLowerCase();
-        return `${cap(/^[aeiou]/.test(style) ? "an" : "a")} ${style} roof needs a rectangular house; use a flat roof for other shapes`;
+        return `${cap(/^[aeiou]/.test(style) ? "an" : "a")} ${style} roof needs a house with square corners; use a flat roof where walls meet at other angles`;
       }
       case "RoofPitchOutOfRange":
         return `Roof pitch must be between ${R.PITCH_RANGE[0]}° and ${R.PITCH_RANGE[1]}°`;
@@ -363,6 +378,10 @@ export const en: Messages = {
         return `Costs at most ${percent(this, r.share)} of the budget`;
       case "balcony":
         return "A balcony";
+      case "terrace":
+        return "A terrace";
+      case "fireplace":
+        return "A fireplace";
       case "gardenPlants":
         return `At least ${r.min} trees, shrubs or flower beds in the garden`;
       case "indoorPlants":
@@ -520,6 +539,10 @@ export const en: Messages = {
       exposedFoundation: "Foundation walls above ground",
       lightWells: "Light wells",
       balcony: "Balcony",
+      deck: "Terrace",
+      fireplace: "Fireplace",
+      chimney: "Chimney",
+      dormer: "Dormer",
       paint: (color) => `${color} paint`,
       empty: "Nothing is built yet, so nothing costs anything.",
       count: (n) => `${n} ×`,
@@ -550,6 +573,12 @@ export const en: Messages = {
     balcony: "Balcony",
     addBalcony: "+ Balcony",
     balconyNote: "A balcony needs a door out to it in the wall behind.",
+    terrace: "Terrace",
+    addTerrace: "+ Terrace",
+    terraceNote: "A terrace needs a door or glass door out to it in the wall behind.",
+    dormer: "Dormer",
+    addDormer: "+ Dormer",
+    dormerNote: "A dormer stands in the roof slope over this wall, and lights the room under it.",
     buildingProblems: "Building problems",
     noBuildingProblems: "No building problems",
 

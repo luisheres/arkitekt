@@ -65,6 +65,7 @@ export type Selection =
   /** The whole house: moving and turning it. */
   | { kind: "house" }
   | { kind: "balcony"; id: number }
+  | { kind: "dormer"; id: number }
   | null;
 
 /** What changed: the house, editor state such as the tool or selection, or the client. */
@@ -515,6 +516,7 @@ export class Store {
       else if (sel.kind === "furniture") h.removeFurniture(sel.id);
       else if (sel.kind === "label") h.removeLabel(sel.id);
       else if (sel.kind === "balcony") h.removeBalcony(sel.id);
+      else if (sel.kind === "dormer") h.removeDormer(sel.id);
       else if (sel.kind === "room") {
         setRoomType(h, sel.at, null, this.level);
         clearRoomFurnitureAt(h, sel.at, this.level);
@@ -535,6 +537,7 @@ export class Store {
     if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
     if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
     if (sel?.kind === "balcony" && !this.house.balcony(sel.id)) this.selection = null;
+    if (sel?.kind === "dormer" && !this.house.dormer(sel.id)) this.selection = null;
   }
 
   // --- Saving ------------------------------------------------------------------------

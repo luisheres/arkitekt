@@ -14,6 +14,9 @@ export const DOOR_WIDTH = [0.7, 2.5] as const;
 export const DOOR_MIN_HEIGHT = 1.9;
 export const GARAGE_DOOR_WIDTH = [2.2, 3.5] as const;
 export const GARAGE_DOOR_MIN_HEIGHT = 2.0;
+/** Glass (patio) doors and passages between rooms. */
+export const GLASS_DOOR_WIDTH = [0.8, 4] as const;
+export const PASSAGE_WIDTH = [0.7, 4] as const;
 export const PITCH_RANGE = [10, 60] as const;
 export const MAX_OVERHANG = 1.2;
 export const MIN_FLOOR_AREA = 20;

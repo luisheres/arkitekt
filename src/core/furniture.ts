@@ -28,6 +28,7 @@ export type FurnitureKind =
   | "Car"
   | "Workbench"
   | "Shelf"
+  | "Fireplace"
   | "Plant"
   | "TallPlant"
   | "GardenTree"
@@ -82,6 +83,7 @@ export const FURNITURE_KINDS: readonly FurnitureKind[] = [
   "Car",
   "Workbench",
   "Shelf",
+  "Fireplace",
   "Plant",
   "TallPlant",
 ];
@@ -112,6 +114,7 @@ export const FURNITURE_SIZE: Record<FurnitureKind, { width: number; depth: numbe
   Car: { width: 1.8, depth: 4.4, height: 1.45 },
   Workbench: { width: 1.6, depth: 0.6, height: 0.9 },
   Shelf: { width: 1.2, depth: 0.4, height: 1.9 },
+  Fireplace: { width: 1.4, depth: 0.6, height: 1.2 },
   Plant: { width: 0.45, depth: 0.45, height: 0.9 },
   TallPlant: { width: 0.6, depth: 0.6, height: 1.7 },
   GardenTree: { width: 3, depth: 3, height: 5 },
@@ -125,7 +128,7 @@ export const PLANT_PRICE: Partial<Record<FurnitureKind, number>> = { Plant: 60, 
 
 /** Pieces offered first when adding furniture to a room of each type. */
 export const SUGGESTED_FURNITURE: Record<RoomType, readonly FurnitureKind[]> = {
-  Living: ["Sofa", "Armchair", "CoffeeTable", "TvUnit", "Bookshelf", "DiningTable", "Chair", "Plant", "TallPlant"],
+  Living: ["Sofa", "Armchair", "CoffeeTable", "TvUnit", "Bookshelf", "DiningTable", "Chair", "Fireplace", "Plant", "TallPlant"],
   Kitchen: ["Counter", "Fridge", "DiningTable", "Chair"],
   Bedroom: ["Bed", "SingleBed", "Nightstand", "Wardrobe", "Desk", "OfficeChair"],
   Bathroom: ["Bathtub", "Shower", "Toilet", "Sink", "Washer"],

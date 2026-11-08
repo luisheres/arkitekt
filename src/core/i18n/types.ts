@@ -313,6 +313,10 @@ export interface Messages {
       /** A flat roof over the part of a storey that has no storey above. */
       terrace: string;
       balcony: string;
+      deck: string;
+      fireplace: string;
+      chimney: string;
+      dormer: string;
       earthworks: string;
       basementDig: string;
       basementWalls: string;
@@ -356,6 +360,12 @@ export interface Messages {
     balcony: string;
     addBalcony: string;
     balconyNote: string;
+    terrace: string;
+    addTerrace: string;
+    terraceNote: string;
+    dormer: string;
+    addDormer: string;
+    dormerNote: string;
     buildingProblems: string;
     noBuildingProblems: string;
 

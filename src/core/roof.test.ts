@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Vec2 } from "./geometry";
+import { Vec2, pointInPolygon } from "./geometry";
 import { House, type RoofStyle } from "./model";
 import { FLAT_ROOF_LIP, ROOF_CLEARANCE, type RoofGeometry, buildRoof, coveringArea } from "./roof";
 
@@ -74,14 +74,52 @@ describe("roofs", () => {
     expect(buildRoof(house(corners, "Gable", 30, 0)).ok).toBe(true);
   });
 
-  it("an L-shape needs a flat roof", () => {
+  it("an L-shape can have a pitched roof, or a flat one", () => {
     const l = [v(0, 0), v(10, 0), v(10, 4), v(4, 4), v(4, 8), v(0, 8)];
-    const gable = buildRoof(house(l, "Gable", 30, 0));
-    expect(!gable.ok && gable.error).toEqual({ kind: "NeedsRectangle", style: "Gable" });
+    expect(buildRoof(house(l, "Gable", 30, 0)).ok).toBe(true);
     // The slab covers the walls plus a lip: the L grown by 0.125 + 0.1.
     const flat = roofOf(house(l, "Flat", 0, 0));
     const d = 0.125 + FLAT_ROOF_LIP;
     const expected = 56 + 36 * d + 4 * d * d; // perimeter 36, net 4 convex corners
     expect(coveringArea(flat)).toBeCloseTo(expected, 3);
+  });
+});
+
+describe("pitched roofs on other shapes", async () => {
+  const { roofHeightAt } = await import("./roof");
+  const { Vec2: V } = await import("./geometry");
+  const shapes: Record<string, [number, number][]> = {
+    L: [[0, 0], [12, 0], [12, 6], [6, 6], [6, 12], [0, 12]],
+    T: [[0, 0], [14, 0], [14, 6], [10, 6], [10, 14], [4, 14], [4, 6], [0, 6]],
+    U: [[0, 0], [16, 0], [16, 12], [11, 12], [11, 6], [5, 6], [5, 12], [0, 12]],
+  };
+  for (const [name, pts] of Object.entries(shapes))
+    for (const style of ["Gable", "Hip"] as const)
+      it(`covers an ${name}-shaped house with a ${style.toLowerCase()} roof`, () => {
+        const h = new House();
+        h.addWallLoop(pts.map(([x, y]) => new V(x, y)), 2.7, "Plaster");
+        h.roof = { style, pitchDeg: 30, overhang: 0.4, material: "Tiles" };
+        const g = buildRoof(h);
+        expect(g.ok).toBe(true);
+        if (!g.ok) return;
+        // Every point inside the house is under the roof, above the walls.
+        const fp = h.footprint(0);
+        if (!fp.ok) throw new Error("footprint");
+        for (let x = 0.5; x < 16; x += 1)
+          for (let y = 0.5; y < 14; y += 1) {
+            const p = new V(x, y);
+            if (!pointInPolygon(p, fp.value)) continue;
+            const r = roofHeightAt(g.value, p);
+            expect(r, `${name} ${style} at ${x},${y}`).not.toBeNull();
+            expect(r!).toBeGreaterThan(2.7);
+          }
+        expect(coveringArea(g.value)).toBeGreaterThan(h.floorArea());
+      });
+
+  it("still refuses walls at other angles", () => {
+    const h = new House();
+    h.addWallLoop([new V(0, 0), new V(10, 0), new V(13, 6), new V(0, 6)], 2.7, "Plaster");
+    h.roof = { style: "Gable", pitchDeg: 30, overhang: 0.4, material: "Tiles" };
+    expect(buildRoof(h).ok).toBe(false);
   });
 });

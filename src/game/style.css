@@ -2659,3 +2659,41 @@ button.locked::after,
 .plan .landmark-icon {
   pointer-events: none;
 }
+
+.plan .balcony.terrace {
+  fill: #e2c79a;
+  stroke: #8a6a42;
+  stroke-dasharray: none;
+}
+
+.plan .dormer {
+  fill: rgba(255, 255, 255, 0.35);
+  stroke: #6a5a8a;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  cursor: grab;
+}
+
+.plan .dormer.hover {
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.plan .dormer.selected {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.plan .dormer.bad {
+  stroke: var(--error);
+}
+
+.plan .passage {
+  stroke: #6f6b63;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+.popover .sub.bad {
+  color: var(--error);
+}

@@ -48,9 +48,14 @@ import {
   addGardenPlant,
   BALCONY_LIMITS,
   type Balcony,
+  type Dormer,
   type Wall,
   clampBalcony,
   placeBalcony,
+  placeTerrace,
+  placeDormer,
+  DORMER_WIDTH,
+  dormerShape,
   rotateHouse,
   PLATFORM_RANGE,
   clearDoubleHeight,
@@ -125,6 +130,8 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
       return houseInspector(store);
     case "balcony":
       return balconyInspector(store, sel.id);
+    case "dormer":
+      return dormerInspector(store, sel.id);
     case "room":
       return roomInspector(store, sel.at);
     case "wall":
@@ -233,18 +240,19 @@ function roomInspector(store: Store, at: import("../core").Vec2): Inspector | nu
   const suggested = room.type ? SUGGESTED_FURNITURE[room.type] : [];
   const others = FURNITURE_KINDS.filter((k) => !suggested.includes(k));
   const plantLock = () => store.lockOf({ kind: "houseplants" });
+  const lockFor = (k: FurnitureKind) => () => (INDOOR_PLANTS.includes(k) ? plantLock() : k === "Fireplace" ? store.lockOf({ kind: "fireplace" }) : null);
   const add = el(
     "select",
     { className: "add-furniture" },
     el("option", { value: "" }, m.ui.addFurniture),
     ...[...suggested, ...others].map((k, i) =>
-      el("option", { value: k, className: i < suggested.length ? "suggested" : "" }, `${INDOOR_PLANTS.includes(k) && plantLock() ? "🔒 " : ""}${m.furnitureName[k]}`),
+      el("option", { value: k, className: i < suggested.length ? "suggested" : "" }, `${lockFor(k)() ? "🔒 " : ""}${m.furnitureName[k]}`),
     ),
   );
   add.addEventListener("change", () => {
     const kind = add.value as FurnitureKind;
     if (!kind) return;
-    const lock = INDOOR_PLANTS.includes(kind) ? plantLock() : null;
+    const lock = lockFor(kind)();
     if (lock) {
       add.value = "";
       return store.onLocked(lock);
@@ -337,8 +345,9 @@ function wallInspector(store: Store, id: number): Inspector | null {
     if (opening !== null) store.select({ kind: "opening", id: opening });
   };
   const add = (kind: OpeningKind) => {
-    if (kind !== "GarageDoor") return button(m.ui.add(kind), addOpening(kind));
-    const { button: b, field } = lockable(store, m.ui.add(kind), { kind: "garageDoors" }, addOpening(kind));
+    const needs = OPENING_LOCK[kind];
+    if (!needs) return button(m.ui.add(kind), addOpening(kind));
+    const { button: b, field } = lockable(store, m.ui.add(kind), needs, addOpening(kind));
     fields.push(field);
     return b;
   };
@@ -351,13 +360,24 @@ function wallInspector(store: Store, id: number): Inspector | null {
     }),
   );
   if (!exterior) fields.push(makeOpenField);
-  const buttons = exterior ? [add("Window"), add("Door"), add("GarageDoor")] : [add("Door"), makeOpen];
-  // Balconies hang off the outer walls of upper storeys.
-  if (exterior && w.level > 0) {
-    const { button: b, field } = lockable(store, m.ui.addBalcony, { kind: "balconies" }, () => {
+  const buttons = exterior ? [add("Window"), add("Door"), add("GlassDoor"), add("GarageDoor")] : [add("Door"), add("Passage"), makeOpen];
+  // Balconies hang off the outer walls of upper storeys; on the ground floor, a terrace.
+  if (exterior && w.level >= 0) {
+    const ground = w.level === 0;
+    const { button: b, field } = lockable(store, ground ? m.ui.addTerrace : m.ui.addBalcony, { kind: ground ? "terraces" : "balconies" }, () => {
       let balcony: number | null = null;
-      store.edit((h) => (balcony = placeBalcony(h, id)));
+      store.edit((h) => (balcony = ground ? placeTerrace(h, id) : placeBalcony(h, id)));
       if (balcony !== null) store.select({ kind: "balcony", id: balcony });
+    });
+    fields.push(field);
+    buttons.push(b);
+  }
+  // A dormer in the roof slope over an outer wall of the top storey.
+  if (exterior && w.level === store.house.topLevel() && store.house.roof && store.house.roof.style !== "Flat") {
+    const { button: b, field } = lockable(store, m.ui.addDormer, { kind: "dormers" }, () => {
+      let dormer: number | null = null;
+      store.edit((h) => (dormer = placeDormer(h, id)));
+      if (dormer !== null) store.select({ kind: "dormer", id: dormer });
     });
     fields.push(field);
     buttons.push(b);
@@ -401,10 +421,17 @@ function openingInspector(store: Store, id: number): Inspector | null {
       const cur = op(h);
       if (cur) fn(cur, h);
     }, `${k}:${id}`);
+  const ownWall = store.house.wall(o.wall);
+  const ownLayout = ownWall ? analyzeLayout(store.house, ownWall.level) : null;
+  const outer = !ownLayout?.ok || ownLayout.value.exterior.has(o.wall);
   const fields: Field[] = [
     choices(
       m.ui.type,
-      OPENING_KINDS.map((k) => ({ value: k, label: m.opening[k], lock: k === "GarageDoor" ? () => store.lockOf({ kind: "garageDoors" }) : undefined })),
+      OPENING_KINDS.filter((k) => (outer ? k !== "Passage" : k !== "Window" && k !== "GarageDoor" && k !== "GlassDoor") || k === o.kind).map((k) => ({
+        value: k,
+        label: m.opening[k],
+        lock: OPENING_LOCK[k] ? () => store.lockOf(OPENING_LOCK[k]!) : undefined,
+      })),
       () => op()?.kind ?? null,
       (v) =>
         editOp((cur, h) => {
@@ -511,6 +538,9 @@ function roofInspector(store: Store): Inspector {
   return { el: el("div", {}, el("h2", {}, m.ui.roof), ...fields.map((f) => f.el)), fields };
 }
 
+/** The techniques some openings need. */
+const OPENING_LOCK: Partial<Record<OpeningKind, Unlock>> = { GarageDoor: { kind: "garageDoors" }, GlassDoor: { kind: "glassDoors" }, Passage: { kind: "openPlan" } };
+
 // --- Garden --------------------------------------------------------------------------
 
 function gardenInspector(store: Store): Inspector {
@@ -535,6 +565,7 @@ function gardenInspector(store: Store): Inspector {
 function balconyInspector(store: Store, id: number): Inspector | null {
   const balcony = (h: House = store.house) => h.balcony(id);
   if (!balcony()) return null;
+  const terrace = store.house.wall(balcony()!.wall)?.level === 0;
   const editBalcony = (fn: (b: Balcony, wall: Wall) => void, key: string) =>
     store.edit((h) => {
       const b = balcony(h);
@@ -561,7 +592,14 @@ function balconyInspector(store: Store, id: number): Inspector | null {
     }, (v) => editBalcony((b, wall) => (b.offset = (v / 100) * wall.length()), "balcony-offset")),
   ];
   return {
-    el: el("div", {}, el("h2", {}, m.ui.balcony), ...fields.map((f) => f.el), el("p", { className: "sub" }, m.ui.balconyNote), el("div", { className: "row" }, deleteButton(store))),
+    el: el(
+      "div",
+      {},
+      el("h2", {}, terrace ? m.ui.terrace : m.ui.balcony),
+      ...fields.map((f) => f.el),
+      el("p", { className: "sub" }, terrace ? m.ui.terraceNote : m.ui.balconyNote),
+      el("div", { className: "row" }, deleteButton(store)),
+    ),
     fields,
   };
 }
@@ -595,4 +633,38 @@ function houseInspector(store: Store): Inspector {
     parts.push(platform.el, el("p", { className: "sub" }, m.ui.platformHint));
   }
   return { el: el("div", {}, ...parts), fields };
+}
+
+// --- Dormers -------------------------------------------------------------------------
+
+function dormerInspector(store: Store, id: number): Inspector | null {
+  const dormer = (h: House = store.house) => h.dormer(id);
+  if (!dormer()) return null;
+  const editDormer = (fn: (d: Dormer, wall: Wall) => void, key: string) =>
+    store.edit((h) => {
+      const d = dormer(h);
+      const wall = d && h.wall(d.wall);
+      if (d && wall) {
+        fn(d, wall);
+        d.offset = clampBalcony(wall, d);
+      }
+    }, `${key}:${id}`);
+  const wallLength = () => {
+    const d = dormer();
+    return (d && store.house.wall(d.wall)?.length()) ?? 1;
+  };
+  const fields: Field[] = [
+    slider(m.ui.width, { min: DORMER_WIDTH[0], max: DORMER_WIDTH[1], step: 0.1, unit: " m", digits: 1 }, () => dormer()?.width ?? null, (v) =>
+      editDormer((d, wall) => (d.width = Math.min(v, wall.length() - 0.4)), "dormer-width"),
+    ),
+    slider(m.ui.position, { min: 0, max: 100, step: 1, unit: " %", digits: 0 }, () => {
+      const d = dormer();
+      return d ? Math.round((d.offset / wallLength()) * 100) : null;
+    }, (v) => editDormer((d, wall) => (d.offset = (v / 100) * wall.length()), "dormer-offset")),
+  ];
+  const ok = !!dormerShape(store.house, dormer()!);
+  return {
+    el: el("div", {}, el("h2", {}, m.ui.dormer), ...fields.map((f) => f.el), el("p", { className: ok ? "sub" : "sub bad" }, ok ? m.ui.dormerNote : m.issue({ kind: "DormerNotOnSlope", dormer: id })), el("div", { className: "row" }, deleteButton(store))),
+    fields,
+  };
 }

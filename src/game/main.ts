@@ -87,7 +87,9 @@ view3d.onPick = (pick, x, y) => {
               ? house.furniturePiece(pick.id)?.level
               : pick.kind === "balcony"
                 ? house.wall(house.balcony(pick.id)?.wall ?? -1)?.level
-                : undefined;
+                : pick.kind === "dormer"
+                  ? house.wall(house.dormer(pick.id)?.wall ?? -1)?.level
+                  : undefined;
   if (level !== undefined && level !== store.level) store.setLevel(level);
   store.select(pick.kind === "room" ? { kind: "room", at: pick.at } : pick);
   openMenu(x, y);

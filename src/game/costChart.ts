@@ -49,6 +49,14 @@ export function lineName(l: CostLine, short = false): string {
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costRows.stairs}`;
     case "balcony":
       return m.ui.costChart.balcony;
+    case "deck":
+      return m.ui.costChart.deck;
+    case "fireplace":
+      return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.fireplace}`;
+    case "chimney":
+      return m.ui.costChart.chimney;
+    case "dormer":
+      return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.dormer}`;
     case "earthworks":
       return m.ui.costChart.earthworks;
     case "basementDig":
@@ -75,6 +83,7 @@ export function lineName(l: CostLine, short = false): string {
 /** How the amount comes about: "42.5 m² × 220". */
 function lineDetail(l: CostLine): string {
   if (l.unit === "m3") return `${num(m, l.quantity, 1)} m³ × ${money(l.amount / l.quantity)}`;
+  if (l.unit === "m") return `${num(m, l.quantity, 1)} m × ${money(l.amount / l.quantity)}`;
   return l.unit === "m2" ? `${area(m, l.quantity)} × ${money(l.amount / l.quantity)}` : "";
 }
 

@@ -45,6 +45,10 @@ export const TECHNIQUE_IDS = [
   "balconies",
   "basement",
   "doubleHeight",
+  "glassDoors",
+  "fireplace",
+  "terraces",
+  "dormers",
   "prefab",
   "carpenters",
   "marketing",
@@ -74,6 +78,10 @@ export type Unlock =
   | { kind: "basement" }
   /** Openings in a floor, for double-height rooms below. */
   | { kind: "doubleHeight" }
+  | { kind: "glassDoors" }
+  | { kind: "fireplace" }
+  | { kind: "terraces" }
+  | { kind: "dormers" }
   /** Cheaper parts: a share off what they cost. */
   | { kind: "discount"; on: "walls" | "floors" | "all"; share: number }
   /** A larger fee: this many percentage points of the budget on top. */
@@ -108,6 +116,10 @@ export const TECHNIQUES: readonly Technique[] = [
   { id: "balconies", branch: "structure", price: 12_000, requires: "twoStoreys", unlocks: { kind: "balconies" } },
   { id: "basement", branch: "structure", price: 14_000, unlocks: { kind: "basement" } },
   { id: "doubleHeight", branch: "structure", price: 10_000, requires: "twoStoreys", unlocks: { kind: "doubleHeight" } },
+  { id: "glassDoors", branch: "structure", price: 4_000, unlocks: { kind: "glassDoors" } },
+  { id: "fireplace", branch: "interiors", price: 6_000, unlocks: { kind: "fireplace" } },
+  { id: "terraces", branch: "garden", price: 3_500, unlocks: { kind: "terraces" } },
+  { id: "dormers", branch: "roofs", price: 7_000, unlocks: { kind: "dormers" } },
   { id: "prefab", branch: "business", price: 12_000, unlocks: { kind: "discount", on: "walls", share: 0.1 } },
   { id: "carpenters", branch: "business", price: 14_000, unlocks: { kind: "discount", on: "floors", share: 0.1 } },
   { id: "marketing", branch: "business", price: 25_000, unlocks: { kind: "fee", points: 2 } },
@@ -131,6 +143,10 @@ export interface Abilities {
   balconies: boolean;
   basement: boolean;
   doubleHeight: boolean;
+  glassDoors: boolean;
+  fireplace: boolean;
+  terraces: boolean;
+  dormers: boolean;
   /** Price factors (1 = full price). */
   wallFactor: number;
   floorFactor: number;
@@ -165,6 +181,10 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       balconies: true,
       basement: true,
       doubleHeight: true,
+      glassDoors: true,
+      fireplace: true,
+      terraces: true,
+      dormers: true,
       wallFactor: 1,
       floorFactor: 1,
       allFactor: 1,
@@ -176,7 +196,7 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
   const roofStyles = new Set(STARTER.roofStyles);
   const roofMaterials = new Set(STARTER.roofMaterials);
   const floors = new Set(STARTER.floors);
-  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, doubleHeight: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
+  const a = { maxStoreys: 1, garageDoors: false, openPlan: false, paint: false, houseplants: false, garden: false, balconies: false, basement: false, doubleHeight: false, glassDoors: false, fireplace: false, terraces: false, dormers: false, wallFactor: 1, floorFactor: 1, allFactor: 1, feePoints: 0 };
   for (const id of owned) {
     const u = technique(id)?.unlocks;
     if (!u) continue;
@@ -208,6 +228,10 @@ export function abilities(owned: readonly TechniqueId[] | "all"): Abilities {
       case "balconies":
       case "basement":
       case "doubleHeight":
+      case "glassDoors":
+      case "fireplace":
+      case "terraces":
+      case "dormers":
         a[u.kind] = true;
         break;
       case "discount":
@@ -243,6 +267,9 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     doorBase: base.doorBase * all,
     doorM2: base.doorM2 * all,
     garageDoorBase: base.garageDoorBase * all,
+    glassDoorBase: base.glassDoorBase * all,
+    glassDoorM2: base.glassDoorM2 * all,
+    passageBase: base.passageBase * all,
     garageDoorM2: base.garageDoorM2 * all,
     roofM2: scale(base.roofM2, all),
     floorM2: scale(base.floorM2, f),
@@ -250,6 +277,11 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     upperFloorM2: base.upperFloorM2 * f,
     stairs: base.stairs * all,
     balconyM2: base.balconyM2 * all,
+    terraceM2: base.terraceM2 * all,
+    fireplace: base.fireplace * all,
+    chimneyM: base.chimneyM * all,
+    dormerBase: base.dormerBase * all,
+    dormerM: base.dormerM * all,
     paintM2: base.paintM2 * all,
     earthM3: base.earthM3 * all,
     basementDigM3: base.basementDigM3 * all,
@@ -299,10 +331,19 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
     if (r.paint !== "White") want(a.paint, { kind: "paint" });
   }
   for (const f of house.furniture) {
+    if (f.kind === "Fireplace") want(a.fireplace, { kind: "fireplace" });
     if (INDOOR_PLANTS.includes(f.kind)) want(a.houseplants, { kind: "houseplants" });
     if (GARDEN_PLANTS.includes(f.kind)) want(a.garden, { kind: "garden" });
   }
-  if (house.balconies.length) want(a.balconies, { kind: "balconies" });
+  for (const b of house.balconies) {
+    if (house.wall(b.wall)?.level === 0) want(a.terraces, { kind: "terraces" });
+    else want(a.balconies, { kind: "balconies" });
+  }
+  if (house.dormers.length) want(a.dormers, { kind: "dormers" });
+  for (const o of house.openings) {
+    if (o.kind === "GlassDoor") want(a.glassDoors, { kind: "glassDoors" });
+    if (o.kind === "Passage") want(a.openPlan, { kind: "openPlan" });
+  }
   for (let n = 2; n <= Math.min(house.levels, 3); n++) want(a.maxStoreys >= n, { kind: "storeys", count: n });
   return TECHNIQUE_IDS.filter((t) => need.has(t));
 }
@@ -342,6 +383,12 @@ export function techniquesFor(r: Requirement, a: Abilities): TechniqueId[] {
       break;
     case "paint":
       if (r.color !== "White" && !a.paint) needs.push({ kind: "paint" });
+      break;
+    case "fireplace":
+      if (!a.fireplace) needs.push({ kind: "fireplace" });
+      break;
+    case "terrace":
+      if (!a.terraces) needs.push({ kind: "terraces" });
       break;
     case "doubleHeight":
       if (!a.doubleHeight) needs.push({ kind: "doubleHeight" });
@@ -388,6 +435,10 @@ export function canBuild(a: Abilities, u: Unlock): boolean {
     case "balconies":
     case "basement":
     case "doubleHeight":
+    case "glassDoors":
+    case "fireplace":
+    case "terraces":
+    case "dormers":
       return a[u.kind];
     default:
       return a.all;

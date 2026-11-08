@@ -7,7 +7,6 @@ import { buildFurniture } from "./furniture3d";
 import { PAINT_HEX, floorTexture, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
-  type TriMesh,
   FLOOR_FINISHES,
   FLOOR_SLAB_HEIGHT,
   ROOF_MATERIALS,
@@ -17,6 +16,11 @@ import {
   shapedGround,
   siteLevel,
   retainingWalls,
+  chimneys,
+  CHIMNEY_SIZE,
+  dormerShape,
+  TriMesh,
+  Vec3,
   accessRoutes,
   exposedBase,
   siteOf,
@@ -76,6 +80,8 @@ const palette = {
   floor: each(FLOOR_FINISHES, (f) => worldMaterial(floorTexture(f), { roughness: f === "Tiles" || f === "Stone" ? 0.5 : 0.8 })),
   slab: worldMaterial(floorTexture("Concrete")),
   stairs: worldMaterial(floorTexture("Wood"), { roughness: 0.7 }),
+  deck: worldMaterial(groundTexture("wood"), { color: "#e7c79a" }),
+  brick: worldMaterial(wallTexture("Brick")),
 };
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
@@ -136,6 +142,7 @@ export type Pick =
   | { kind: "stair"; id: number }
   | { kind: "furniture"; id: number }
   | { kind: "balcony"; id: number }
+  | { kind: "dormer"; id: number }
   | { kind: "room"; level: number; at: Vec2 }
   | { kind: "roof" };
 
@@ -345,6 +352,19 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
         glass.scale.set(w - fw, h - fw, 0.02);
         glass.rotation.y = rotY;
         group.add(glass);
+      } else if (o.kind === "GlassDoor") {
+        // Two tall glass panels in a frame, with a bar between them.
+        box(o.offset, midV, at, size(fw, h, frameDepth * 0.6), rotY, palette.frame);
+        box(o.offset, o.sill + 0.04, at, size(w, 0.08, frameDepth), rotY, palette.frame);
+        const glass = solid(unitBox, palette.glass);
+        glass.userData.pick = pick;
+        glass.castShadow = false;
+        glass.position.copy(at(o.offset, midV));
+        glass.scale.set(w - fw, h - fw, 0.02);
+        glass.rotation.y = rotY;
+        group.add(glass);
+      } else if (o.kind === "Passage") {
+        // Nothing to fill it: just the trim round the opening.
       } else if (o.kind === "GarageDoor") {
         // Sectional door: a pale panel with horizontal grooves.
         box(o.offset, midV - fw * 0.5, at, size(w - fw * 2, h - fw, 0.05), rotY, palette.garageDoor);
@@ -452,6 +472,15 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       g.add(mesh);
     };
     const [hw, hd] = [b.width / 2, b.depth / 2];
+    if (wall.level === 0) {
+      // A terrace: a wooden deck at the ground floor's level, on posts down to the ground.
+      part(palette.deck, 0, FLOOR_SLAB_HEIGHT - 0.06, 0, b.width, 0.12, b.depth);
+      for (const x of [-hw + 0.15, hw - 0.15]) for (const z of [-hd + 0.3, hd - 0.15]) part(palette.stairs, x, -1.5, z, 0.14, 3, 0.14);
+      // A step down along the front.
+      part(palette.deck, 0, -0.12, hd + 0.2, b.width, 0.1, 0.4);
+      group.add(g);
+      continue;
+    }
     part(palette.slab, 0, -0.1, 0, b.width, 0.2, b.depth);
     const railH = 1.05;
     const posts: [number, number][] = [];
@@ -490,7 +519,76 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     }
   }
 
+  // Chimneys: from each fireplace up through the storeys above and out through the roof.
+  for (const c of chimneys(house, roof.ok ? roof.value : null)) {
+      const f = house.furniturePiece(c.fireplace);
+      if (!f || !visible(f.level)) continue;
+      // Only above the roof when the roof is hidden, it would hang in the air: stop at the top storey then.
+      const end = options.roof ? c.top : Math.min(c.top, house.levelBase(top) + house.storeyHeight(top));
+      const stack = solid(unitBox, palette.brick);
+      stack.position.set(c.at.x, (c.base + end) / 2, c.at.y);
+      stack.scale.set(CHIMNEY_SIZE.width, end - c.base, CHIMNEY_SIZE.depth);
+      stack.rotation.y = Math.atan2(c.facing.x, c.facing.y);
+      stack.userData.pick = { kind: "furniture", id: c.fireplace } satisfies Pick;
+      group.add(stack);
+      if (options.roof) {
+        const cap = solid(unitBox, palette.slab);
+        cap.position.set(c.at.x, end + 0.05, c.at.y);
+        cap.scale.set(CHIMNEY_SIZE.width + 0.12, 0.1, CHIMNEY_SIZE.depth + 0.12);
+        cap.rotation.y = stack.rotation.y;
+        group.add(cap);
+      }
+    }
+
   if (house.roof && roof.ok && options.roof) {
+    // Dormers: a front wall with a window, cheeks down to the roof, and a little gable roof.
+    for (const d of house.dormers) {
+      const shape = dormerShape(house, d, roof.value);
+      const wall = house.wall(d.wall);
+      if (!shape || !wall) continue;
+      const pickD = { kind: "dormer", id: d.id } satisfies Pick;
+      const facade = palette.gable[wall.material];
+      const covering = palette.roof[house.roof.material];
+      const { front, along, inward, width: w, sill, eave, ridge, depth } = shape;
+      const P = (u: number, v: number, h: number) => {
+        const q = front.add(along.scale(u)).add(inward.scale(v));
+        return new Vec3(q.x, h, q.y);
+      };
+      const walls = new TriMesh();
+      const roofMesh = new TriMesh();
+      const hw = w / 2;
+      const out = new Vec3(-inward.x, 0, -inward.y);
+      // Front wall, from a little below the roof surface up to the eaves, and its gable.
+      walls.pushQuadFacing(P(-hw, 0, sill - 0.25), P(hw, 0, sill - 0.25), P(hw, 0, eave), P(-hw, 0, eave), out);
+      walls.pushTriFacing(P(-hw, 0, eave), P(hw, 0, eave), P(0, 0, ridge), out);
+      // Cheeks: triangles from the roof surface up to the eaves.
+      for (const s of [-1, 1]) {
+        const side = new Vec3(along.x * s, 0, along.y * s);
+        walls.pushTriFacing(P(s * hw, 0, sill - 0.25), P(s * hw, 0, eave), P(s * hw, depth, eave), side);
+      }
+      // Its roof: two slopes, overhanging a little at the front and the sides.
+      for (const s of [-1, 1]) {
+        const up = new Vec3(along.x * s, 1, along.y * s);
+        roofMesh.pushQuadFacing(P(s * (hw + 0.15), -0.25, eave - 0.08), P(s * (hw + 0.15), depth, eave - 0.08), P(0, depth, ridge), P(0, -0.25, ridge), up);
+      }
+      const wallsMesh = solid(toGeometry(walls), facade);
+      const roofTop = solid(toGeometry(roofMesh), covering);
+      wallsMesh.userData.pick = roofTop.userData.pick = pickD;
+      group.add(wallsMesh, roofTop);
+      // The window.
+      const winH = Math.min(1.05, eave - sill - 0.3);
+      const winMid = P(0, -0.04, sill + 0.15 + winH / 2);
+      const frame = solid(unitBox, palette.frame);
+      frame.position.set(winMid.x, winMid.y, winMid.z);
+      frame.scale.set(Math.min(w - 0.4, 1.4), winH + 0.1, 0.1);
+      frame.rotation.y = Math.atan2(-along.y, along.x);
+      const glass = solid(unitBox, palette.glass);
+      glass.position.copy(frame.position).add(new THREE.Vector3(out.x * 0.04, 0, out.z * 0.04));
+      glass.scale.set(Math.min(w - 0.4, 1.4) - 0.12, winH - 0.04, 0.04);
+      glass.rotation.y = frame.rotation.y;
+      frame.userData.pick = glass.userData.pick = pickD;
+      group.add(frame, glass);
+    }
     const surface = solid(toGeometry(roof.value.surface), palette.roof[house.roof.material]);
     surface.userData.pick = { kind: "roof" } satisfies Pick;
     group.add(surface);
