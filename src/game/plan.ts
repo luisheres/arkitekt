@@ -67,6 +67,10 @@ import {
   wallThickness,
   doorApproaches,
   fenceLayout,
+  altanLayout,
+  outsideDoors,
+  snapPathPoint,
+  projectOntoSegment,
   streetFor,
   FLOOR_SLAB_HEIGHT,
   siteLevel,
@@ -92,6 +96,7 @@ type Drag =
   | { kind: "balcony"; id: number; grab: number }
   | { kind: "dormer"; id: number; grab: number }
   | { kind: "house"; grab: Vec2; moved: Vec2 }
+  | { kind: "pathPoint"; id: number; index: number }
   | { kind: "room"; start: Vec2 };
 
 type Hit =
@@ -103,6 +108,9 @@ type Hit =
   | { kind: "furniture"; id: number }
   | { kind: "balcony"; id: number }
   | { kind: "dormer"; id: number }
+  | { kind: "path"; id: number }
+  | { kind: "pathPoint"; id: number; index: number }
+  | { kind: "house" }
   | { kind: "room"; at: Vec2 }
   | null;
 
@@ -127,6 +135,8 @@ export class PlanView {
   private cursor: Vec2 | null = null;
   private freeSnap = false; // Alt held: no grid snapping
   private draft: Vec2[] = [];
+  /** A path being laid, point by point. */
+  private pathDraft: Vec2[] = [];
   private draftTool: Tool = "select";
   private drag: Drag | null = null;
   private hover: Hit = null;
@@ -216,8 +226,9 @@ export class PlanView {
 
   /** Cancel the drawing in progress. Returns false when there was nothing to cancel. */
   cancel(): boolean {
-    if (this.draft.length > 0 || this.drag?.kind === "room") {
+    if (this.draft.length > 0 || this.pathDraft.length > 0 || this.drag?.kind === "room") {
       this.draft = [];
+      this.pathDraft = [];
       this.drag = null;
       this.requestRender();
       return true;
@@ -227,6 +238,7 @@ export class PlanView {
 
   /** Finish an open chain of walls. */
   finish(): void {
+    if (this.store.tool === "path") return this.finishPath();
     if (this.draft.length >= 2) this.commitDraft(false);
     else this.cancel();
   }
@@ -382,6 +394,13 @@ export class PlanView {
 
   private hitTest(p: Vec2): Hit {
     const px = 1 / this.scale;
+    // The points of the selected path, to drag them.
+    const sel = this.store.selection;
+    if (sel?.kind === "path") {
+      const path = this.house.path(sel.id);
+      const index = path ? path.points.findIndex((q) => q.distance(p) < SNAP_PX * px) : -1;
+      if (path && index >= 0) return { kind: "pathPoint", id: path.id, index };
+    }
     let corner: Vec2 | null = null;
     for (const c of corners(this.house, this.level)) {
       // Capped in meters too, so zoomed out a corner does not swallow clicks meant for its walls.
@@ -427,6 +446,15 @@ export class PlanView {
     const stair = this.stairs.find((s) => pointInPolygon(p, stairOutline(s)));
     if (stair) return { kind: "stair", id: stair.id };
     if (roomAt(this.rooms, p)) return { kind: "room", at: p };
+    // The altan: its menu is the whole house's.
+    if (this.level === 0 && altanLayout(this.house)?.pieces.some((q) => pointInPolygon(p, q))) return { kind: "house" };
+    for (const r of accessRoutes(this.house, this.store.plot).routes) {
+      for (let i = 1; i < r.points.length; i++) {
+        const [a, b] = [r.points[i - 1], r.points[i]];
+        const t = projectOntoSegment(p, a, b);
+        if (a.add(b.sub(a).normalize().scale(t)).distance(p) < r.width / 2 + PICK_PX * px) return { kind: "path", id: r.id };
+      }
+    }
     return null;
   }
 
@@ -462,7 +490,7 @@ export class PlanView {
       this.requestRender();
     });
     svg.addEventListener("dblclick", () => {
-      if (drawsWalls(this.store.tool)) this.finish();
+      if (drawsWalls(this.store.tool) || this.store.tool === "path") this.finish();
     });
     svg.addEventListener(
       "wheel",
@@ -532,6 +560,18 @@ export class PlanView {
           const b = this.house.balcony(hit.id)!;
           const wall = this.house.wall(b.wall)!;
           this.drag = { kind: "balcony", id: b.id, grab: p.sub(wall.start).dot(wall.direction()) - b.offset };
+        } else if (hit.kind === "house") {
+          store.endGesture();
+          store.select(hit);
+          this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
+          return;
+        } else if (hit.kind === "path") {
+          store.endGesture();
+          store.select(hit);
+          this.drag = { kind: "pan", x: e.clientX, y: e.clientY };
+          return;
+        } else if (hit.kind === "pathPoint") {
+          this.drag = { kind: "pathPoint", id: hit.id, index: hit.index };
         } else if (hit.kind === "wall") {
           store.select(hit);
           const wall = this.house.wall(hit.id)!;
@@ -556,6 +596,18 @@ export class PlanView {
       case "room":
         this.drag = { kind: "room", start: this.snap(p).point };
         break;
+      case "path": {
+        const s = this.pathSnap(p);
+        const draft = this.pathDraft;
+        if (draft.length && s.point.distance(draft[draft.length - 1]) < 1e-6) {
+          this.finishPath(); // clicked the last point again
+          break;
+        }
+        draft.push(s.point);
+        // Reaching a door ends the path.
+        if (s.door && draft.length >= 2) this.finishPath();
+        break;
+      }
       case "stairs": {
         let id: number | null = null;
         const at = snapToGrid(p, this.freeSnap ? 0.05 : GRID_STEP / 2);
@@ -659,6 +711,12 @@ export class PlanView {
         const s = h.stair(drag.id);
         if (s) s.at = at;
       });
+    } else if (drag.kind === "pathPoint") {
+      const at = this.pathSnap(p).point;
+      store.gestureEdit((h) => {
+        const path = h.path(drag.id);
+        if (path && path.points[drag.index]) path.points[drag.index] = at;
+      });
     } else if (drag.kind === "label") {
       const at = p.sub(drag.grab);
       store.gestureEdit((h) => {
@@ -679,7 +737,7 @@ export class PlanView {
       this.endDrag();
       const hit = this.hitTest(this.eventPoint(e));
       if (hit && hit.kind !== "corner") {
-        this.store.select(hit.kind === "label" ? this.labelSelection(hit.id, hit.at) : hit);
+        this.store.select(hit.kind === "label" ? this.labelSelection(hit.id, hit.at) : hit.kind === "pathPoint" ? { kind: "path", id: hit.id } : hit);
         this.onMenu(e.clientX, e.clientY);
       } else this.store.select(null);
       return;
@@ -723,6 +781,25 @@ export class PlanView {
     draft.push(p);
     // Reaching an existing wall or corner connects to it and ends the chain.
     if (snap.anchored && !draft.slice(0, -1).some((q) => q.distance(p) < 1e-6)) this.commitDraft(false);
+  }
+
+  /** Where a path point goes: a doorstep, the road's edge, or the grid. */
+  private pathSnap(p: Vec2) {
+    return snapPathPoint(this.house, this.store.plot, p, this.freeSnap ? 0.05 : GRID_STEP / 2);
+  }
+
+  /** Lay the path drawn so far: a drive if it reaches a garage door, a path otherwise. */
+  private finishPath(): void {
+    const points = this.pathDraft;
+    this.pathDraft = [];
+    if (points.length < 2) return this.requestRender();
+    const doors = outsideDoors(this.house);
+    const end = [points[0], points[points.length - 1]];
+    const drive = doors.some((d) => d.kind === "GarageDoor" && end.some((q) => q.distance(d.at) < 1e-6));
+    const gravel = this.store.plot.access.road === "gravel";
+    let id: number | null = null;
+    this.store.edit((h) => (id = h.addPath(drive ? "drive" : "path", points, drive ? (gravel ? "Gravel" : "Tarmac") : "Paving")));
+    if (id !== null) this.store.select({ kind: "path", id });
   }
 
   private commitDraft(closed: boolean): void {
@@ -875,6 +952,13 @@ export class PlanView {
       }
     }
 
+    // The altan round the ground floor: its deck boards.
+    const altan = this.level === 0 ? altanLayout(house) : null;
+    if (altan) {
+      const cls = ["altan", this.hover?.kind === "house" && "hover", this.store.selection?.kind === "house" && "selected"].filter(Boolean).join(" ");
+      for (const q of altan.pieces) out.push(`<polygon class="${cls}" points="${this.pts(q)}"/>`);
+    }
+
     // Dormers, in the roof over their wall (top storey only).
     for (const d of house.dormers) {
       const wall = house.wall(d.wall);
@@ -1009,8 +1093,16 @@ export class PlanView {
     const s = sceneryFor(this.store.plot);
     const out: string[] = [];
     // Driveways and the path to the front door.
-    for (const r of accessRoutes(this.house, this.store.plot).routes)
-      out.push(`<polyline class="route ${r.surface}" style="stroke-width:${(r.width * this.scale).toFixed(1)}" points="${this.pts(r.points)}"/>`);
+    const sel = this.store.selection;
+    for (const r of accessRoutes(this.house, this.store.plot).routes) {
+      const state = sel?.kind === "path" && sel.id === r.id ? " selected" : this.hover?.kind === "path" && this.hover.id === r.id ? " hover" : "";
+      out.push(`<polyline class="route ${r.surface}${state}" style="stroke-width:${(r.width * this.scale).toFixed(1)}" points="${this.pts(r.points)}"/>`);
+      if (state === " selected")
+        for (const q of r.points) {
+          const [x, y] = this.toScreen(q);
+          out.push(`<circle class="path-handle" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"/>`);
+        }
+    }
     for (const wall of s.walls) out.push(`<polyline class="stone-wall" style="stroke-width:${Math.max(2, 0.6 * this.scale).toFixed(1)}" points="${this.pts(wall)}"/>`);
     // The fence round the plot, with its gates.
     if (this.house.fence) {
@@ -1325,6 +1417,11 @@ export class PlanView {
         out.push(this.label(a.add(b).scale(0.5), `${fmt(w)} × ${fmt(dpt)} m = ${fmt(w * dpt)} m²`, cls));
       }
       out.push(marker(s));
+    } else if (tool === "path") {
+      const s = this.pathSnap(cursor);
+      const pts = [...this.pathDraft, s.point];
+      if (pts.length >= 2) out.push(`<polyline class="path-draft" style="stroke-width:${(1.2 * this.scale).toFixed(1)}" points="${this.pts(pts)}"/>`);
+      out.push(marker({ point: s.point, anchored: !!s.door || s.road }));
     } else if (tool === "window" || tool === "door") {
       const target = this.openingTarget(cursor);
       if (target) {

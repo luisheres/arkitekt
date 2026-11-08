@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { freePlayClient } from "./clients";
 import { costLines, defaultPrices } from "./cost";
 import { placeTerrace, setRoomType } from "./edit";
-import { doorApproaches, dormerShape, placeDormer } from "./features";
+import { doorApproaches, raisedDoors, dormerShape, placeDormer } from "./features";
 import { Vec2, pointInPolygon } from "./geometry";
 import { House } from "./model";
 import { plotById } from "./plot";
@@ -69,8 +69,11 @@ describe("roof edges", () => {
 
 describe("steps and ramps", () => {
   const low = () => -0.5;
-  it("a door above the ground gets steps, about 17 cm each", () => {
+  it("a door above the ground gets steps only when the player adds them, about 17 cm each", () => {
     const { h, door } = make();
+    expect(doorApproaches(h, 0.05, low)).toHaveLength(0);
+    expect(raisedDoors(h, 0.05, low).map((a) => a.opening)).toEqual([door]);
+    h.opening(door)!.approach = "steps";
     const [a] = doorApproaches(h, 0.05, low);
     expect(a.opening).toBe(door);
     expect(a.rise).toBeCloseTo(0.55, 6);
@@ -82,14 +85,15 @@ describe("steps and ramps", () => {
 
   it("or a ramp at 1 in 12", () => {
     const { h, door } = make();
-    h.opening(door)!.ramp = true;
+    h.opening(door)!.approach = "ramp";
     const [a] = doorApproaches(h, 0.05, low);
     expect(a.ramp).toBe(true);
     expect(a.length).toBeCloseTo(0.55 * 12, 6);
   });
 
   it("not when the door is level with the ground, or opens onto a terrace", () => {
-    const { h, ids } = make();
+    const { h, ids, door } = make();
+    h.opening(door)!.approach = "steps";
     expect(doorApproaches(h, 0.05, () => 0)).toHaveLength(0);
     placeTerrace(h, ids[0]);
     const terrace = h.balconies[0];
@@ -98,7 +102,8 @@ describe("steps and ramps", () => {
   });
 
   it("are paid for", () => {
-    const { h } = make();
+    const { h, door } = make();
+    h.opening(door)!.approach = "steps";
     const steps = (lines: ReturnType<typeof costLines>) => lines.filter((l) => l.what.kind === "steps" || l.what.kind === "ramp");
     // The suburban plot is flat: a floor 5 cm up needs no steps.
     expect(steps(costLines(h, defaultPrices(), plot))).toHaveLength(0);
@@ -133,11 +138,15 @@ describe("window styles and frame colours", () => {
   it("are saved with the design", () => {
     const { h, window, door, ids } = make();
     Object.assign(h.opening(window)!, { style: "Cottage", color: "Green" });
-    h.opening(door)!.ramp = true;
+    h.opening(door)!.approach = "ramp";
     placeDormer(h, ids[0], true);
     const back = House.fromJSON(JSON.parse(JSON.stringify(h)));
     expect(back.opening(window)).toMatchObject({ style: "Cottage", color: "Green" });
-    expect(back.opening(door)!.ramp).toBe(true);
+    expect(back.opening(door)!.approach).toBe("ramp");
+    // Saves from before steps were a choice marked only ramps.
+    const old = JSON.parse(JSON.stringify(h));
+    for (const o of old.openings) if (o.approach) [o.ramp, o.approach] = [true, undefined];
+    expect(House.fromJSON(old).opening(door)!.approach).toBe("ramp");
     expect(back.dormers[0].skylight).toBe(true);
     // Plain ones stay plain: nothing extra is written.
     const plain = JSON.parse(JSON.stringify(make().h));

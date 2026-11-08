@@ -195,7 +195,8 @@ try {
   const panel = page.locator(".cost-panel");
   await panel.locator(".cost-line").first().waitFor();
   const groups = await panel.locator(".cost-group").evaluateAll((gs) => gs.map((g) => g.dataset.group).sort());
-  assert.deepEqual(groups, ["access", "facade", "floors", "interiorWalls", "openings", "roof"]);
+  // (No paths or drives yet: the player lays those.)
+  assert.deepEqual(groups, ["facade", "floors", "interiorWalls", "openings", "roof"]);
   assert.ok((await panel.locator(".cost-line").count()) >= 7, "a box per material, finish and kind of opening");
   const panelTotal = async () => (await panel.locator(".cost-summary b").first().textContent()).trim();
   assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
@@ -474,6 +475,33 @@ try {
   await page.click('.popover .choices button[title="None"]');
   assert.equal(await page.evaluate(() => window.architect.store.house.fence), null);
   await page.keyboard.press("Escape");
+  // A path laid by hand: from the street to the front door, which ends it.
+  const doorStep = await page.evaluate(() => {
+    const { store, core } = window.architect;
+    const d = core.outsideDoors(store.house).find((x) => x.kind === "Door");
+    return [d.at.x, d.at.y];
+  });
+  await page.keyboard.press("p");
+  await click(doorStep[0], 0.4);
+  await click(doorStep[0], doorStep[1] - 1.5);
+  await click(doorStep[0] + 0.3, doorStep[1] - 0.3);
+  const laid = await page.evaluate(() => {
+    const { store, core } = window.architect;
+    const routes = core.accessRoutes(store.house, store.plot).routes;
+    return { n: store.house.paths.length, kind: store.house.paths[0]?.kind, toDoor: routes[0]?.opening !== null, sel: store.selection?.kind };
+  });
+  assert.deepEqual(laid, { n: 1, kind: "path", toDoor: true, sel: "path" }, "a path from the street to the door");
+  await page.keyboard.press("v");
+  await page.keyboard.press("Escape");
+  // The day plays, and stops again when its button is pressed a second time.
+  await page.click('#view-toggles [data-view="play"]');
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => window.architect.view3d.playingDay), true);
+  await page.click('#view-toggles [data-view="play"]');
+  assert.equal(await page.evaluate(() => window.architect.view3d.playingDay), false, "the day stops");
+  const stoppedAt = await page.evaluate(() => window.architect.store.sunHour);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.architect.store.sunHour), stoppedAt);
   await page.keyboard.press("v");
   await page.click(".level-switch button[data-level='1']");
   await page.click("#view-toggles input[data-toggle='furniture']"); // so the click finds the room, not its bed
@@ -625,7 +653,7 @@ try {
   // The platform can stand higher (more filling) or lower (more digging).
   const platformText = async () => /platform at \+(\d+\.\d+) m/.exec(await status())[1];
   const platformBefore = Number(await platformText());
-  await page.locator(".popover input[type=range]").fill("0.5");
+  await page.getByRole("slider", { name: "Platform height" }).fill("0.5");
   assert.ok(Math.abs(Number(await platformText()) - platformBefore - 0.5) < 0.06, "half a metre higher");
   await page.keyboard.press("Escape");
   // A basement: dug under the house, with stairs needed down to it.

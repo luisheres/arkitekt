@@ -148,10 +148,14 @@ export function siteOf(house: House, plot: Plot): Site | null {
     if (pointInPolygon(p, face)) return "house";
     return depthAt(p) >= 0 && pointInPolygon(p, edge) ? "terrace" : "ground";
   };
+  // On columns, the ground is left as it is downhill, under the house and round it.
+  const columns = onColumns(house);
   const heightIn = (p: Vec2, r: SiteRegion): number => {
+    if (r === "house" && columns) return Math.min(level, natural(p));
     if (r !== "ground") return level;
     const n = natural(p);
     const depth = depthAt(p);
+    if (columns && depth < 0) return n;
     if (depth >= 0) {
       // Uphill: beyond the working space, back up to the natural ground (or held by a wall).
       const m = nearestOnPolygon(p, edge);
@@ -191,10 +195,13 @@ export function retainingWalls(house: House, plot: Plot): RetainingWall[] {
     .filter((w) => w.topA > site.level + 0.02 || w.topB > site.level + 0.02);
 }
 
+/** Whether the house stands on columns (not with a basement, which needs walls). */
+export const onColumns = (house: House): boolean => house.foundation === "Columns" && !house.basement;
+
 /** The house's base showing above the ground downhill (walls standing on it are flush with the facade). */
 export function exposedBase(house: House, plot: Plot): ExposedBase[] {
   const site = siteOf(house, plot);
-  if (!site) return [];
+  if (!site || onColumns(house)) return [];
   const at = (p: Vec2) => site.heightIn(p.add(p.sub(nearestOnPolygon(p, standingOutline(house)!)).normalize().scale(0.02)), "ground");
   return along(site.face, 0.25)
     .map(([a, b]) => ({ a, b, groundA: at(a), groundB: at(b) }))
@@ -238,4 +245,41 @@ export function earthworks(house: House, plot: Plot): { cut: number; fill: numbe
 export function shapedGround(house: House, plot: Plot): (x: number, y: number) => number {
   const site = siteOf(house, plot);
   return site ? site.ground : (x, y) => groundHeight(plot, x, y);
+}
+
+/** A column under a house on columns: where it stands, and from the ground up to the floor. */
+export interface Column {
+  at: Vec2;
+  ground: number;
+  top: number;
+}
+
+/** Columns under the house wherever the ground falls away below the floor, about 2.4 m apart. */
+export function foundationColumns(house: House, plot: Plot): Column[] {
+  const site = siteOf(house, plot);
+  if (!site || !onColumns(house)) return [];
+  return columnSpots(standingOutline(house)!)
+    .map((at) => ({ at, ground: groundHeight(plot, at.x, at.y), top: site.level }))
+    .filter((c) => c.top - c.ground > 0.15);
+}
+
+/** Where columns stand under an outline: along its edges (corners too) and on a grid inside, about 2.4 m apart. */
+export function columnSpots(outline: readonly Vec2[]): Vec2[] {
+  const inset = offsetPolygon(outline, -0.15);
+  const spots: Vec2[] = [];
+  // Along the walls (corners included)...
+  inset.forEach((a, i) => {
+    const b = inset[(i + 1) % inset.length];
+    const n = Math.max(1, Math.round(a.distance(b) / 2.4));
+    for (let k = 0; k < n; k++) spots.push(a.add(b.sub(a).scale(k / n)));
+  });
+  // ...and a grid under the middle.
+  const xs = outline.map((p) => p.x);
+  const ys = outline.map((p) => p.y);
+  for (let y = Math.min(...ys) + 2.4; y < Math.max(...ys) - 1; y += 2.4)
+    for (let x = Math.min(...xs) + 2.4; x < Math.max(...xs) - 1; x += 2.4) {
+      const p = new Vec2(x, y);
+      if (pointInPolygon(p, inset) && distanceToPolygon(p, inset) > 1) spots.push(p);
+    }
+  return spots;
 }

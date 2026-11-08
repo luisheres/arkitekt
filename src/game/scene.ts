@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { buildFurniture } from "./furniture3d";
 import { buildInterior, setLampsDusk } from "./interior3d";
+import { mergeByMaterial } from "./merge";
 import { FRAME_HEX, PAINT_HEX, floorTexture, snowy, groundTexture, interiorTexture, roofTexture, toon, wallTexture, worldMaterial } from "./textures";
 import {
   type House,
@@ -49,6 +50,13 @@ import {
   wallThickness,
   doorApproaches,
   decorate,
+  furnitureOutline,
+  altanLayout,
+  altanSteps,
+  foundationColumns,
+  onColumns,
+  standingOutline,
+  type Column,
   fenceLayout,
   type FenceStyle,
   roofHeightAt,
@@ -196,6 +204,8 @@ export type Pick =
   | { kind: "furniture"; id: number }
   | { kind: "balcony"; id: number }
   | { kind: "dormer"; id: number }
+  | { kind: "path"; id: number }
+  | { kind: "house" }
   | { kind: "room"; level: number; at: Vec2 }
   | { kind: "roof" };
 
@@ -256,7 +266,7 @@ const lawnMaterial = snowy(worldMaterial(groundTexture("lawn")));
  * or a retaining wall its cells are split finely, each piece taking the height of its own
  * side, so the grass never slants up a wall.
  */
-function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number) => number): THREE.Mesh {
+function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number) => number, under = false): THREE.Mesh {
   const step = 0.5;
   const nx = Math.round(plot.width / step);
   const ny = Math.round(plot.depth / step);
@@ -285,7 +295,7 @@ function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number)
         [x0 + step / 2, y0 + step / 2],
       ].map(([x, y]) => site.region(new Vec2Class(x, y)));
       if (regions.every((r) => r === regions[0])) {
-        if (regions[0] !== "house") square(x0, y0, step, ground);
+        if (regions[0] !== "house" || under) square(x0, y0, step, ground);
         continue;
       }
       // Along an edge: small pieces, each on its own side.
@@ -295,7 +305,7 @@ function buildLawn(plot: Plot, site: Site | null, ground: (x: number, y: number)
         for (let a = 0; a < n; a++) {
           const [sx, sy] = [x0 + a * sub, y0 + b * sub];
           const r = site.region(new Vec2Class(sx + sub / 2, sy + sub / 2));
-          if (r !== "house") square(sx, sy, sub, (x, y) => site.heightIn(new Vec2Class(x, y), r));
+          if (r !== "house" || under) square(sx, sy, sub, (x, y) => site.heightIn(new Vec2Class(x, y), r));
         }
     }
   const g = new THREE.BufferGeometry();
@@ -617,9 +627,24 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
     if (wall.level === 0) {
       // A terrace: a wooden deck at the ground floor's level, on posts down to the ground.
       part(palette.deck, 0, FLOOR_SLAB_HEIGHT - 0.06, 0, b.width, 0.12, b.depth);
-      for (const x of [-hw + 0.15, hw - 0.15]) for (const z of [-hd + 0.3, hd - 0.15]) part(palette.stairs, x, -1.5, z, 0.14, 3, 0.14);
-      // A step down along the front.
-      part(palette.deck, 0, -0.12, hd + 0.2, b.width, 0.1, 0.4);
+      // Posts from under the deck down to the ground, however far that is.
+      const left = new Vec2Class(-d.y, d.x);
+      const groundAt = (x: number, z: number) => {
+        const q = centre.add(d.scale(x)).add(left.scale(z * out));
+        return ground(q.x, q.y) - platform - base(wall.level);
+      };
+      for (const x of [-hw + 0.15, hw - 0.15])
+        for (const z of [-hd + 0.3, hd - 0.15]) {
+          const gy = groundAt(x, z) - 0.2;
+          if (-0.12 - gy > 0.02) part(palette.stairs, x, (gy - 0.12) / 2, z, 0.14, -0.12 - gy, 0.14);
+        }
+      // Down from the front: a step, or a flight of steps when the deck is high.
+      const rise = FLOOR_SLAB_HEIGHT - groundAt(0, hd + 0.6);
+      if (rise > 0.35) {
+        const front = centre.add(left.scale(hd * out));
+        const steps = Math.max(2, Math.round(rise / 0.17));
+        outside.push(approach({ opening: -1, at: front, out: left.scale(out), along: d, width: 1.2, rise, ground: platform + base(wall.level) + FLOOR_SLAB_HEIGHT - rise, steps, ramp: false, length: steps * 0.3 + 0.4, side: 1 }, ground));
+      } else if (rise > 0.08) part(palette.deck, 0, -0.12, hd + 0.2, b.width, 0.1, 0.4);
       group.add(g);
       continue;
     }
@@ -652,7 +677,24 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       piece.traverse((o) => (o.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick));
       // Garden plants stand on the ground (outside the platform); everything else on the floor.
       if (isOutdoor(f.kind)) {
-        piece.position.y = ground(f.at.x, f.at.y);
+        // On a slope: sheds, greenhouses and beds stand level on a base up to the ground's
+        // highest corner; a pond is dug in at its lowest; trampolines and swings stand on
+        // their legs; plants grow where their middle is.
+        const hs = furnitureOutline(f).map((q) => ground(q.x, q.y));
+        const [lo, hi] = [Math.min(...hs), Math.max(...hs)];
+        if (LEVEL_ON_BASE.has(f.kind)) {
+          piece.position.y = hi;
+          if (hi - lo > 0.04) {
+            const footing = solid(unitBox, baseMaterial);
+            footing.position.set(f.at.x, (lo - 0.1 + hi) / 2, f.at.y);
+            footing.scale.set(f.width + 0.1, hi - lo + 0.1, f.depth + 0.1);
+            footing.rotation.y = Math.atan2(f.facing.x, f.facing.y);
+            footing.userData.pick = { kind: "furniture", id: f.id! } satisfies Pick;
+            outside.push(footing);
+          }
+        } else if (f.kind === "Pond") piece.position.y = lo;
+        else if (f.kind === "Trampoline" || f.kind === "Swing") piece.position.y = (lo + hi) / 2;
+        else piece.position.y = ground(f.at.x, f.at.y);
         outside.push(piece);
         continue;
       }
@@ -795,6 +837,7 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, routeMaterials[r.surface]);
       mesh.receiveShadow = true;
+      mesh.userData.pick = { kind: "path", id: r.id } satisfies Pick;
       outside.push(mesh);
     }
     // Downhill, the house's base shows above the ground: concrete, flush with the facade,
@@ -825,7 +868,13 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
       }
     }
     if (house.fence) outside.push(buildFence(house, options.plot, ground));
-    // The house's own letterbox, by the road where the path comes in.
+    // On columns: a slab under the ground floor and the columns down to the ground.
+    const cols = foundationColumns(house, options.plot);
+    const standing = standingOutline(house);
+    if (cols.length && standing) outside.push(buildColumns(cols, standing, platform));
+    // The altan round the house, at floor level.
+    if (house.altan) outside.push(buildAltan(house, platform + FLOOR_SLAB_HEIGHT, ground));
+    // The house's own letterbox, by the road where the first path comes in.
     const path = accessRoutes(house, options.plot).routes.find((r) => r.kind === "path");
     if (path && path.points.length > 1) {
       const [a, b] = [path.points[0], path.points[1]];
@@ -873,10 +922,12 @@ export function buildHouse(house: House, options: HouseViewOptions = { roof: tru
   group.position.y = platform;
   const site = new THREE.Group();
   site.add(group, ...outside);
-  if (options.plot) site.add(buildLawn(options.plot, siteOf(house, options.plot), ground));
-  // A soft shade on the ground round the foot of the house, where little sky light reaches.
+  const columns = onColumns(house) && !!options.plot?.terrain;
+  if (options.plot) site.add(buildLawn(options.plot, siteOf(house, options.plot), ground, columns));
+  // A soft shade on the ground round the foot of the house, where little sky light reaches
+  // (not under a house on columns, which stands clear of it).
   const foot = standingOutlineOf(house);
-  if (options.plot && foot) site.add(contactShade(foot, ground));
+  if (options.plot && foot && !columns) site.add(contactShade(foot, ground));
   return site;
 }
 
@@ -1025,6 +1076,26 @@ function approach(a: DoorApproach, ground: (x: number, y: number) => number): TH
     mesh.rotation.y = rotY;
     g.add(mesh);
   };
+  if (!a.ramp && a.rise > 1) {
+    // High up: an open wooden stair, with treads between two stringers and a handrail.
+    const side = a.width / 2 - 0.05;
+    const run = a.steps * 0.28;
+    for (const u of [-side, side]) {
+      g.add(beam(P(u, 0, floor - 0.1), P(u, run, a.ground - 0.05), 0.06, 0.25, palette.stairs));
+      g.add(beam(P(u, 0, floor + 0.9), P(u, run, a.ground + 0.9), 0.05, 0.05, palette.stairs));
+      g.add(beam(P(u, run, a.ground - 0.2), P(u, run, a.ground + 0.9), 0.06, 0.06, palette.stairs));
+    }
+    for (let k = 1; k <= a.steps; k++) {
+      const t = (k - 0.5) * 0.28;
+      const y = floor - (a.rise * k) / (a.steps + 1);
+      const tread = solid(unitBox, palette.deck);
+      tread.position.copy(P(0, t, y));
+      tread.scale.set(a.width - 0.1, 0.05, 0.3);
+      tread.rotation.y = rotY;
+      g.add(tread);
+    }
+    return g;
+  }
   if (!a.ramp) {
     // A landing at the door, then a tread for each step down.
     block(0, 0.4, floor);
@@ -1123,5 +1194,76 @@ function buildFence(house: House, plot: Plot, ground: (x: number, y: number) => 
     for (let x = 0.12; x < w; x += 0.13) part(x - 0.035, x + 0.035, 0.08, H - 0.05);
     g.add(gate);
   }
+  return g;
+}
+
+const columnMaterial = toon({ color: "#9a958c" });
+
+/** Garden things that stand level on a base on sloping ground. */
+const LEVEL_ON_BASE = new Set(["Shed", "Greenhouse", "VegetablePatch", "FlowerBed"]);
+
+/**
+ * A house on columns: a slab under the ground floor (its top at `floor`) and a column
+ * from the ground up to it at each spot, set a little into the ground.
+ */
+export function buildColumns(columns: readonly Column[], outline: readonly Vec2[], floor: number): THREE.Group {
+  const g = new THREE.Group();
+  const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shapeOf(offsetPolygon(outline, 0.05), []), { depth: 0.35, bevelEnabled: false }), columnMaterial);
+  slab.rotation.x = -Math.PI / 2;
+  slab.position.y = floor - 0.35;
+  slab.castShadow = slab.receiveShadow = true;
+  g.add(slab);
+  for (const c of columns) {
+    const h = floor - 0.35 - c.ground + 0.3;
+    if (h <= 0.3) continue;
+    const m = solid(unitBox, columnMaterial);
+    m.position.set(c.at.x, c.ground - 0.3 + h / 2, c.at.y);
+    m.scale.set(0.24, h, 0.24);
+    g.add(m);
+  }
+  g.traverse((o) => (o.userData.pick = { kind: "house" } satisfies Pick));
+  return g;
+}
+
+/**
+ * The altan: a wooden deck at floor level along its walls (plan x, y as x, z), on posts
+ * down to the ground, with a railing where it is high and steps down where it is lowest.
+ */
+export function buildAltan(house: House, floor: number, ground: (x: number, y: number) => number): THREE.Group {
+  const parts = new THREE.Group();
+  const layout = altanLayout(house);
+  if (!layout) return parts;
+  const top = floor;
+  for (const piece of layout.pieces) {
+    const deck = new THREE.Mesh(new THREE.ExtrudeGeometry(shapeOf(piece, []), { depth: 0.12, bevelEnabled: false }), palette.deck);
+    deck.rotation.x = -Math.PI / 2;
+    deck.position.y = top - 0.12;
+    parts.add(deck);
+  }
+  const steps = altanSteps(house, floor, ground);
+  // Posts every metre and a half or so round the edge.
+  let walked = 1.5;
+  for (const bit of layout.edge) {
+    walked += bit.a.distance(bit.b);
+    if (walked < 1.5) continue;
+    walked = 0;
+    const p = bit.a.sub(bit.out.scale(0.08));
+    const gy = ground(p.x, p.y) - 0.2;
+    if (top - 0.12 - gy > 0.05) parts.add(beam(new THREE.Vector3(p.x, gy, p.y), new THREE.Vector3(p.x, top - 0.12, p.y), 0.12, 0.12, palette.stairs));
+  }
+  // A railing wherever the deck stands more than half a metre up (not across the steps).
+  for (const bit of layout.edge) {
+    const m = bit.a.add(bit.b).scale(0.5);
+    if (steps && m.distance(steps.at) < 0.8) continue;
+    const gy = ground(m.x + bit.out.x * 0.15, m.y + bit.out.y * 0.15);
+    if (top - gy < 0.5) continue;
+    const at = (q: Vec2, y: number) => new THREE.Vector3(q.x - bit.out.x * 0.03, top + y, q.y - bit.out.y * 0.03);
+    parts.add(beam(at(bit.a, 0.95), at(bit.b, 0.95), 0.06, 0.05, palette.stairs));
+    parts.add(beam(at(bit.a, 0.45), at(bit.b, 0.45), 0.03, 0.04, palette.stairs));
+    parts.add(beam(at(bit.a, 0), at(bit.a, 0.95), 0.035, 0.035, palette.stairs));
+  }
+  const g = mergeByMaterial(parts);
+  if (steps) g.add(approach(steps, ground));
+  g.traverse((o) => (o.userData.pick = { kind: "house" } satisfies Pick));
   return g;
 }

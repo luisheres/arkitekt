@@ -6,9 +6,9 @@ import type { FenceStyle } from "./model";
 import type { FloorFinish, House, OpeningKind, PaintColor, RoofMaterial, WallMaterial } from "./model";
 import type { Plot } from "./plot";
 import { analyzeHouse, voidArea } from "./rooms";
-import { earthworks, exposedFoundationArea, retainingArea, shapedGround, siteLevel } from "./site";
+import { earthworks, exposedFoundationArea, foundationColumns, retainingArea, shapedGround, siteLevel } from "./site";
 import { accessRoutes, routeLength } from "./access";
-import { chimneyLength, doorApproaches, fenceLayout } from "./features";
+import { altanLayout, altanSteps, chimneyLength, doorApproaches, fenceLayout } from "./features";
 import { buildRoof, coveringArea } from "./roof";
 
 /** Unit prices for building components. Money is in whole currency units. */
@@ -47,6 +47,9 @@ export interface PriceList {
   dormerBase: number;
   dormerM: number;
   skylight: number;
+  /** A column under a house on columns: its footing, and per metre of height. */
+  column: number;
+  columnM: number;
   /** A metre of fence, by style, and a garden gate. */
   fenceM: Record<FenceStyle, number>;
   gate: number;
@@ -99,6 +102,8 @@ export function defaultPrices(): PriceList {
     dormerM: 900,
     skylight: 1_300,
     fenceM: { Picket: 220, Board: 310 },
+    column: 650,
+    columnM: 380,
     gate: 1_400,
     step: 140,
     rampM: 260,
@@ -169,6 +174,8 @@ export type CostWhat =
   | { kind: "lightWells" }
   | { kind: "plant"; plant: FurnitureKind }
   | { kind: "fence"; style: FenceStyle }
+  | { kind: "altan" }
+  | { kind: "columns" }
   | { kind: "gate" }
   | { kind: "paint"; color: PaintColor };
 
@@ -259,6 +266,8 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
   if (retaining > 0.05) add("groundworks", { kind: "retainingWalls" }, retaining, "m2", retaining * prices.retainingWallM2);
   const foundation = plot ? exposedFoundationArea(house, plot) : 0;
   if (foundation > 0.05) add("groundworks", { kind: "exposedFoundation" }, foundation, "m2", foundation * prices.basementWallM2);
+  const columns = plot ? foundationColumns(house, plot) : [];
+  if (columns.length) add("groundworks", { kind: "columns" }, columns.length, "pieces", columns.reduce((s, c) => s + prices.column + (c.top - c.ground) * prices.columnM, 0));
 
   // The driveway to each garage and the path to the front door, from the road.
   if (plot)
@@ -307,6 +316,13 @@ export function costLines(house: House, prices: PriceList, plot?: Plot): CostLin
     const price = prices.plants[f.kind];
     if (price) add("extras", { kind: "plant", plant: f.kind }, 1, "pieces", price);
   }
+  // The altan: its deck, and the steps down from it.
+  const altan = altanLayout(house);
+  if (altan) add("extras", { kind: "altan" }, altan.area, "m2", altan.area * prices.terraceM2);
+  if (altan && plot) {
+    const down = altanSteps(house, siteLevel(house, plot) + 0.05, shapedGround(house, plot));
+    if (down) add("access", { kind: "steps" }, down.steps, "pieces", down.steps * prices.step);
+  }
   if (house.fence && plot) {
     const fence = fenceLayout(house, plot);
     add("extras", { kind: "fence", style: house.fence }, fence.length, "m", fence.length * prices.fenceM[house.fence]);
@@ -343,6 +359,8 @@ export function estimate(house: House, prices: PriceList, plot?: Plot): CostBrea
     dormer: "roof",
     skylight: "roof",
     fence: "extras",
+    altan: "extras",
+    columns: "groundworks",
     gate: "extras",
     steps: "groundworks",
     ramp: "groundworks",

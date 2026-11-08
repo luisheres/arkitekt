@@ -65,6 +65,10 @@ export function lineName(l: CostLine, short = false): string {
       return m.ui.costChart.ramp;
     case "fence":
       return m.ui.costChart.fence(m.ui.fenceStyles[w.style]);
+    case "altan":
+      return m.ui.costChart.altan;
+    case "columns":
+      return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.columns}`;
     case "gate":
       return `${m.ui.costChart.count(l.quantity)} ${m.ui.costChart.gate}`;
     case "earthworks":

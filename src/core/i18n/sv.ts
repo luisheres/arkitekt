@@ -319,7 +319,7 @@ export const sv: Messages = {
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} behöver en garageport`;
       case "GarageDoorUnreachable":
-        return "Ingen uppfart kan nå den här garageporten från vägen; vänd den mot vägen eller ge den plats framför";
+        return "Ingen uppfart leder till garageporten från vägen: lägg en med verktyget Gång och gör den till uppfart";
       case "VoidOnGroundFloor":
         return "En öppning ner ligger på bottenvåningen; det finns ingenting under att öppna ner till";
       case "BasementOutsideHouse":
@@ -472,7 +472,7 @@ export const sv: Messages = {
     storageFull: "Webbläsaren har inte plats för fler sparade ritningar. Ta bort en gammal, eller exportera den till en fil först.",
     cancel: "Avbryt",
     clickToEdit: "Klicka på ett rum, en vägg, ett fönster, en dörr eller en möbel, i planen eller i 3D, för att ändra det. Högerklick fungerar också.",
-    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa", move: "Flytta huset" },
+    tools: { select: "Markera", room: "Rum", wall: "Vägg", boundary: "Öppen", window: "Fönster", door: "Dörr", stairs: "Trappa", path: "Gång", move: "Flytta huset" },
     undo: "Ångra",
     undoTitle: "Ångra (Ctrl+Z)",
     redo: "Gör om",
@@ -561,6 +561,8 @@ export const sv: Messages = {
       gravelDriveway: "Grusad uppfart",
       footpath: "Gång till ytterdörren",
       fence: (style) => `${style}staket`,
+      altan: "Altan",
+      columns: "Pelare",
       gate: "Grind",
       exposedFoundation: "Synlig grundmur",
       lightWells: "Ljusgårdar",
@@ -592,6 +594,17 @@ export const sv: Messages = {
     turnLittle: "Vrid lite (väggarna lämnar rutnätet; taket passar ändå)",
     platformHeight: "Grundens höjd",
     platformHint: "Upp från markens medelhöjd: högre fyller mer jord, lägre schaktar mer. Djupa schakt och fyllningar får stödmurar.",
+    foundation: "Står på",
+    foundations: { Plinth: "Sockel", Columns: "Pelare" },
+    foundationHint: "I en slänt är en sockel en betongmur ner till marken; pelare lämnar marken som den är under huset.",
+    foundationBasement: "Ett hus med källare står på källarväggarna.",
+    altan: "Altan",
+    addAltan: "+ Altan runt huset",
+    removeAltan: "Ta bort altanen",
+    altanDepth: "Altanens djup",
+    altanHint: "Ett trädäck i golvhöjd längs ytterväggarna, ihopfogat runt hörnen, med räcke där det är högt och trappa ner. Välj väggarna i varje väggs meny.",
+    altanAlongWall: "+ Altan längs väggen",
+    altanNotAlongWall: "− Ingen altan längs väggen",
     moveHint: "Vrid det ett kvarts varv i taget, eller välj verktyget ✋ Flytta (M) och dra det i planen. I en slänt ändrar flytten hur mycket jord som schaktas.",
     sun: "Sol",
     playDay: "Dag",
@@ -607,6 +620,11 @@ export const sv: Messages = {
     garden: "Trädgård",
     gardenTitle: "Plantera träd, buskar, rabatter och häckar",
     gardenNote: "Nya växter hamnar på en ledig plats i trädgården; dra dem dit du vill, eller klicka på en för att vrida eller ta bort den.",
+    pathKind: "Sort",
+    pathKinds: { path: "Gång", drive: "Uppfart" },
+    pathSurface: "Beläggning",
+    pathSurfaces: { Paving: "Plattor", Gravel: "Grus", Tarmac: "Asfalt" },
+    pathNote: "Dra i punkterna för att flytta dem. En garageport behöver en uppfart från vägen.",
     gardenThingsTitle: "Bygg, odla och lek: en bod, ett växthus, en damm, grönsaker, en gunga, en studsmatta",
     fence: "Staket runt tomten",
     noFence: "Inget",
@@ -630,7 +648,8 @@ export const sv: Messages = {
     approach: "Upp till dörren",
     steps: "Trappsteg",
     ramp: "Ramp",
-    approachNote: (steps, rise) => `Golvet ligger ${rise} över marken här: ${steps} trappsteg, eller en ramp för rullstol och barnvagn.`,
+    noApproach: "Inget",
+    approachNote: (steps, rise) => `Golvet ligger ${rise} över marken här: lägg till ${steps} trappsteg, eller en ramp för rullstol och barnvagn.`,
     addDormer: "+ Takkupa",
     dormerNeedsRoof: "Takkupor behöver ett lutande tak (sadeltak eller valmat): välj ett i takmenyn först",
     dormerHint: "Takkupor står i taket ovanför en yttervägg på översta våningen; lägg till fler från en väggs meny och dra dem längs väggen.",
@@ -662,6 +681,7 @@ export const sv: Messages = {
       window: "Klicka på en yttervägg för att lägga till ett fönster.",
       door: "Klicka på en vägg för att lägga till en dörr.",
       stairs: "Klicka inne i ett rum för att placera en trappa upp till våningen ovanför; vrid den i sidopanelen.",
+      path: "Lägg en gång eller en uppfart: klicka från vägen (tomtens kant) till en dörr, punkt för punkt. Klicka på en dörr för att avsluta, eller tryck Enter eller dubbelklicka. Esc avbryter.",
       move: "Dra i huset för att flytta hela, med rum, trappor och möbler. Vrid det under Flytta och vrid i sidopanelen.",
     },
     street: "GATA",

@@ -33,6 +33,7 @@ const TOOLS: { tool: Tool; key: string; icon: string }[] = [
   { tool: "window", key: "N", icon: "🪟" },
   { tool: "door", key: "D", icon: "🚪" },
   { tool: "stairs", key: "S", icon: "🪜" },
+  { tool: "path", key: "P", icon: "🛤️" },
   { tool: "move", key: "M", icon: "✋" },
 ];
 

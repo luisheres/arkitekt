@@ -290,6 +290,8 @@ export function pricesWith(base: PriceList, a: Abilities): PriceList {
     dormerM: base.dormerM * all,
     skylight: base.skylight * all,
     fenceM: { Picket: base.fenceM.Picket * all, Board: base.fenceM.Board * all },
+    column: base.column * all,
+    columnM: base.columnM * all,
     gate: base.gate * all,
     step: base.step * all,
     rampM: base.rampM * all,
@@ -346,6 +348,7 @@ export function missingTechniques(house: House, a: Abilities): TechniqueId[] {
     if (INDOOR_PLANTS.includes(f.kind)) want(a.houseplants, { kind: "houseplants" });
     if (GARDEN_PLANTS.includes(f.kind)) want(a.garden, { kind: "garden" });
   }
+  if (house.altan) want(a.terraces, { kind: "terraces" });
   for (const b of house.balconies) {
     if (house.wall(b.wall)?.level === 0) want(a.terraces, { kind: "terraces" });
     else want(a.balconies, { kind: "balconies" });

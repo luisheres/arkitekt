@@ -316,7 +316,7 @@ export const en: Messages = {
       case "GarageNeedsGarageDoor":
         return `${room(i.room)} needs a garage door`;
       case "GarageDoorUnreachable":
-        return "No driveway can reach this garage door from the road; turn it towards the road or give it room in front";
+        return "No drive leads to this garage door from the road: lay one with the Path tool and make it a drive";
       case "VoidOnGroundFloor":
         return "An opening to the floor below is on the ground floor; there is nothing below it to open to";
       case "BasementOutsideHouse":
@@ -464,7 +464,7 @@ export const en: Messages = {
     storageFull: "This browser has no room left for saved designs. Delete an old one, or export it to a file first.",
     cancel: "Cancel",
     clickToEdit: "Click a room, wall, window, door or piece of furniture, in the plan or in 3D, to edit it. Right-click works too.",
-    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs", move: "Move house" },
+    tools: { select: "Select", room: "Room", wall: "Wall", boundary: "Open", window: "Window", door: "Door", stairs: "Stairs", path: "Path", move: "Move house" },
     undo: "Undo",
     undoTitle: "Undo (Ctrl+Z)",
     redo: "Redo",
@@ -553,6 +553,8 @@ export const en: Messages = {
       gravelDriveway: "Gravel driveway",
       footpath: "Path to the front door",
       fence: (style) => `${style} fence`,
+      altan: "Altan",
+      columns: "Columns",
       gate: "Garden gate",
       exposedFoundation: "Foundation walls above ground",
       lightWells: "Light wells",
@@ -584,6 +586,17 @@ export const en: Messages = {
     turnLittle: "Turn a little (walls leave the grid; the roof still fits)",
     platformHeight: "Platform height",
     platformHint: "Up from the ground's average: higher fills more earth in, lower digs more out. Deep cuts and fills get retaining walls.",
+    foundation: "Stands on",
+    foundations: { Plinth: "Plinth", Columns: "Columns" },
+    foundationHint: "On a slope, a plinth is a concrete wall down to the ground; columns leave the ground as it is under the house.",
+    foundationBasement: "A house with a basement stands on its basement walls.",
+    altan: "Altan",
+    addAltan: "+ Altan round the house",
+    removeAltan: "Remove the altan",
+    altanDepth: "Altan depth",
+    altanHint: "A wooden deck at floor level along the outer walls, joined round the corners, with a railing where it is high and steps down. Choose its walls from each wall's menu.",
+    altanAlongWall: "+ Altan along this wall",
+    altanNotAlongWall: "− No altan along this wall",
     moveHint: "Turn it a quarter at a time, or pick the ✋ Move tool (M) and drag it in the plan. On a slope, moving it changes how much earth is dug.",
     sun: "Sun",
     playDay: "Day",
@@ -599,6 +612,11 @@ export const en: Messages = {
     garden: "Garden",
     gardenTitle: "Plant trees, shrubs, flower beds and hedges",
     gardenNote: "New plants go in a free spot in the garden; drag them where you like, or click one to turn or remove it.",
+    pathKind: "Kind",
+    pathKinds: { path: "Path", drive: "Drive" },
+    pathSurface: "Surface",
+    pathSurfaces: { Paving: "Paving", Gravel: "Gravel", Tarmac: "Tarmac" },
+    pathNote: "Drag its points to move them. A garage door needs a drive from the road.",
     gardenThingsTitle: "Build, grow and play: a shed, a greenhouse, a pond, vegetables, a swing, a trampoline",
     fence: "Fence round the plot",
     noFence: "None",
@@ -622,7 +640,8 @@ export const en: Messages = {
     approach: "Up to the door",
     steps: "Steps",
     ramp: "Ramp",
-    approachNote: (steps, rise) => `The floor is ${rise} above the ground here: ${steps} ${steps === 1 ? "step" : "steps"}, or a ramp for wheelchairs and prams.`,
+    noApproach: "None",
+    approachNote: (steps, rise) => `The floor is ${rise} above the ground here: add ${steps} ${steps === 1 ? "step" : "steps"}, or a ramp for wheelchairs and prams.`,
     addDormer: "+ Dormer",
     dormerNeedsRoof: "Dormers need a pitched (gable or hip) roof: choose one in the Roof menu first",
     dormerHint: "Dormers stand in the roof over an outer wall of the top floor; add more from a wall's menu, and drag them along it.",
@@ -654,6 +673,7 @@ export const en: Messages = {
       window: "Click an exterior wall to add a window.",
       door: "Click a wall to add a door.",
       stairs: "Click inside a room to place stairs up to the floor above; rotate them in the sidebar.",
+      path: "Lay a path or a drive: click from the road (the plot's edge) to a door, point by point. Clicking a door ends it; so do Enter and double-click. Esc cancels.",
       move: "Drag the house to move all of it, rooms, stairs and furniture too. Turn it from Move & turn in the sidebar.",
     },
     street: "STREET",

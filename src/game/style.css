@@ -2548,6 +2548,17 @@ button.locked::after,
   stroke-width: 1.5;
 }
 
+.plan .altan {
+  fill: #c99a62;
+  stroke: #8a6a42;
+  stroke-width: 1;
+}
+
+.plan .altan.hover,
+.plan .altan.selected {
+  fill: #d9aa72;
+}
+
 .plan .fence {
   fill: none;
   stroke: #f4f1ea;
@@ -2690,6 +2701,29 @@ button.locked::after,
 
 .plan .route.paving {
   stroke: #d9cdb8;
+}
+
+.plan .route.hover {
+  stroke-opacity: 0.8;
+}
+
+.plan .route.selected {
+  stroke-opacity: 0.85;
+  filter: drop-shadow(0 0 2px var(--accent));
+}
+
+.plan .path-draft {
+  fill: none;
+  stroke: #d9cdb8;
+  stroke-opacity: 0.75;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.plan .path-handle {
+  fill: #ffffff;
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
 .plan .stone-wall {

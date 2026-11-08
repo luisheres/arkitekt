@@ -35,7 +35,7 @@ is in the first git commit.)
 
 | Path | Purpose |
 |---|---|
-| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks and the shaped ground; `access.ts` driveways and paths from the road; `features.ts` chimneys, dormers, skylights and steps; `sun.ts` sun positions and sun hours; `decor.ts` lamps, rugs, pictures, cabinets and stair rails; `street.ts` lamps, cars, signs and crossings along the roads; `neighbors.ts` the neighbours as game houses, and shops in town; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
+| `src/core` | Renderer-free game logic, fully unit-tested (Vitest). `i18n/` message catalogs and number formatting; `model.ts` walls, openings, roof and room labels; `layout.ts` finds rooms, the outline and exterior walls from the wall graph; `rooms.ts` room types, doors, windows and reachability; `validate.ts` building rules; `cost.ts` prices, line by line; `treemap.ts` the cost chart's layout; `roof.ts` roof and floor geometry; `brief.ts` requirements, evaluation and the client's verdict; `designfile.ts` saved designs; `scenery.ts` the landscape around each plot; `clients.ts` the written clients, the career and the clients on offer; `progression.ts` techniques, abilities and tiers; `difficulty.ts` budgets per difficulty; `site.ts` building on slopes: the platform, earthworks, the shaped ground and columns; `access.ts` the paths and drives the player lays, and which doors they reach; `features.ts` chimneys, dormers, skylights, steps and the altan; `sun.ts` sun positions and sun hours; `decor.ts` lamps, rugs, pictures, cabinets and stair rails; `street.ts` lamps, cars, signs and crossings along the roads; `neighbors.ts` the neighbours as game houses, and shops in town; `generate.ts` generated clients by tier; `furniture.ts` + `furnish.ts` furniture catalog and automatic furnishing; `edit.ts` editing operations; `history.ts` undo. |
 | `src/game` | The game UI: `store.ts` (state, undo, autosave), `plan.ts` (2D plan tools), `view3d.ts` + `scene.ts` + `interior3d.ts` (Three.js view), `panel.ts` + `hud.ts` (sidebar), `popover.ts` + `inspector.ts` (click menus), `designs.ts` (saved designs), `landscape.ts` + `backdrop.ts` (surroundings in 3D and in the plan), `textures.ts` (cartoon materials), `dialogs.ts` (client and verdict), `capture.ts` (appraisal views). |
 | `scripts/e2e.mjs` | End-to-end check: plays the first commission through the real UI in headless Chromium. |
 | `scripts/capture.mjs` | Headless capture of the four appraisal views (Playwright + software WebGL). |
@@ -100,11 +100,12 @@ hazy hills on the horizon (mountains, in mountain country), so its edge is never
 views face the house from the road. The camera never sinks into a hillside: it rises to see
 over the land to the house.
 
-**Getting to the house.** A driveway leads from where the road reaches the plot to each
-garage door, and a path to the front door, going round the house where they must. They are
-asphalt (gravel off a gravel track) and priced per m², so where the road is matters: a
-garage facing away from the road needs a long drive round the house. A garage door no car
-can reach (facing the edge of the plot, or boxed in) is a building problem.
+**Getting to the house.** Players lay their own paths and drives with the **Path** tool
+(P): click from the road's edge to a door, point by point. A path that ends at a garage door
+becomes a drive; each can be paving, gravel or tarmac, and its points can be dragged. They
+are priced per m², so where the road is matters: a garage facing away from the road needs a
+long drive round the house. A garage door with no drive to it from the road is a building
+problem.
 
 **Sloping ground.** Most of the newer plots are not flat. Each has a clear lie of the
 land, built from a few natural landforms: an even slope rising towards the back (or
@@ -143,8 +144,13 @@ improve the 3D views are documented in [`sprints/`](sprints/README.md).
 **Details.** Windows come in three styles (standard, cottage with shutters, modern) and
 five frame colours. Houses get sills, lintels or trim, door canopies, a plinth, corner
 boards on wooden facades, and gutters and down pipes along the eaves. **Skylights** lie in
-the roof slope, cheaper than dormers. A door above the ground gets steps, or a ramp,
-which are paid for.
+the roof slope, cheaper than dormers. A door above the ground can have steps or a ramp
+(the player's choice, in its menu), which are paid for.
+
+**Columns and altans.** On sloping ground a house can stand on **columns** instead of a
+plinth, leaving the hillside as it is under it. An **altan**, a wooden deck at floor level,
+can run along any of the ground floor's outer walls, joined round the corners, with posts,
+a railing where it is high and steps down; it counts as a terrace for clients.
 
 **Rooms that look lived in.** Rooms get a ceiling lamp (lit at dusk, with a pool of light
 on the floor), rugs under coffee tables, beds and dining tables, pictures on free walls,

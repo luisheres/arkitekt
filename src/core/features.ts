@@ -3,11 +3,11 @@
  * they can be built where they are.
  */
 
-import { Vec2 } from "./geometry";
-import { type Balcony, type Dormer, type House, DORMER_WIDTH } from "./model";
+import { Vec2, offsetPolygon, pointInPolygon } from "./geometry";
+import { type Balcony, type Dormer, type House, DORMER_WIDTH, type Wall } from "./model";
 import { type RoofGeometry, buildRoof, roofHeightAt } from "./roof";
 import { analyzeLayout } from "./layout";
-import { balconyOutline, interiorNormal } from "./edit";
+import { balconyOutline, interiorNormal, outwardNormal } from "./edit";
 import { SEASON_DAY, sunHours, sunsetSun } from "./sun";
 import { accessRoutes } from "./access";
 import type { Plot } from "./plot";
@@ -182,7 +182,13 @@ export interface DoorApproach {
 const STEP_RISE = 0.17;
 const STEP_GOING = 0.3;
 
+/** The steps and ramps the player has added to raised doors. */
 export function doorApproaches(house: House, floor: number, ground: (x: number, y: number) => number): DoorApproach[] {
+  return raisedDoors(house, floor, ground).filter((a) => house.opening(a.opening)?.approach);
+}
+
+/** Every ground-floor outside door above the ground in front of it, as it would be with steps (or the ramp chosen). */
+export function raisedDoors(house: House, floor: number, ground: (x: number, y: number) => number): DoorApproach[] {
   const layout = analyzeLayout(house, 0);
   if (!layout.ok) return [];
   const out: DoorApproach[] = [];
@@ -192,6 +198,8 @@ export function doorApproaches(house: House, floor: number, ground: (x: number, 
     if (!wall || wall.level !== 0 || !layout.value.exterior.has(wall.id)) continue;
     // Not where a terrace already meets the door.
     if (house.balconies.some((b) => b.wall === wall.id && Math.abs(b.offset - o.offset) < b.width / 2)) continue;
+    // Nor onto the altan.
+    if (altanWalls(house).some((w) => w.id === wall.id)) continue;
     const along = wall.direction();
     const outward = interiorNormal(house, wall).scale(-1);
     const at = wall.start.add(along.scale(o.offset)).add(outward.scale(wall.thickness / 2));
@@ -199,7 +207,7 @@ export function doorApproaches(house: House, floor: number, ground: (x: number, 
     const rise = floor - g;
     if (rise < 0.12) continue;
     const steps = Math.max(1, Math.round(rise / STEP_RISE));
-    const ramp = !!o.ramp;
+    const ramp = o.approach === "ramp";
     const side = o.offset < wall.length() / 2 ? 1 : -1;
     out.push({ opening: o.id, at, out: outward, along, width: o.width + 0.4, rise, ground: g, steps, ramp, length: ramp ? Math.max(1.2, rise * 12) : steps * STEP_GOING + 0.4, side });
   }
@@ -263,4 +271,111 @@ function segmentCross(p: Vec2, q: Vec2, a: Vec2, b: Vec2): number | null {
   const t = a.sub(p).cross(s) / den;
   const u = a.sub(p).cross(r) / den;
   return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? u : null;
+}
+
+// --- Altan: a wooden deck round the house -----------------------------------------------
+
+export const ALTAN_DEPTH: [number, number] = [1.2, 4];
+
+/** An altan's shape: a rectangle along each of its walls and a square at each convex corner between two of them; its open edges (in short bits, with the way out); and its area. */
+export interface AltanLayout {
+  pieces: Vec2[][];
+  edge: { a: Vec2; b: Vec2; out: Vec2 }[];
+  area: number;
+}
+
+/** The ground floor's outer walls the altan runs along (walls since removed are left out). */
+export function altanWalls(house: House): Wall[] {
+  if (!house.altan) return [];
+  const layout = analyzeLayout(house, 0);
+  if (!layout.ok) return [];
+  return house.altan.walls.map((id) => house.wall(id)).filter((w): w is Wall => !!w && w.level === 0 && !w.boundary && layout.value.exterior.has(w.id));
+}
+
+export function altanLayout(house: House): AltanLayout | null {
+  const walls = altanWalls(house);
+  const fp = house.footprint(0);
+  if (!walls.length || !fp.ok || !house.altan) return null;
+  const depth = house.altan.depth;
+  const outline = fp.value;
+  const face = offsetPolygon(outline, house.wallsOn(0).reduce((m, w) => (w.boundary ? m : Math.max(m, w.thickness)), 0) / 2);
+  const pieces: Vec2[][] = [];
+  const outOf = new Map(walls.map((w) => [w.id, outwardNormal(house, w)]));
+  /** Whether the house ends at `e`, the end of `w` going along `d`: a corner sticking out. */
+  const convex = (e: Vec2, d: Vec2, out: Vec2) => !pointInPolygon(e.add(d.scale(0.5)).sub(out.scale(0.5)), outline);
+  const done = new Set<string>();
+  for (const w of walls) {
+    const d = w.direction();
+    const out = outOf.get(w.id)!;
+    const h = w.thickness / 2;
+    const a = w.start.sub(d.scale(convex(w.start, d.neg(), out) ? h : 0)).add(out.scale(h));
+    const b = w.end.add(d.scale(convex(w.end, d, out) ? h : 0)).add(out.scale(h));
+    pieces.push([a, b, b.add(out.scale(depth)), a.add(out.scale(depth))]);
+    // A square filling the corner where the next altan wall turns.
+    for (const [e, along] of [[w.start, d.neg()], [w.end, d]] as const) {
+      if (!convex(e, along, out)) continue;
+      const other = walls.find((o) => o !== w && (o.start.distance(e) < 1e-6 || o.end.distance(e) < 1e-6) && Math.abs(o.direction().dot(d)) < 0.99);
+      if (!other) continue;
+      const key = [w.id, other.id].sort().join(":");
+      if (done.has(key)) continue;
+      done.add(key);
+      const o2 = outOf.get(other.id)!;
+      const c = e.add(out.scale(h)).add(o2.scale(other.thickness / 2));
+      pieces.push([c, c.add(out.scale(depth)), c.add(out.scale(depth)).add(o2.scale(depth)), c.add(o2.scale(depth))]);
+    }
+  }
+  const inAny = (p: Vec2) => pointInPolygon(p, face) || pieces.some((q) => pointInPolygon(p, q));
+  // The open edges: bits of each piece's sides with nothing just beyond them.
+  const edge: AltanLayout["edge"] = [];
+  for (const piece of pieces)
+    for (let i = 0; i < 4; i++) {
+      const [a, b] = [piece[i], piece[(i + 1) % 4]];
+      const dir = b.sub(a).normalize();
+      // (Pieces are not all wound the same way: out is the side away from the piece's middle.)
+      const mid = piece.reduce((s, p) => s.add(p), new Vec2(0, 0)).scale(1 / 4);
+      let out = new Vec2(-dir.y, dir.x);
+      if (out.dot(a.add(b).scale(0.5).sub(mid)) < 0) out = out.neg();
+      const n = Math.max(1, Math.round(a.distance(b) / 0.25));
+      for (let k = 0; k < n; k++) {
+        const [p, q] = [a.add(b.sub(a).scale(k / n)), a.add(b.sub(a).scale((k + 1) / n))];
+        if (!inAny(p.add(q).scale(0.5).add(out.scale(0.05)))) edge.push({ a: p, b: q, out });
+      }
+    }
+  // The area of the union, on a 10 cm grid.
+  const pts = pieces.flat();
+  const [x0, x1, y0, y1] = [Math.min(...pts.map((p) => p.x)), Math.max(...pts.map((p) => p.x)), Math.min(...pts.map((p) => p.y)), Math.max(...pts.map((p) => p.y))];
+  let cells = 0;
+  for (let x = x0 + 0.05; x < x1; x += 0.1) for (let y = y0 + 0.05; y < y1; y += 0.1) if (pieces.some((q) => pointInPolygon(new Vec2(x, y), q))) cells++;
+  return { pieces, edge, area: cells * 0.01 };
+}
+
+/** Steps down from the altan, where its floor is nearest the ground (none when it is at the ground). */
+export function altanSteps(house: House, floor: number, ground: (x: number, y: number) => number): DoorApproach | null {
+  const layout = altanLayout(house);
+  if (!layout) return null;
+  let best: { bit: AltanLayout["edge"][number]; g: number } | null = null;
+  for (const bit of layout.edge) {
+    const m = bit.a.add(bit.b).scale(0.5);
+    const g = ground(m.x + bit.out.x * 0.6, m.y + bit.out.y * 0.6);
+    if (!best || g > best.g) best = { bit, g };
+  }
+  if (!best) return null;
+  const rise = floor - best.g;
+  if (rise < 0.12) return null;
+  const steps = Math.max(1, Math.round(rise / STEP_RISE));
+  const along = best.bit.b.sub(best.bit.a).normalize();
+  return { opening: -1, at: best.bit.a.add(best.bit.b).scale(0.5), out: best.bit.out, along, width: 1.2, rise, ground: best.g, steps, ramp: false, length: steps * STEP_GOING + 0.4, side: 1 };
+}
+
+/** An altan along every outer wall of the ground floor. */
+export function placeAltan(house: House, depth = 2.4): void {
+  const layout = analyzeLayout(house, 0);
+  if (!layout.ok) return;
+  house.altan = { depth, walls: house.wallsOn(0).filter((w) => !w.boundary && layout.value.exterior.has(w.id)).map((w) => w.id) };
+}
+
+/** The altan as terraces along each of its walls, for what is worked out per terrace (sun, the brief). */
+export function altanTerraces(house: House): Balcony[] {
+  const depth = house.altan?.depth ?? 0;
+  return altanWalls(house).map((w) => ({ id: -w.id, wall: w.id, offset: w.length() / 2, width: w.length(), depth }));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accessRoutes } from "./access";
+import { accessRoutes, outsideDoors } from "./access";
 import { evaluateBrief } from "./brief";
 import { freePlayClient } from "./clients";
 import { costLines, defaultPrices } from "./cost";
@@ -18,6 +18,10 @@ const make = () => {
   const ids = h.addWallLoop([v(5, 8), v(15, 8), v(15, 16), v(5, 16)], 2.7, "Plaster");
   h.addDoor(ids[0], 2, 1, 2.1);
   h.addGarageDoor(ids[0], 7, 2.5, 2.1);
+  // A path from the street to the front door and a drive to the garage.
+  const [door, garage] = outsideDoors(h).sort((a, b) => a.at.x - b.at.x);
+  h.addPath("path", [v(door.at.x, 0), door.at], "Paving");
+  h.addPath("drive", [v(garage.at.x, 0), garage.at], "Tarmac");
   return h;
 };
 

@@ -13,6 +13,7 @@ implementation went, and any deviations from the plan.
 | 5 | [Plants and seasons](sprint-05-nature.md) | Oaks, willows, maples, palms, stumps; ground cover (grass tufts, flowers, ferns); seasons (spring, summer, autumn, winter with snow); garden features: fences and gates, sheds, greenhouses, ponds, vegetable patches, swings, trampolines | Done |
 | 6 | [Roads](sprint-06-roads.md) | Street lamps, parked cars, road signs, a bus stop, letterboxes; rounded junctions and zebra crossings; gravel tracks with a gate | Done |
 | 7 | [Neighbours, town and life](sprint-07-life.md) | Neighbours built from the game's own house parts with gardens, fences and cars; shops and a café in town; landmarks that move (windmill sails, boats, the ski lift); people, a dog, cars and birds; simpler far-away detail so more fits | Done |
+| 8 | [Slopes, columns, altans and your own paths](sprint-08-slopes-and-paths.md) | Feedback: the Day button stops again; paths, drives and steps laid by the player; cars, fences, sheds and posts that follow sloping ground; houses on columns; altans round the house | Done |
 
 ## The main deviations, at a glance
 
@@ -33,3 +34,5 @@ Each sprint's file has the full list; these are the ones worth knowing about.
 - **Level of detail goes by distance from the plot, not the camera** (Sprint 7).
 - **Nothing moves under automated tests**; screenshots step the clock by hand (Sprints 2
   and 7).
+- **Designs saved before Sprint 8 lose their paths and drives** (they used to be automatic);
+  lay them again with the Path tool (Sprint 8).

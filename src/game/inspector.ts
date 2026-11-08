@@ -7,8 +7,13 @@
 import {
   DEFAULT_OPENING,
   FRAME_COLORS,
+  ALTAN_DEPTH,
+  placeAltan,
+  PATH_SURFACES,
+  type GardenPath,
+  routeLength,
   WINDOW_STYLES,
-  doorApproaches,
+  raisedDoors,
   shapedGround,
   siteLevel,
   FLOOR_FINISHES,
@@ -119,13 +124,13 @@ export function inspectorKey(store: Store): string {
   if (sel.kind === "wall") {
     const w = house.wall(sel.id);
     const layout = w ? analyzeLayout(house, w.level) : null;
-    return `wall:${sel.id}:${w?.boundary}:${layout?.ok && layout.value.exterior.has(sel.id)}`;
+    return `wall:${sel.id}:${w?.boundary}:${layout?.ok && layout.value.exterior.has(sel.id)}:${!!house.altan?.walls.includes(sel.id)}`;
   }
   if (sel.kind === "opening") return `opening:${sel.id}:${house.opening(sel.id)?.kind}`;
   if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
   if (sel.kind === "facade") return "facade";
   if (sel.kind === "garden") return "garden";
-  if (sel.kind === "house") return "house";
+  if (sel.kind === "house") return `house:${!!house.altan}:${house.basement}`;
   return `${sel.kind}:${sel.id}`;
 }
 
@@ -141,6 +146,8 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
       return balconyInspector(store, sel.id);
     case "dormer":
       return dormerInspector(store, sel.id);
+    case "path":
+      return pathInspector(store, sel.id);
     case "room":
       return roomInspector(store, sel.at);
     case "wall":
@@ -370,6 +377,21 @@ function wallInspector(store: Store, id: number): Inspector | null {
   );
   if (!exterior) fields.push(makeOpenField);
   const buttons = exterior ? [add("Window"), add("Door"), add("GlassDoor"), add("GarageDoor")] : [add("Door"), add("Passage"), makeOpen];
+  // The altan along this wall (ground floor).
+  if (exterior && w.level === 0) {
+    const along = () => !!store.house.altan?.walls.includes(id);
+    const { button: b, field } = lockable(store, along() ? m.ui.altanNotAlongWall : m.ui.altanAlongWall, { kind: "terraces" }, () =>
+      store.edit((h) => {
+        if (!h.altan) h.altan = { depth: 2.4, walls: [id] };
+        else if (h.altan.walls.includes(id)) {
+          h.altan.walls = h.altan.walls.filter((x) => x !== id);
+          if (!h.altan.walls.length) h.altan = null;
+        } else h.altan.walls.push(id);
+      }),
+    );
+    fields.push(field);
+    buttons.push(b);
+  }
   // Balconies hang off the outer walls of upper storeys; on the ground floor, a terrace.
   if (exterior && w.level >= 0) {
     const ground = w.level === 0;
@@ -489,11 +511,19 @@ function openingInspector(store: Store, id: number): Inspector | null {
     fields.push(choices(m.ui.windowStyle, WINDOW_STYLES.map((s) => ({ value: s, label: m.ui.windowStyles[s] })), () => op()?.style ?? "Standard", (v) => editOp((cur) => (cur.style = v === "Standard" ? undefined : v), "style"), "segmented"));
   if (outer && o.kind !== "Passage")
     fields.push(choices(m.ui.frameColor, FRAME_COLORS.map((c) => ({ value: c, label: m.ui.frameColors[c], color: FRAME_HEX[c] })), () => op()?.color ?? "White", (v) => editOp((cur) => (cur.color = v === "White" ? undefined : v), "color")));
-  // A raised door: steps or a ramp up to it.
-  const approach = () => doorApproaches(store.house, siteLevel(store.house, store.plot) + 0.05, shapedGround(store.house, store.plot)).find((a) => a.opening === id);
-  const a = approach();
+  // A raised door: nothing, steps or a ramp up to it, as the player likes.
+  const raised = () => raisedDoors(store.house, siteLevel(store.house, store.plot) + 0.05, shapedGround(store.house, store.plot)).find((a) => a.opening === id);
+  const a = raised();
   if (a) {
-    fields.push(choices(m.ui.approach, [{ value: "steps" as const, label: m.ui.steps }, { value: "ramp" as const, label: m.ui.ramp }], () => (approach() ? (op()?.ramp ? "ramp" : "steps") : null), (v) => editOp((cur) => (cur.ramp = v === "ramp" || undefined), "ramp"), "segmented"));
+    fields.push(
+      choices(
+        m.ui.approach,
+        [{ value: "none" as const, label: m.ui.noApproach }, { value: "steps" as const, label: m.ui.steps }, { value: "ramp" as const, label: m.ui.ramp }],
+        () => (raised() ? (op()?.approach ?? "none") : null),
+        (v) => editOp((cur) => (cur.approach = v === "none" ? undefined : v), "approach"),
+        "segmented",
+      ),
+    );
   }
   const note = a ? [el("p", { className: "sub" }, m.ui.approachNote(a.steps, meters(m, a.rise)))] : [];
   return { el: el("div", {}, el("h2", {}, m.opening[o.kind]), ...fields.map((f) => f.el), ...note, el("div", { className: "row" }, deleteButton(store))), fields };
@@ -729,7 +759,37 @@ function houseInspector(store: Store): Inspector {
     );
     fields.push(platform);
     parts.push(platform.el, el("p", { className: "sub" }, m.ui.platformHint));
+    const foundation = choices(
+      m.ui.foundation,
+      (["Plinth", "Columns"] as const).map((f) => ({ value: f, label: m.ui.foundations[f] })),
+      () => (empty() || store.house.basement ? null : store.house.foundation),
+      (v) => store.edit((h) => (h.foundation = v)),
+      "segmented",
+    );
+    fields.push(foundation);
+    parts.push(foundation.el, el("p", { className: "sub" }, store.house.basement ? m.ui.foundationBasement : m.ui.foundationHint));
   }
+  // The altan: on or off, and how deep.
+  const { button: altanBtn, field: altanField } = lockable(store, store.house.altan ? m.ui.removeAltan : m.ui.addAltan, { kind: "terraces" }, () =>
+    store.edit((h) => {
+      if (h.altan) h.altan = null;
+      else placeAltan(h);
+    }),
+  );
+  fields.push({
+    el: altanBtn,
+    update: () => {
+      altanField.update();
+      altanBtn.disabled = empty();
+    },
+  });
+  const depth = slider(m.ui.altanDepth, { min: ALTAN_DEPTH[0], max: ALTAN_DEPTH[1], step: 0.1, unit: " m", digits: 1 }, () => store.house.altan?.depth ?? null, (v) =>
+    store.edit((h) => {
+      if (h.altan) h.altan.depth = v;
+    }, "altan-depth"),
+  );
+  fields.push(depth);
+  parts.push(el("h3", {}, m.ui.altan), el("div", { className: "row" }, altanBtn), depth.el, el("p", { className: "sub" }, m.ui.altanHint));
   return { el: el("div", {}, ...parts), fields };
 }
 
@@ -765,4 +825,26 @@ function dormerInspector(store: Store, id: number): Inspector | null {
     el: el("div", {}, el("h2", {}, dormer()!.skylight ? m.ui.skylight : m.ui.dormer), ...fields.map((f) => f.el), el("p", { className: ok ? "sub" : "sub bad" }, ok ? (dormer()!.skylight ? m.ui.skylightNote : m.ui.dormerNote) : m.issue({ kind: "DormerNotOnSlope", dormer: id })), el("div", { className: "row" }, deleteButton(store))),
     fields,
   };
+}
+
+// --- Paths and drives ------------------------------------------------------------------
+
+function pathInspector(store: Store, id: number): Inspector | null {
+  const path = () => store.house.path(id);
+  const p = path();
+  if (!p) return null;
+  const editPath = (fn: (p: GardenPath) => void, key: string) =>
+    store.edit((h) => {
+      const cur = h.path(id);
+      if (cur) fn(cur);
+    }, `${key}:${id}`);
+  const fields: Field[] = [
+    choices(m.ui.pathKind, [{ value: "path" as const, label: m.ui.pathKinds.path }, { value: "drive" as const, label: m.ui.pathKinds.drive }], () => path()?.kind ?? null, (v) => editPath((cur) => (cur.kind = v), "path-kind"), "segmented"),
+    choices(m.ui.pathSurface, PATH_SURFACES.map((s) => ({ value: s, label: m.ui.pathSurfaces[s] })), () => path()?.surface ?? null, (v) => editPath((cur) => (cur.surface = v), "path-surface"), "segmented"),
+    readout(m.ui.length, () => {
+      const cur = path();
+      return cur ? meters(m, routeLength(cur)) : "";
+    }),
+  ];
+  return { el: el("div", {}, el("h2", {}, m.ui.pathKinds[p.kind]), ...fields.map((f) => f.el), el("p", { className: "sub" }, m.ui.pathNote), el("div", { className: "row" }, deleteButton(store))), fields };
 }

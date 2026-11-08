@@ -9,7 +9,7 @@ import type { Difficulty } from "../difficulty";
 import type { Setting } from "../plot";
 import type { Branch, TechniqueId, Tier } from "../progression";
 import type { FurnitureKind } from "../furniture";
-import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial, FrameColor, WindowStyle, FenceStyle } from "../model";
+import type { FloorFinish, FootprintError, OpeningKind, PaintColor, RoofMaterial, RoofStyle, RoomType, WallMaterial, FrameColor, WindowStyle, FenceStyle, PathSurface, Foundation } from "../model";
 import type { Issue } from "../validate";
 
 export const LANGS = ["en", "sv"] as const;
@@ -18,7 +18,7 @@ export type Lang = (typeof LANGS)[number];
 /** A piece of text in every language. */
 export type Localized = Record<Lang, string>;
 
-export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door" | "stairs" | "move";
+export type ToolName = "select" | "room" | "wall" | "boundary" | "window" | "door" | "stairs" | "path" | "move";
 
 /** The forms of a room type's name that sentences need. */
 export interface RoomWords {
@@ -331,6 +331,8 @@ export interface Messages {
       footpath: string;
       fence(style: string): string;
       gate: string;
+      altan: string;
+      columns: string;
       lightWells: string;
       paint(color: string): string;
       empty: string;
@@ -354,6 +356,17 @@ export interface Messages {
     turnLittle: string;
     platformHeight: string;
     platformHint: string;
+    foundation: string;
+    foundations: Record<Foundation, string>;
+    foundationHint: string;
+    foundationBasement: string;
+    altan: string;
+    addAltan: string;
+    removeAltan: string;
+    altanDepth: string;
+    altanHint: string;
+    altanAlongWall: string;
+    altanNotAlongWall: string;
     moveHint: string;
     /** The sun in the 3D view. */
     sun: string;
@@ -374,6 +387,11 @@ export interface Messages {
     gardenTitle: string;
     gardenNote: string;
     gardenThingsTitle: string;
+    pathKind: string;
+    pathKinds: { path: string; drive: string };
+    pathSurface: string;
+    pathSurfaces: Record<PathSurface, string>;
+    pathNote: string;
     fence: string;
     noFence: string;
     fenceStyles: Record<FenceStyle, string>;
@@ -397,6 +415,7 @@ export interface Messages {
     approach: string;
     steps: string;
     ramp: string;
+    noApproach: string;
     approachNote(steps: number, rise: string): string;
     dormerNote: string;
     dormerNeedsRoof: string;

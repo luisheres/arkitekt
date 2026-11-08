@@ -44,7 +44,7 @@ import {
   setRoomType,
 } from "../core";
 
-export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door" | "stairs" | "move";
+export type Tool = "select" | "wall" | "boundary" | "room" | "window" | "door" | "stairs" | "path" | "move";
 
 /** Tools that draw chains of walls (or room boundaries) corner by corner. */
 export const drawsWalls = (t: Tool): t is "wall" | "boundary" => t === "wall" || t === "boundary";
@@ -67,6 +67,8 @@ export type Selection =
   | { kind: "house" }
   | { kind: "balcony"; id: number }
   | { kind: "dormer"; id: number }
+  /** A garden path or a drive. */
+  | { kind: "path"; id: number }
   | null;
 
 /** What changed: the house, editor state such as the tool or selection, or the client. */
@@ -527,6 +529,7 @@ export class Store {
       else if (sel.kind === "label") h.removeLabel(sel.id);
       else if (sel.kind === "balcony") h.removeBalcony(sel.id);
       else if (sel.kind === "dormer") h.removeDormer(sel.id);
+      else if (sel.kind === "path") h.removePath(sel.id);
       else if (sel.kind === "room") {
         setRoomType(h, sel.at, null, this.level);
         clearRoomFurnitureAt(h, sel.at, this.level);
@@ -547,6 +550,7 @@ export class Store {
     if (sel?.kind === "wall" && !this.house.wall(sel.id)) this.selection = null;
     if (sel?.kind === "opening" && !this.house.opening(sel.id)) this.selection = null;
     if (sel?.kind === "balcony" && !this.house.balcony(sel.id)) this.selection = null;
+    if (sel?.kind === "path" && !this.house.path(sel.id)) this.selection = null;
     if (sel?.kind === "dormer" && !this.house.dormer(sel.id)) this.selection = null;
   }
 

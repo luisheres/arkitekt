@@ -346,22 +346,32 @@ function renderToggles(): void {
   const hh = Math.floor(store.sunHour);
   const time = `${String(hh).padStart(2, "0")}:${String(Math.round((store.sunHour - hh) * 60)).padStart(2, "0")}`;
   const seasons = core.SEASONS.map((s) => `<option value="${s}"${s === store.season ? " selected" : ""}>${m.ui.seasons[s]}</option>`).join("");
-  const sun = `<div class="label sun-label" title="${m.ui.sunTitle}">☀ ${m.ui.sun} <output>${time}</output></div>
-    <input type="range" class="sun-slider" min="4" max="22" step="0.25" value="${store.sunHour}" aria-label="${m.ui.sun}" title="${m.ui.sunTitle}">
+  // The clock, the slider and the play button change every frame while the day plays: they
+  // are updated in place, so the panel isn't rebuilt under the pointer (which ate clicks).
+  const sun = `<div class="label sun-label" title="${m.ui.sunTitle}">☀ ${m.ui.sun} <output></output></div>
+    <input type="range" class="sun-slider" min="4" max="22" step="0.25" aria-label="${m.ui.sun}" title="${m.ui.sunTitle}">
     <select class="sun-season" aria-label="${m.ui.sun}">${seasons}</select>
-    <div class="row view-actions"><button type="button" data-view="play" class="${view3d.playingDay ? "active" : ""}" title="${m.ui.playDayTitle}">${view3d.playingDay ? "⏸" : "▶"} ${m.ui.playDay}</button><button type="button" data-view="walk" class="${view3d.walker ? "active" : ""}" title="${m.ui.walkTitle}">🚶 ${m.ui.walk}</button></div>`;
+    <div class="row view-actions"><button type="button" data-view="play" title="${m.ui.playDayTitle}"></button><button type="button" data-view="walk" title="${m.ui.walkTitle}">🚶 ${m.ui.walk}</button></div>`;
   const html = `<div class="label">${m.ui.show}</div>${row("roof", `${m.ui.roofToggle} <kbd>H</kbd>`, showRoof, m.ui.roofToggleTitle)}${levels.length > 1 ? levels.join("") : ""}${row("furniture", m.ui.furniture, showFurniture)}${sun}`;
   // (Not while the slider is being dragged: it would lose hold of it.)
   const dragging = document.activeElement?.classList.contains("sun-slider");
-  if (!dragging) {
-    if (toggles.dataset.html !== html) {
-      toggles.innerHTML = html;
-      toggles.dataset.html = html;
-    }
-  } else {
-    const out = toggles.querySelector(".sun-label output");
-    if (out) out.textContent = time;
+  if (!dragging && toggles.dataset.html !== html) {
+    toggles.innerHTML = html;
+    toggles.dataset.html = html;
   }
+  const out = toggles.querySelector(".sun-label output");
+  if (out) out.textContent = time;
+  const slider = toggles.querySelector<HTMLInputElement>(".sun-slider");
+  if (slider && !dragging) slider.value = String(store.sunHour);
+  const season = toggles.querySelector<HTMLSelectElement>(".sun-season");
+  if (season && season.value !== store.season) season.value = store.season;
+  const play = toggles.querySelector<HTMLButtonElement>('[data-view="play"]');
+  if (play) {
+    const label = `${view3d.playingDay ? "⏸" : "▶"} ${m.ui.playDay}`;
+    if (play.textContent !== label) play.textContent = label;
+    play.classList.toggle("active", view3d.playingDay);
+  }
+  toggles.querySelector('[data-view="walk"]')?.classList.toggle("active", !!view3d.walker);
 }
 toggles.addEventListener("click", (e) => {
   const action = (e.target as HTMLElement).closest<HTMLElement>("[data-view]")?.dataset.view;
@@ -416,7 +426,7 @@ function showCaptures(views: CapturedView[]): void {
 
 // --- Keyboard -----------------------------------------------------------------------
 
-const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door", KeyS: "stairs", KeyM: "move" };
+const TOOL_KEYS: Record<string, Tool> = { KeyV: "select", KeyR: "room", KeyW: "wall", KeyB: "boundary", KeyN: "window", KeyD: "door", KeyS: "stairs", KeyP: "path", KeyM: "move" };
 
 window.addEventListener("keyup", (e) => view3d.walkKey(e.code, false));
 window.addEventListener("keydown", (e) => {

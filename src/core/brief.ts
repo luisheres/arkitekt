@@ -13,7 +13,7 @@ import type { Lang, Messages } from "./i18n/types";
 import { ROOM_INFO, type Room, analyzeHouse, voidArea } from "./rooms";
 import { validate } from "./validate";
 import { openingAbove } from "./edit";
-import { balconySun } from "./features";
+import { balconySun, altanTerraces, altanWalls } from "./features";
 import type { Abilities } from "./progression";
 
 export type Requirement =
@@ -165,11 +165,11 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [n > 0, String(n)];
       }
       case "terrace": {
-        const n = house.balconies.filter((b) => house.wall(b.wall)?.level === 0).length;
+        const n = house.balconies.filter((b) => house.wall(b.wall)?.level === 0).length + (altanWalls(house).length ? 1 : 0);
         return [n > 0, String(n)];
       }
       case "sunnyTerrace": {
-        const best = Math.max(0, ...house.balconies.map((b) => balconySun(house, b).hours));
+        const best = Math.max(0, ...[...house.balconies, ...altanTerraces(house)].map((b) => balconySun(house, b).hours));
         return [best >= r.minHours, m.brief.hoursOfSun(best)];
       }
       case "playGarden":
@@ -179,7 +179,7 @@ export function evaluateBrief(house: House, client: Client, prices: PriceList, m
         return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "sunsetView": {
-        const ok = house.balconies.some((b) => balconySun(house, b).sunset);
+        const ok = [...house.balconies, ...altanTerraces(house)].some((b) => balconySun(house, b).sunset);
         return [ok, ok ? m.brief.yes : m.brief.no];
       }
       case "fireplace": {

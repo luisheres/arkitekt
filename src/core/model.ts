@@ -166,6 +166,30 @@ export class Wall {
 export const WINDOW_STYLES = ["Standard", "Cottage", "Modern"] as const;
 export type WindowStyle = (typeof WINDOW_STYLES)[number];
 
+/** What the house stands on: a solid plinth (walls down to the ground), or columns. */
+export type Foundation = "Plinth" | "Columns";
+
+/** An altan: a wooden deck at floor level along some of the ground floor's outer walls, joined round corners. */
+export interface Altan {
+  depth: number;
+  walls: WallId[];
+}
+
+/** Steps or a ramp up to a raised outside door. */
+export type DoorApproachKind = "steps" | "ramp";
+
+/** What a garden path or a drive is laid with. */
+export const PATH_SURFACES = ["Paving", "Gravel", "Tarmac"] as const;
+export type PathSurface = (typeof PATH_SURFACES)[number];
+
+/** A path or a drive the player lays across the plot, as a line through `points`. */
+export interface GardenPath {
+  id: number;
+  kind: "path" | "drive";
+  surface: PathSurface;
+  points: Vec2[];
+}
+
 /** Fences round the plot: white pickets, or upright boards painted Falu red. */
 export const FENCE_STYLES = ["Picket", "Board"] as const;
 export type FenceStyle = (typeof FENCE_STYLES)[number];
@@ -179,8 +203,8 @@ export class Opening {
   style?: WindowStyle;
   /** The frame's colour; white when unset. */
   color?: FrameColor;
-  /** A raised outside door reached by a ramp instead of steps. */
-  ramp?: boolean;
+  /** How a raised outside door is reached from the ground: none, steps or a ramp (the player's choice). */
+  approach?: DoorApproachKind;
 
   constructor(
     readonly id: OpeningId,
@@ -243,7 +267,7 @@ export interface HouseJson {
     boundary?: boolean;
     level?: number;
   }[];
-  openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number; style?: WindowStyle; color?: FrameColor; ramp?: boolean }[];
+  openings: { id: number; wall: number; kind: OpeningKind; offset: number; width: number; height: number; sill: number; style?: WindowStyle; color?: FrameColor; approach?: DoorApproachKind; ramp?: boolean }[];
   roof: Roof | null;
   labels?: { id: number; type: RoomType; at: { x: number; y: number }; level?: number; floor?: FloorFinish; paint?: PaintColor }[];
   levels?: number;
@@ -253,6 +277,9 @@ export interface HouseJson {
   balconies?: { id: number; wall: number; offset: number; width: number; depth: number }[];
   dormers?: { id: number; wall: number; offset: number; width: number; skylight?: boolean }[];
   fence?: FenceStyle;
+  paths?: { id: number; kind: "path" | "drive"; surface: PathSurface; points: { x: number; y: number }[] }[];
+  foundation?: Foundation;
+  altan?: { depth: number; walls: number[] };
   /** Missing in saves from before furniture could be edited. */
   furniture?: { id: number; kind: FurnitureKind; level: number; at: { x: number; y: number }; facing: { x: number; y: number }; width: number; depth: number; height: number }[];
   nextId: number;
@@ -274,6 +301,11 @@ export class House {
   basement = false;
   /** A fence round the plot, with a gate where the path comes in. */
   fence: FenceStyle | null = null;
+  /** Paths and drives laid by the player (they stay put when the house moves). */
+  paths: GardenPath[] = [];
+  /** On sloping ground, what the house stands on (a basement makes it a plinth). */
+  foundation: Foundation = "Plinth";
+  altan: Altan | null = null;
   private nextId = 0;
 
   private freshId(): number {
@@ -319,6 +351,20 @@ export class House {
 
   removeStair(id: StairId): void {
     this.stairs = this.stairs.filter((s) => s.id !== id);
+  }
+
+  addPath(kind: GardenPath["kind"], points: Vec2[], surface: PathSurface): number {
+    const id = this.freshId();
+    this.paths.push({ id, kind, surface, points: [...points] });
+    return id;
+  }
+
+  path(id: number): GardenPath | undefined {
+    return this.paths.find((p) => p.id === id);
+  }
+
+  removePath(id: number): void {
+    this.paths = this.paths.filter((p) => p.id !== id);
   }
 
   addBalcony(wall: WallId, offset: number, width: number, depth: number): BalconyId {
@@ -539,7 +585,7 @@ export class House {
         ...(w.boundary ? { boundary: true } : {}),
         level: w.level,
       })),
-      openings: this.openings.map((o) => ({ id: o.id, wall: o.wall, kind: o.kind, offset: o.offset, width: o.width, height: o.height, sill: o.sill, ...(o.style ? { style: o.style } : {}), ...(o.color ? { color: o.color } : {}), ...(o.ramp ? { ramp: true } : {}) })),
+      openings: this.openings.map((o) => ({ id: o.id, wall: o.wall, kind: o.kind, offset: o.offset, width: o.width, height: o.height, sill: o.sill, ...(o.style ? { style: o.style } : {}), ...(o.color ? { color: o.color } : {}), ...(o.approach ? { approach: o.approach } : {}) })),
       roof: this.roof ? { ...this.roof } : null,
       labels: this.labels.map((l) => ({ id: l.id, type: l.type, at: l.at.toJSON(), level: l.level, ...(l.floor ? { floor: l.floor } : {}), ...(l.paint ? { paint: l.paint } : {}) })),
       levels: this.levels,
@@ -549,6 +595,9 @@ export class House {
       ...(this.balconies.length ? { balconies: this.balconies.map((b) => ({ ...b })) } : {}),
       ...(this.dormers.length ? { dormers: this.dormers.map((d) => ({ ...d })) } : {}),
       ...(this.fence ? { fence: this.fence } : {}),
+      ...(this.foundation !== "Plinth" ? { foundation: this.foundation } : {}),
+      ...(this.altan ? { altan: { depth: this.altan.depth, walls: [...this.altan.walls] } } : {}),
+      ...(this.paths.length ? { paths: this.paths.map((p) => ({ id: p.id, kind: p.kind, surface: p.surface, points: p.points.map((q) => q.toJSON()) })) } : {}),
       furniture: this.furniture.map((f) => ({ id: f.id!, kind: f.kind, level: f.level, at: f.at.toJSON(), facing: f.facing.toJSON(), width: f.width, depth: f.depth, height: f.height })),
       nextId: this.nextId,
     };
@@ -561,7 +610,9 @@ export class House {
       const op = new Opening(o.id, o.wall, o.kind, o.offset, o.width, o.height, o.sill);
       if (o.style) op.style = o.style;
       if (o.color) op.color = o.color;
-      if (o.ramp) op.ramp = true;
+      // (Older saves marked a ramp; steps were added on their own then.)
+      const approach = o.approach ?? (o.ramp ? "ramp" : undefined);
+      if (approach) op.approach = approach;
       return op;
     });
     h.roof = j.roof ? { ...j.roof } : null;
@@ -573,6 +624,9 @@ export class House {
     h.balconies = (j.balconies ?? []).map((b) => ({ ...b }));
     h.dormers = (j.dormers ?? []).map((d) => ({ ...d }));
     h.fence = j.fence ?? null;
+    h.foundation = j.foundation ?? "Plinth";
+    h.altan = j.altan ? { depth: j.altan.depth, walls: [...j.altan.walls] } : null;
+    h.paths = (j.paths ?? []).map((p) => ({ id: p.id, kind: p.kind, surface: p.surface, points: p.points.map((q) => Vec2.from(q)) }));
     h.furniture = (j.furniture ?? []).map((f) => ({ ...f, at: Vec2.from(f.at), facing: Vec2.from(f.facing) }));
     h.nextId = j.nextId;
     return h;

@@ -5,9 +5,9 @@
  */
 
 import * as THREE from "three";
-import { type Landmark, type Neighbor, type Plot, type ShopKind, type Street, type SunPosition, type Scenery, type Tree, Vec2, groundHeight, neighborHouse as gameHouseOf, pointAlong, polylineLength, sceneryFor, streetFor, townShops, treeLook } from "../core";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { buildHouse } from "./scene";
+import { type Landmark, type Neighbor, type Plot, type ShopKind, type Street, type SunPosition, type Scenery, type Tree, Vec2, columnSpots, groundHeight, neighborHouse as gameHouseOf, pointAlong, polylineLength, sceneryFor, streetFor, townShops, treeLook } from "../core";
+import { mergeByMaterial } from "./merge";
+import { buildAltan, buildColumns, buildHouse } from "./scene";
 import { buildFurniture } from "./furniture3d";
 import { currentSeason, groundTexture, seasonal, snowy, toon, wallTexture, worldMaterial } from "./textures";
 
@@ -764,6 +764,12 @@ const mats = {
   logs: worldMaterial(wallTexture("Wood")),
 };
 
+/** Walls from `floor` up to `top`, on a stone base down to the ground's lowest corner (at 0). */
+function based(g: THREE.Group, m: THREE.Material, x0: number, x1: number, floor: number, top: number, z0: number, z1: number): void {
+  if (floor > 0.3) part(g, mats.stone, x0 - 0.05, x1 + 0.05, 0, floor, z0 - 0.05, z1 + 0.05);
+  part(g, m, x0, x1, floor > 0.3 ? floor : 0, top, z0, z1);
+}
+
 /** Add a box spanning x0..x1, y0..y1, z0..z1 (local). */
 function part(g: THREE.Group, m: THREE.Material, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
@@ -810,7 +816,11 @@ function neighborHouse(s: Scenery, n: Scenery["neighbors"][number]): THREE.Group
   const { g, plinth } = placed(s, n.at, n.facing, n.width, n.depth);
   const wallH = 2.7 * n.storeys + 0.2;
   const facade = worldMaterial(wallTexture(n.facade));
-  part(g, facade, -n.width / 2, n.width / 2, 0, wallH + plinth + 0.3, -n.depth / 2, n.depth / 2);
+  if (plinth > STEEP) {
+    // On a steep site: on columns (they run on into the ground uphill).
+    part(g, facade, -n.width / 2, n.width / 2, plinth + 0.3, wallH + plinth + 0.3, -n.depth / 2, n.depth / 2);
+    for (const x of [-n.width / 2 + 0.2, 0, n.width / 2 - 0.2]) for (const z of [-n.depth / 2 + 0.2, n.depth / 2 - 0.2]) part(g, yard.base, x - 0.12, x + 0.12, -0.3, plinth + 0.3, z - 0.12, z + 0.12);
+  } else part(g, facade, -n.width / 2, n.width / 2, 0, wallH + plinth + 0.3, -n.depth / 2, n.depth / 2);
   const top = wallH + plinth + 0.3;
   const roofMat = snowy(toon({ color: ROOF_COLORS[n.roof % ROOF_COLORS.length] }));
   if (n.roofStyle === "gable") gable(g, roofMat, n.width, n.depth, top);
@@ -829,10 +839,10 @@ function landmark(s: Scenery, l: Landmark): THREE.Group {
   const y = plinth;
   switch (l.kind) {
     case "church": {
-      part(g, mats.plaster, -4, 4, 0, y + 7, -5, 8);
+      based(g, mats.plaster, -4, 4, y, y + 7, -5, 8);
       gable(g, mats.darkRoof, 8, 13, y + 7, 0.55, 0.3);
       g.children[g.children.length - 1].position.z = 1.5;
-      part(g, mats.plaster, -1.8, 1.8, 0, y + 14, -8.5, -5);
+      based(g, mats.plaster, -1.8, 1.8, y, y + 14, -8.5, -5);
       const spire = new THREE.Mesh(new THREE.ConeGeometry(2.4, 7, 4), mats.darkRoof);
       spire.rotation.y = Math.PI / 4;
       spire.position.set(0, y + 17.5, -6.75);
@@ -860,7 +870,7 @@ function landmark(s: Scenery, l: Landmark): THREE.Group {
       break;
     }
     case "barn":
-      part(g, mats.falu, -8, 8, 0, y + 6, -5, 5);
+      based(g, mats.falu, -8, 8, y, y + 6, -5, 5);
       gable(g, mats.darkRoof, 16, 10, y + 6, 0.45);
       part(g, mats.white, -2, 2, y, y + 4.2, -5.06, -4.98);
       part(g, mats.falu, -1.8, 1.8, y, y + 4, -5.1, -5.02);
@@ -1031,7 +1041,7 @@ function skiLift(s: Scenery, l: Landmark): THREE.Group {
     [b, Math.atan2(a.y - b.y, a.x - b.x)],
   ] as const) {
     const station = placed(s, p, facing, 5, 4);
-    part(station.g, mats.logs, -2.5, 2.5, 0, station.plinth + 3, -2, 2);
+    based(station.g, mats.logs, -2.5, 2.5, station.plinth, station.plinth + 3, -2, 2);
     gable(station.g, mats.red, 5, 4, station.plinth + 3, 0.5, 0.4);
     g.add(station.g);
   }
@@ -1324,7 +1334,7 @@ function streetFurniture(s: Scenery, st: Street): THREE.Group {
 
   for (const c of st.cars) {
     const car = buildFurniture({ kind: "Car", level: 0, at: c.at, facing: c.dir, width: 1.8, depth: 4.4, height: 1.45 });
-    car.position.y = roadY(c.at);
+    onRoad(car, s, c.at, c.dir);
     g.add(car);
   }
 
@@ -1343,7 +1353,12 @@ function streetFurniture(s: Scenery, st: Street): THREE.Group {
 
   if (st.busStop) {
     const b = st.busStop;
-    const o = placed(b.at, b.dir, s.height(b.at.x, b.at.y));
+    // On a level concrete base, as high as the ground's highest corner.
+    const across = new Vec2(-b.dir.y, b.dir.x);
+    const corners = [-1, 1].flatMap((u) => [-1, 1].map((v) => b.at.add(b.dir.scale(u * 1.8)).add(across.scale(v * 0.9))));
+    const hs = corners.map((p) => s.height(p.x, p.y));
+    const o = placed(b.at, b.dir, Math.max(...hs) + 0.1);
+    box(o, yard.base, 0, -(Math.max(...hs) - Math.min(...hs) + 0.3) / 2, 0, 3.8, Math.max(...hs) - Math.min(...hs) + 0.3, 2);
     // Local +z is to the left of `dir`: the back wall on the side away from the road.
     const back = new Vec2(-b.dir.y, b.dir.x).dot(b.side) > 0 ? 1 : -1;
     box(o, street.pole, -1.6, 1.15, 0, 0.08, 2.3, 1.4);
@@ -1393,49 +1408,6 @@ function streetFurniture(s: Scenery, st: Street): THREE.Group {
 
 /** Within this distance of the plot, neighbours are full houses of the game. */
 const NEAR_NEIGHBOURS = 80;
-
-/** One mesh per material: a whole house in a dozen draws instead of hundreds. */
-function mergeByMaterial(root: THREE.Object3D): THREE.Group {
-  root.updateMatrixWorld(true);
-  const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
-  const push = (m: THREE.Material, g: THREE.BufferGeometry) => {
-    const list = parts.get(m) ?? [];
-    list.push(g);
-    parts.set(m, list);
-  };
-  root.traverse((o) => {
-    if (!(o instanceof THREE.Mesh) || o instanceof THREE.InstancedMesh || !o.visible) return;
-    let g = (o.geometry as THREE.BufferGeometry).clone().applyMatrix4(o.matrixWorld);
-    if (g.index) g = g.toNonIndexed();
-    for (const name of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(name)) g.deleteAttribute(name);
-    if (!g.attributes.normal) g.computeVertexNormals();
-    if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-    const mats = o.material as THREE.Material | THREE.Material[];
-    if (!Array.isArray(mats)) return push(mats, g);
-    // A box with a material per face: split it by face.
-    for (const grp of g.groups) {
-      const sub = new THREE.BufferGeometry();
-      for (const name of ["position", "normal", "uv"]) {
-        const attr = g.getAttribute(name) as THREE.BufferAttribute;
-        const size = attr.itemSize;
-        sub.setAttribute(name, new THREE.Float32BufferAttribute((attr.array as Float32Array).slice(grp.start * size, (grp.start + grp.count) * size), size));
-      }
-      push(mats[grp.materialIndex ?? 0], sub);
-    }
-  });
-  const out = new THREE.Group();
-  for (const [m, list] of parts) {
-    const merged = mergeGeometries(list.map((g) => {
-      g.clearGroups();
-      return g;
-    }));
-    if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, m);
-    mesh.castShadow = mesh.receiveShadow = true;
-    out.add(mesh);
-  }
-  return out;
-}
 
 const yard = {
   base: toon({ color: "#9a958c" }),
@@ -1494,17 +1466,46 @@ function roadGap(s: Scenery, p: Vec2): number {
 }
 
 /** A neighbour built like the player's house, on a base, with a fence, a car, or a shopfront. */
+/** Steeper than this across a neighbour's footprint, it stands on columns (with an altan) instead of a solid base. */
+const STEEP = 0.8;
+
 function gameNeighbor(s: Scenery, n: Neighbor, shop: ShopKind | null): THREE.Group {
   const { g, plinth } = placed(s, n.at, n.facing, n.width, n.depth);
   const floor = plinth + 0.25;
-  part(g, yard.base, -n.width / 2 - 0.1, n.width / 2 + 0.1, 0, floor, -n.depth / 2 - 0.1, n.depth / 2 + 0.1);
-  const house = mergeByMaterial(buildHouse(gameHouseOf(n, shop), { roof: true }));
-  house.position.y = floor;
-  g.add(house);
-  // Local: +x across the front, -z out of the front. Where is that in plan?
+  // Local: +x across the front, -z out of the front (the house's plan x, y are local x, z). Where is that in plan?
   const f = new Vec2(Math.cos(n.facing), Math.sin(n.facing));
   const side = new Vec2(-f.y, f.x);
   const world = (x: number, z: number) => n.at.add(side.scale(-x)).add(f.scale(-z));
+  /** The ground under a local point, in the group's height. */
+  const groundAt = (x: number, z: number) => {
+    const p = world(x, z);
+    return s.height(p.x, p.y) - g.position.y;
+  };
+  const h = gameHouseOf(n, shop);
+  if (plinth > STEEP) {
+    // On a steep site: columns and a slab, and (not for shops) an altan on the downhill side.
+    const outline = [new Vec2(-n.width / 2, -n.depth / 2), new Vec2(n.width / 2, -n.depth / 2), new Vec2(n.width / 2, n.depth / 2), new Vec2(-n.width / 2, n.depth / 2)];
+    const cols = columnSpots(outline).map((at) => ({ at, ground: groundAt(at.x, at.y), top: floor })).filter((c) => c.top - c.ground > 0.15);
+    g.add(mergeByMaterial(buildColumns(cols, outline, floor)));
+    if (!shop) {
+      const fp = h.footprint(0);
+      // The outer wall with the lowest ground 2 m out from its middle (the house is centred on the origin).
+      const beyond = (w: { start: Vec2; end: Vec2 }) => {
+        const mid = w.start.add(w.end).scale(0.5);
+        return mid.add(mid.normalize().scale(2));
+      };
+      const lowest = h.wallsOn(0)
+        .filter((w) => !w.boundary && fp.ok)
+        .sort((a, b) => groundAt(beyond(a).x, beyond(a).y) - groundAt(beyond(b).x, beyond(b).y))[0];
+      if (lowest) {
+        h.altan = { depth: 2.2, walls: [lowest.id] };
+        g.add(buildAltan(h, floor, groundAt));
+      }
+    }
+  } else part(g, yard.base, -n.width / 2 - 0.1, n.width / 2 + 0.1, 0, floor, -n.depth / 2 - 0.1, n.depth / 2 + 0.1);
+  const house = mergeByMaterial(buildHouse(h, { roof: true }));
+  house.position.y = floor;
+  g.add(house);
   const free = (x: number, z: number, room: number) => roadGap(s, world(x, z)) > room && s.waterDistance(world(x, z).x, world(x, z).y) > 1;
   if (shop) {
     // An awning over the shop windows and a sign above it.
@@ -1542,11 +1543,18 @@ function gameNeighbor(s: Scenery, n: Neighbor, shop: ShopKind | null): THREE.Gro
   if (free(0, fz, 1)) {
     // (Built apart and merged: a picket per mesh would be hundreds of draws.)
     const fence = new THREE.Group();
+    // (Each picket, and each metre of rail, on the ground where it stands.)
     for (const [x0, x1] of [[-n.width / 2 - 2, -0.7], [0.7, n.width / 2 + 2]]) {
-      const y = s.height(world((x0 + x1) / 2, fz).x, world((x0 + x1) / 2, fz).y) - g.position.y;
-      part(fence, mats.white, x0, x1, y + 0.25, y + 0.32, fz - 0.02, fz + 0.02);
-      part(fence, mats.white, x0, x1, y + 0.6, y + 0.67, fz - 0.02, fz + 0.02);
-      for (let x = x0 + 0.06; x < x1; x += 0.16) part(fence, mats.white, x - 0.03, x + 0.03, y, y + 0.8, fz - 0.015, fz + 0.015);
+      for (let x = x0; x < x1 - 1e-6; x += 1) {
+        const xe = Math.min(x + 1, x1);
+        const y = groundAt((x + xe) / 2, fz);
+        part(fence, mats.white, x, xe, y + 0.25, y + 0.32, fz - 0.02, fz + 0.02);
+        part(fence, mats.white, x, xe, y + 0.6, y + 0.67, fz - 0.02, fz + 0.02);
+      }
+      for (let x = x0 + 0.06; x < x1; x += 0.16) {
+        const y = groundAt(x, fz);
+        part(fence, mats.white, x - 0.03, x + 0.03, y - 0.1, y + 0.8, fz - 0.015, fz + 0.015);
+      }
     }
     g.add(mergeByMaterial(fence));
   }
@@ -1555,9 +1563,9 @@ function gameNeighbor(s: Scenery, n: Neighbor, shop: ShopKind | null): THREE.Gro
   const cz = -n.depth / 2 + 0.5;
   if (free(cx, cz, 1.2) && free(cx, cz - 2.2, 1.2) && s.neighbors.every((o) => o === n || o.at.distance(world(cx, cz)) > Math.max(o.width, o.depth) / 2 + 2.5)) {
     const car = buildFurniture({ kind: "Car", level: 0, at: new Vec2(cx, cz), facing: new Vec2(0, -1), width: 1.8, depth: 4.4, height: 1.45 });
-    const y = s.height(world(cx, cz).x, world(cx, cz).y) - g.position.y;
-    car.position.set(cx, y, cz);
-    car.rotation.y = Math.PI;
+    car.position.set(cx, 0, cz);
+    // Facing local -z (turned half round): its front at cz - 2.2, its own +x at local -x.
+    sitOnGround(car, Math.PI, { front: groundAt(cx, cz - 2.2), back: groundAt(cx, cz + 2.2), right: groundAt(cx - 0.9, cz), left: groundAt(cx + 0.9, cz) });
     g.add(car);
   }
   return g;
@@ -1621,7 +1629,6 @@ function streetLife(s: Scenery, center: THREE.Vector3): { group: THREE.Group; mo
   const movers: ((t: number) => void)[] = [];
   const centre = new Vec2(center.x, center.z);
   const paved = s.roads.filter((r) => r.kind !== "gravel");
-  const roadY = (p: Vec2) => s.height(p.x, p.y) + 0.14;
 
   // Cars: one or two on each street, driving on the right, round and round.
   let carCount = 0;
@@ -1641,8 +1648,8 @@ function streetLife(s: Scenery, center: THREE.Vector3): { group: THREE.Group; mo
         const heading = forward ? dir : dir.scale(-1);
         const lane = new Vec2(heading.y, -heading.x).scale(road.width / 4);
         const p = at.add(lane);
-        car.position.set(p.x, roadY(p), p.y);
-        car.rotation.y = Math.atan2(heading.x, heading.y);
+        car.position.set(p.x, 0, p.y);
+        onRoad(car, s, p, heading);
       });
     }
   }
@@ -1764,4 +1771,42 @@ function streetLife(s: Scenery, center: THREE.Vector3): { group: THREE.Group; mo
     }
   }
   return { group, movers };
+}
+
+// --- Standing things on sloping ground ------------------------------------------------------
+
+/**
+ * Turn `obj` to `yaw` and tilt it to sit on the ground: `front`, `back`, `left` and `right`
+ * are the ground's heights under its ends and sides (its own front is +z, its own left +x).
+ * Its height is set to their average.
+ */
+function sitOnGround(obj: THREE.Object3D, yaw: number, h: { front: number; back: number; left: number; right: number }, length = 4.4, width = 1.8): void {
+  obj.rotation.order = "YXZ";
+  obj.rotation.set(-Math.atan2(h.front - h.back, length), yaw, Math.atan2(h.left - h.right, width));
+  obj.position.y = (h.front + h.back + h.left + h.right) / 4;
+}
+
+/** The road's surface under a point: the height of the nearest road's centreline (roads are level across). */
+function roadSurface(s: Scenery, p: Vec2): number {
+  let best = { d: Infinity, h: s.height(p.x, p.y) };
+  for (const r of s.roads)
+    for (let i = 1; i < r.points.length; i++) {
+      const [a, b] = [r.points[i - 1], r.points[i]];
+      const ab = b.sub(a);
+      const t = Math.max(0, Math.min(1, p.sub(a).dot(ab) / Math.max(ab.dot(ab), 1e-9)));
+      const c = a.add(ab.scale(t));
+      const d = c.distance(p);
+      if (d < best.d) best = { d, h: s.height(c.x, c.y) };
+    }
+  return best.h + 0.14;
+}
+
+/** A car on a road at `at`, heading along `dir`: on the road's surface, nose up or down its slope. */
+function onRoad(car: THREE.Object3D, s: Scenery, at: Vec2, dir: Vec2): void {
+  const y = (q: Vec2) => roadSurface(s, q);
+  const front = y(at.add(dir.scale(2.2)));
+  const back = y(at.sub(dir.scale(2.2)));
+  car.position.x = at.x;
+  car.position.z = at.y;
+  sitOnGround(car, Math.atan2(dir.x, dir.y), { front, back, left: (front + back) / 2, right: (front + back) / 2 });
 }

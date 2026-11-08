@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accessRoutes, routeLength } from "./access";
+import { accessRoutes, outsideDoors, routeLength, snapPathPoint } from "./access";
 import { costLines, defaultPrices } from "./cost";
 import { Vec2 } from "./geometry";
 import { House } from "./model";
@@ -7,47 +7,77 @@ import { plotById } from "./plot";
 import { validate } from "./validate";
 
 const v = (x: number, y: number) => new Vec2(x, y);
-/** A 10 x 8 house with a front door (towards y = 0) and a garage door on a chosen wall. */
-const make = (garageWall: 0 | 2) => {
+const suburban = plotById("suburban")!; // street along the front (y = 0)
+/** A 10 x 8 house with a front door and a garage door, both towards the street. */
+const make = () => {
   const h = new House();
   const ids = h.addWallLoop([v(5, 8), v(15, 8), v(15, 16), v(5, 16)], 2.7, "Plaster");
-  h.addDoor(ids[0], 2, 1, 2.1);
-  h.addGarageDoor(ids[garageWall], 6, 2.5, 2.1);
-  return h;
+  const door = h.addDoor(ids[0], 2, 1, 2.1);
+  const garage = h.addGarageDoor(ids[0], 7, 2.5, 2.1);
+  const at = (id: number) => outsideDoors(h).find((d) => d.opening === id)!.at;
+  return { h, door, garage, at };
 };
+const kinds = (h: House) => validate(h, suburban, Infinity, defaultPrices()).map((i) => i.kind);
 
-describe("driveways and paths", () => {
-  const suburban = plotById("suburban")!; // street along the front
-
-  it("lead from the road to the front door and each garage door", () => {
-    const { routes, unreachable } = accessRoutes(make(0), suburban);
-    expect(unreachable).toEqual([]);
-    expect(routes.map((r) => r.kind).sort()).toEqual(["drive", "path"]);
-    for (const r of routes) expect(r.points[0].y).toBeCloseTo(0, 6); // starts at the street
-    expect(routes.find((r) => r.kind === "drive")!.surface).toBe("asphalt");
+describe("paths and drives, laid by the player", () => {
+  it("are not laid on their own", () => {
+    const { h } = make();
+    expect(accessRoutes(h, suburban).routes).toEqual([]);
+    expect(costLines(h, defaultPrices(), suburban).some((l) => l.what.kind === "footpath" || l.what.kind === "driveway")).toBe(false);
   });
 
-  it("cost more when the garage faces away from the road", () => {
-    const toward = routeLength(accessRoutes(make(0), suburban).routes.find((r) => r.kind === "drive")!);
-    const away = routeLength(accessRoutes(make(2), suburban).routes.find((r) => r.kind === "drive")!);
-    expect(away).toBeGreaterThan(toward + 10);
-    const drive = (h: House) => costLines(h, defaultPrices(), suburban).find((l) => l.what.kind === "driveway")!.amount;
-    expect(drive(make(2))).toBeGreaterThan(drive(make(0)));
+  it("lead to the door they end at, and cost by the square metre and the surface", () => {
+    const { h, door, at } = make();
+    const end = at(door);
+    const id = h.addPath("path", [v(end.x, 0), v(end.x, 3), end], "Paving");
+    const [r] = accessRoutes(h, suburban).routes;
+    expect(r.id).toBe(id);
+    expect(r.opening).toBe(door);
+    expect(r.width).toBe(1.2);
+    const path = costLines(h, defaultPrices(), suburban).find((l) => l.what.kind === "footpath")!;
+    expect(path.quantity).toBeCloseTo(routeLength(r) * 1.2, 9);
+    h.path(id)!.kind = "drive";
+    h.path(id)!.surface = "Gravel";
+    const drive = costLines(h, defaultPrices(), suburban).find((l) => l.what.kind === "driveway")!;
+    expect(drive.what).toEqual({ kind: "driveway", surface: "gravel" });
+    expect(drive.amount).toBeCloseTo(routeLength(r) * 3 * defaultPrices().gravelM2, 6);
   });
 
-  it("come in from wherever the road is, gravel off a gravel track", () => {
-    const slope = plotById("slope")!; // the street is behind
-    const back = accessRoutes(make(0), slope).routes;
-    for (const r of back) expect(r.points[0].y).toBeCloseTo(slope.depth, 6);
-    const clearing = plotById("clearing")!;
-    expect(accessRoutes(make(0), clearing).routes.find((r) => r.kind === "drive")!.surface).toBe("gravel");
+  it("a garage door needs a drive to it from the road (or joined to one that is)", () => {
+    const { h, garage, at } = make();
+    expect(kinds(h)).toContain("GarageDoorUnreachable");
+    const g = at(garage);
+    // A path is not enough.
+    const id = h.addPath("path", [v(g.x, 0), g], "Paving");
+    expect(kinds(h)).toContain("GarageDoorUnreachable");
+    h.path(id)!.kind = "drive";
+    expect(kinds(h)).not.toContain("GarageDoorUnreachable");
+    // Not from the road: a drive in the middle of the garden.
+    h.path(id)!.points = [v(g.x, 4), g];
+    expect(kinds(h)).toContain("GarageDoorUnreachable");
+    // Joined to a drive that comes from the road.
+    h.addPath("drive", [v(g.x + 6, 0), v(g.x + 6, 4), v(g.x, 4)], "Tarmac");
+    expect(kinds(h)).not.toContain("GarageDoorUnreachable");
   });
 
-  it("report a garage door no car can reach", () => {
-    const h = new House();
-    const ids = h.addWallLoop([v(3, 3), v(13, 3), v(13, 11), v(3, 11)], 2.7, "Plaster");
-    h.addDoor(ids[0], 2, 1, 2.1);
-    h.addGarageDoor(ids[3], 4, 2.5, 2.1); // faces the plot's side edge, 3 m away
-    expect(validate(h, plotById("suburban")!, Infinity, defaultPrices()).map((i) => i.kind)).toContain("GarageDoorUnreachable");
+  it("snap to doorsteps and to the road's edge while being laid", () => {
+    const { h, door, at } = make();
+    const end = at(door);
+    const s = snapPathPoint(h, suburban, end.add(v(0.4, -0.5)), 0.25);
+    expect(s.door?.opening).toBe(door);
+    expect(s.point.distance(end)).toBeLessThan(1e-9);
+    const road = snapPathPoint(h, suburban, v(10.1, 0.6), 0.25);
+    expect(road.road).toBe(true);
+    expect(road.point.y).toBeCloseTo(0, 9);
+    expect(snapPathPoint(h, suburban, v(20.1, 20.1), 0.5).point).toEqual(v(20, 20));
+  });
+
+  it("are saved with the design", () => {
+    const { h } = make();
+    h.addPath("drive", [v(1, 0), v(1, 5)], "Gravel");
+    const back = House.fromJSON(JSON.parse(JSON.stringify(h)));
+    expect(back.paths).toHaveLength(1);
+    expect(back.paths[0]).toMatchObject({ kind: "drive", surface: "Gravel" });
+    expect(back.paths[0].points[1]).toEqual(v(1, 5));
   });
 });
