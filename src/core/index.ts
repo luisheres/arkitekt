@@ -1,5 +1,5 @@
 /**
- * Engine-independent core of the Architect game: the house model, geometry generation,
+ * Engine-independent core of the Arkitekt game: the house model, geometry generation,
  * construction costs and validation rules. Nothing here depends on the renderer, so it
  * can be unit-tested and reused by the AI appraisal code.
  */

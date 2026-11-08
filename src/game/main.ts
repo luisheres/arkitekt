@@ -1,5 +1,5 @@
 /**
- * Architect: clients bring you a brief and a budget; design a house that meets it and
+ * Arkitekt: clients bring you a brief and a budget; design a house that meets it and
  * sell them the design.
  *
  * URL parameters: `?sample=N` puts sample house N (1-based) on the current client's plot,

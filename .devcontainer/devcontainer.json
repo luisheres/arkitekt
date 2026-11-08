@@ -1,12 +1,12 @@
 {
-  "name": "Architect",
+  "name": "Arkitekt",
   "build": {
     "dockerfile": "Dockerfile"
   },
   // The Vite dev server (npm run dev).
   "forwardPorts": [5173],
   "portsAttributes": {
-    "5173": { "label": "Architect (Vite)", "onAutoForward": "notify" }
+    "5173": { "label": "Arkitekt (Vite)", "onAutoForward": "notify" }
   },
   "postCreateCommand": "bash .devcontainer/post-create-script.sh",
   "customizations": {

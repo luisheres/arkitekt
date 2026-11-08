@@ -121,7 +121,7 @@ export const en: Messages = {
   },
 
   progress: {
-    welcomeTitle: "Welcome to Architect!",
+    welcomeTitle: "Welcome to Arkitekt!",
     welcomeText: "Design houses on real plots, see them in 3D, and make your clients happy.",
     campaign: "Campaign",
     campaignText: "Design houses for clients and earn money. Buy new building techniques in the Workshop, and as your reputation grows, bigger clients call: from starter homes to signature houses.",
@@ -134,7 +134,7 @@ export const en: Messages = {
     choosePlot: "Choose a plot",
     chooseDifficulty: "How tight should budgets be?",
     nowPlaying: (what) => `Now playing: ${what}`,
-    version: (v) => `Architect, version ${v}`,
+    version: (v) => `Arkitekt, version ${v}`,
     noClient: "No client yet: choose who to build for next.",
     career: "Career",
     careerButtonTitle: "Look back on your career",
@@ -425,7 +425,7 @@ export const en: Messages = {
   },
 
   ui: {
-    title: "Architect",
+    title: "Arkitekt",
     language: "Language",
     career: (earned, sold) => `Earned ${earned} · ${s(sold, "house", "houses")} sold`,
     client: "Client",

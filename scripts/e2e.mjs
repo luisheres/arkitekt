@@ -70,7 +70,7 @@ try {
 
   // The welcome screen: campaign or free play.
   await page.locator("#modal .dialog").waitFor();
-  assert.equal(await page.locator("#modal h2").textContent(), "Welcome to Architect!");
+  assert.equal(await page.locator("#modal h2").textContent(), "Welcome to Arkitekt!");
   assert.equal(await page.locator("#modal .dialog-close").count(), 1, "every dialog has a ×");
   await shot("welcome");
   await page.click('#modal [data-action="campaign"]');
@@ -395,7 +395,7 @@ try {
   // The menu says what is being played, and its × goes back to the game.
   await page.click('.studio [data-action="menu"]');
   assert.equal(await page.locator("#modal .now-playing").innerText(), "▶ Now playing: Campaign · Moderate");
-  assert.match(await page.locator("#modal .version").innerText(), /Architect, version \d+\.\d+\.\d+/);
+  assert.match(await page.locator("#modal .version").innerText(), /Arkitekt, version \d+\.\d+\.\d+/);
   assert.equal(await page.locator("#modal .mode-card.campaign.current").count(), 1);
   await page.click("#modal .dialog-close");
   assert.equal((await model()).client, "haddad");
