@@ -73,26 +73,20 @@ export function renderStatus(el: HTMLElement, store: Store): void {
   const issues = validate(house, plot, budget, prices, store.mode === "campaign" ? store.abilities : undefined);
   const rows = m.ui.costRows;
 
-  const row = (label: string, v: number, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="amount">${money(v)}</td></tr>`;
   const left = budget - total;
+  // How much of the budget is spent: a bar that turns red past it (with no budget, just the total).
+  const share = Number.isFinite(budget) && budget > 0 ? total / budget : 0;
+  const bar = Number.isFinite(budget)
+    ? `<div class="budget${left < 0 ? " over" : ""}">
+        <div class="budget-numbers"><b>${money(total)}</b> <span>/ ${money(budget)}</span></div>
+        <div class="budget-bar" role="meter" aria-label="${esc(rows.total)}" aria-valuemin="0" aria-valuemax="${budget}" aria-valuenow="${total}"><div style="width:${Math.min(100, share * 100).toFixed(1)}%"></div></div>
+        <div class="budget-left">${esc(left >= 0 ? rows.budgetLeft : rows.overBudget)}: <b>${money(Math.abs(left))}</b></div>
+      </div>`
+    : `<div class="budget"><div class="budget-numbers">${esc(rows.total)}: <b>${money(total)}</b></div></div>`;
   el.innerHTML = `
     <div class="sub">${esc(m.ui.floorArea(area(m, house.floorArea() - voidArea(house))))}</div>
     ${plot.terrain && house.walls.length ? `<div class="sub">${esc(groundLine(store))}</div>` : ""}
-    <table>
-      ${row(rows.walls, cost.walls)}
-      ${row(rows.interiorWalls, cost.interiorWalls)}
-      ${row(rows.windows, cost.windows)}
-      ${row(rows.doors, cost.doors)}
-      ${row(rows.roof, cost.roof)}
-      ${row(rows.foundation, cost.foundation)}
-      ${cost.floors ? row(rows.floors, cost.floors) : ""}
-      ${cost.finishes ? row(rows.finishes, cost.finishes) : ""}
-      ${cost.stairs ? row(rows.stairs, cost.stairs) : ""}
-      ${cost.extras ? row(rows.extras, cost.extras) : ""}
-      ${cost.groundworks ? row(rows.groundworks, cost.groundworks) : ""}
-      ${row(rows.total, total, "total")}
-      ${Number.isFinite(budget) ? row(left >= 0 ? rows.budgetLeft : rows.overBudget, Math.abs(left), left >= 0 ? "" : "over") : ""}
-    </table>
+    ${bar}
     <button type="button" class="cost-chart-open${store.showCosts ? " active" : ""}" aria-pressed="${store.showCosts}">📊 ${esc(m.ui.costChart.open)}</button>
     ${
       issues.length

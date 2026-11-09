@@ -128,7 +128,8 @@ export function inspectorKey(store: Store): string {
   }
   if (sel.kind === "opening") return `opening:${sel.id}:${house.opening(sel.id)?.kind}`;
   if (sel.kind === "roof") return `roof:${house.roof?.style ?? "none"}`;
-  if (sel.kind === "garden") return `garden:${!!house.altan}:${house.basement}`;
+  if (sel.kind === "garden") return `garden:${!!house.altan}`;
+  if (sel.kind === "foundation") return `foundation:${house.basement}:${house.walls.length > 0}`;
   if (sel.kind === "house") return "house";
   return `${sel.kind}:${sel.id}`;
 }
@@ -159,6 +160,8 @@ export function buildInspector(store: Store, sel: NonNullable<Selection>): Inspe
       return furnitureInspector(store, sel.id);
     case "roof":
       return roofInspector(store);
+    case "foundation":
+      return foundationInspector(store);
     case "label":
       return labelInspector(store, sel.id);
   }
@@ -654,7 +657,7 @@ function gardenInspector(store: Store): Inspector {
   );
   fields.push(fence);
   const site: Node[] = [];
-  siteFields(store, fields, site);
+  altanFields(store, fields, site);
   return {
     el: el(
       "div",
@@ -736,8 +739,10 @@ function houseInspector(store: Store): Inspector {
   return { el: el("div", {}, el("h2", {}, m.ui.wholeHouse), el("div", { className: "row" }, ...turns), el("p", { className: "sub" }, m.ui.moveHint)), fields: [buttons] };
 }
 
-/** How the house sits on the plot: platform height and foundation on a slope, and the altan round it. */
-function siteFields(store: Store, fields: Field[], parts: Node[]): void {
+/** How the house stands on sloping ground: how high its platform is, and a plinth or columns. */
+function foundationInspector(store: Store): Inspector {
+  const fields: Field[] = [];
+  const parts: Node[] = [el("h2", {}, m.ui.foundationMenu)];
   const empty = () => store.house.walls.length === 0;
   // On sloping ground: how high the platform stands, from digging more to filling more.
   if (store.plot.terrain) {
@@ -759,7 +764,14 @@ function siteFields(store: Store, fields: Field[], parts: Node[]): void {
     fields.push(foundation);
     parts.push(foundation.el, el("p", { className: "sub" }, store.house.basement ? m.ui.foundationBasement : m.ui.foundationHint));
   }
-  // The altan: on or off, and how deep.
+  if (!store.plot.terrain) parts.push(el("p", { className: "sub" }, m.ui.flatPlot));
+  else if (empty()) parts.push(el("p", { className: "sub" }, m.ui.foundationEmpty));
+  return { el: el("div", {}, ...parts), fields };
+}
+
+/** The altan round the house: on or off, and how deep. */
+function altanFields(store: Store, fields: Field[], parts: Node[]): void {
+  const empty = () => store.house.walls.length === 0;
   const { button: altanBtn, field: altanField } = lockable(store, store.house.altan ? m.ui.removeAltan : m.ui.addAltan, { kind: "terraces" }, () =>
     store.edit((h) => {
       if (h.altan) h.altan = null;

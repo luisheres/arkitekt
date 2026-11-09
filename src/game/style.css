@@ -170,6 +170,44 @@ kbd {
   margin-top: 8px;
 }
 
+.status .budget {
+  margin: 8px 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status .budget-numbers span {
+  color: var(--muted);
+}
+
+.status .budget-bar {
+  height: 12px;
+  margin: 6px 0 4px;
+  border-radius: 6px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.status .budget-bar > div {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--ok);
+  transition: width 0.25s ease;
+}
+
+.status .budget.over .budget-bar > div {
+  background: var(--error);
+}
+
+.status .budget-left {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.status .budget.over .budget-left,
+.status .budget.over .budget-numbers b {
+  color: var(--error);
+}
+
 .status table {
   width: 100%;
   border-collapse: collapse;

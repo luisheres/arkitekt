@@ -216,6 +216,10 @@ export interface Messages {
     allOuterWalls: string;
     clickToEdit: string;
     roofTitle: string;
+    foundationMenu: string;
+    foundationTitle: string;
+    flatPlot: string;
+    foundationEmpty: string;
     save: string;
     saveTitle: string;
     open: string;

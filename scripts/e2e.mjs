@@ -242,7 +242,10 @@ try {
   assert.deepEqual(groups, ["facade", "floors", "interiorWalls", "openings", "roof"]);
   assert.ok((await panel.locator(".cost-line").count()) >= 7, "a box per material, finish and kind of opening");
   const panelTotal = async () => (await panel.locator(".cost-summary b").first().textContent()).trim();
-  assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
+  // The sidebar has a budget bar instead of a table of costs.
+  assert.equal(await page.locator(".status table").count(), 0);
+  assert.equal(await page.locator(".status .budget-bar").count(), 1);
+  assert.equal((await page.locator(".status .budget-numbers b").textContent()).trim(), await panelTotal(), "the budget bar shows the same total");
   // Changing the bathroom floor to concrete changes the chart at once, and flashes the box.
   const totalBefore = await panelTotal();
   await click(14.2, 14.5);
@@ -250,7 +253,7 @@ try {
   await frame();
   assert.notEqual(await panelTotal(), totalBefore, "the total follows the edit");
   assert.ok((await panel.locator('.cost-line.changed[data-key*="Concrete"]').count()) === 1, "the new concrete floor flashes");
-  assert.match(await status(), new RegExp(`Total\\s*${await panelTotal()}`));
+  assert.equal((await page.locator(".status .budget-numbers b").textContent()).trim(), await panelTotal(), "the budget bar shows the same total");
   await shot("cost-panel");
   await page.click('.popover .choices.swatches button[title="Tiles"]');
   // Close it with its ×; the sidebar button opens it again.
@@ -668,7 +671,13 @@ try {
   await drag([8, 10], [18, 18]);
   await frame();
   assert.match(await status(), /Stands on a level platform at \+\d+\.\d\d m · \d+ m³ dug, \d+ m³ filled/);
-  assert.match(await status(), /Groundworks/);
+  assert.ok(
+    await page.evaluate(() => {
+      const { store, core } = window.architect;
+      return core.costLines(store.house, store.prices, store.plot).some((l) => l.group === "groundworks" && l.amount > 0);
+    }),
+    "the digging and filling are paid for",
+  );
   assert.ok((await page.locator(".plan .contour").count()) > 0, "contour lines");
   const levelAt = () => page.evaluate(() => window.architect.core.siteLevel(window.architect.store.house, window.architect.store.plot));
   const lowLevel = await levelAt();
@@ -693,8 +702,8 @@ try {
   assert.equal(await page.locator('.popover button:has-text("15°")').count(), 0);
   await page.keyboard.press("Escape");
   await page.keyboard.press("v");
-  // The platform can stand higher (more filling) or lower (more digging), from the garden's menu.
-  await openGarden();
+  // The platform can stand higher (more filling) or lower (more digging), from the Foundation menu.
+  await page.click("#sidebar button.foundation-button");
   const platformText = async () => /platform at \+(\d+\.\d+) m/.exec(await status())[1];
   const platformBefore = Number(await platformText());
   await page.getByRole("slider", { name: "Platform height" }).fill("0.5");

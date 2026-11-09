@@ -60,6 +60,8 @@ export type Selection =
   | { kind: "room"; at: Vec2 }
   /** The whole roof. */
   | { kind: "roof" }
+  /** How the house stands on sloping ground: platform height, plinth or columns. */
+  | { kind: "foundation" }
   /** The garden: what can be planted. */
   | { kind: "garden" }
   /** The whole house: moving and turning it. */

@@ -63,6 +63,7 @@ export interface PanelActions {
 
 export class Panel {
   private readonly toolButtons = new Map<Tool, HTMLButtonElement>();
+  private readonly foundationBtn: HTMLButtonElement;
   private readonly undoBtn: HTMLButtonElement;
   private readonly redoBtn: HTMLButtonElement;
   private readonly studio: HTMLElement;
@@ -133,7 +134,14 @@ export class Panel {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       actions.openMenu(r.right, r.top + 12);
     });
-    tools.append(roofBtn);
+    // How the house stands on a slope (platform height, plinth or columns): its own menu.
+    this.foundationBtn = el("button", { type: "button", className: "opens-menu foundation-button", title: m.ui.foundationTitle }, el("span", { className: "tool-icon", ariaHidden: "true" }, "🧱"), `${m.ui.foundationMenu} ▸`);
+    this.foundationBtn.addEventListener("click", (e) => {
+      store.select({ kind: "foundation" });
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      actions.openMenu(r.right, r.top + 12);
+    });
+    tools.append(roofBtn, this.foundationBtn);
     root.append(el("section", {}, tools, el("p", { className: "sub hint" }, m.ui.clickToEdit)));
 
     // History.
@@ -211,6 +219,8 @@ export class Panel {
     if (houseChanged) {
       renderBrief(this.brief, store);
       renderStatus(this.status, store);
+      // Only sloping plots have a foundation to choose.
+      this.foundationBtn.style.display = store.plot.terrain ? "" : "none";
     }
   }
 
