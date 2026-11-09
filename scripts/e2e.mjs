@@ -539,6 +539,51 @@ try {
   assert.deepEqual(laid, { n: 1, kind: "path", toDoor: true, sel: "path" }, "a path from the street to the door");
   await page.keyboard.press("v");
   await page.keyboard.press("Escape");
+  // Fingers (a tablet): taps place corners and ✓ Done finishes the line; one finger
+  // dragging pans instead of drawing; two fingers pinch to zoom. (Touch pointer events, as
+  // Safari sends them.)
+  const touch = (type, id, x, y) =>
+    page.evaluate(([type, id, x, y]) => {
+      document.querySelector("#plan svg").dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: "touch", clientX: x, clientY: y, bubbles: true, isPrimary: id === 31, button: type === "pointermove" ? -1 : 0, buttons: type === "pointerup" ? 0 : 1 }));
+    }, [type, id, x, y]);
+  const tapAt = async (x, y) => {
+    const c = await at(x, y);
+    await touch("pointerdown", 31, c.x, c.y);
+    await touch("pointerup", 31, c.x + 3, c.y + 2);
+  };
+  const wallsBefore = await page.evaluate(() => window.architect.store.house.walls.length);
+  await page.keyboard.press("w");
+  await tapAt(2, 20);
+  await tapAt(5, 20);
+  await tapAt(5, 23);
+  assert.ok(await page.isVisible(".plan-draft-actions"), "Done and Cancel while drawing");
+  await page.click('.plan-draft-actions [data-draft="done"]');
+  assert.equal(await page.evaluate(() => window.architect.store.house.walls.length), wallsBefore + 2, "two walls by tapping");
+  assert.ok(!(await page.isVisible(".plan-draft-actions")));
+  await page.keyboard.press("Control+z");
+  const anchorPoint = async () => at(10, 10);
+  const p0 = await anchorPoint();
+  await touch("pointerdown", 31, p0.x, p0.y);
+  for (let k = 1; k <= 5; k++) await touch("pointermove", 31, p0.x + k * 14, p0.y + k * 6);
+  await touch("pointerup", 31, p0.x + 70, p0.y + 30);
+  const p1 = await anchorPoint();
+  assert.ok(Math.hypot(p1.x - p0.x, p1.y - p0.y) > 50, "one finger pans the plan");
+  assert.ok(!(await page.isVisible(".plan-draft-actions")), "and places no corner");
+  const zoomNow = () => page.evaluate(() => Math.abs(window.architect.plan.clientPoint(0, 0).x - window.architect.plan.clientPoint(10, 0).x));
+  const z0 = await zoomNow();
+  const mid = await at(10, 10);
+  await touch("pointerdown", 31, mid.x - 30, mid.y);
+  await touch("pointerdown", 32, mid.x + 30, mid.y);
+  for (let k = 1; k <= 4; k++) {
+    await touch("pointermove", 31, mid.x - 30 - k * 15, mid.y);
+    await touch("pointermove", 32, mid.x + 30 + k * 15, mid.y);
+  }
+  await touch("pointerup", 32, mid.x + 90, mid.y);
+  await touch("pointerup", 31, mid.x - 90, mid.y);
+  assert.ok((await zoomNow()) > z0 * 2, "two fingers apart zoom in");
+  assert.ok(!(await page.isVisible(".plan-draft-actions")), "a pinch places no corner");
+  await page.keyboard.press("v");
+
   // The day plays, and stops again when its button is pressed a second time.
   await page.click('#view-toggles [data-view="play"]');
   await page.waitForTimeout(400);

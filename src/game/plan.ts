@@ -122,6 +122,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export class PlanView {
   private readonly svg: SVGSVGElement;
   private readonly hint: HTMLElement;
+  private readonly draftActions: HTMLElement;
   private readonly levels: HTMLElement;
   private readonly backdrop: SVGImageElement;
   private readonly content: SVGGElement;
@@ -169,7 +170,19 @@ export class PlanView {
     const compass = document.createElement("div");
     compass.className = "plan-compass";
     compass.innerHTML = `<svg viewBox="-23 -23 46 46" aria-label="${m.ui.north}"><circle r="21" fill="rgba(255,255,255,0.88)" stroke="#8a8478"/><text y="-10" text-anchor="middle" dominant-baseline="middle" font-weight="800" font-size="10" fill="#3a3530">${m.ui.north}</text><polygon points="0,-3 5,15 0,11 -5,15" fill="#d9534a"/></svg>`;
-    container.append(this.svg, this.hint, this.levels, compass);
+    // While a chain of walls or a path is being drawn: finish it, or cancel it (no Enter or
+    // Esc on a tablet).
+    this.draftActions = document.createElement("div");
+    this.draftActions.className = "plan-draft-actions";
+    this.draftActions.hidden = true;
+    this.draftActions.innerHTML = `<button type="button" class="primary" data-draft="done">✓ ${m.ui.done}</button><button type="button" data-draft="cancel">✕ ${m.ui.cancel}</button>`;
+    this.draftActions.addEventListener("click", (e) => {
+      const what = (e.target as HTMLElement).closest<HTMLElement>("[data-draft]")?.dataset.draft;
+      if (what === "done") this.finish();
+      else if (what === "cancel") this.cancel();
+      this.requestRender();
+    });
+    container.append(this.svg, this.hint, this.levels, compass, this.draftActions);
 
     this.refresh();
     store.subscribe((change) => {
@@ -481,10 +494,14 @@ export class PlanView {
   private attachInput(): void {
     const svg = this.svg;
     svg.addEventListener("contextmenu", (e) => e.preventDefault());
-    svg.addEventListener("pointerdown", (e) => this.pointerDown(e));
-    svg.addEventListener("pointermove", (e) => this.pointerMove(e));
-    svg.addEventListener("pointerup", (e) => this.pointerUp(e));
-    svg.addEventListener("pointercancel", () => this.endDrag());
+    // Fingers go through touchDown/Move/Up first (pinch, pan, taps); the mouse and pen straight through.
+    svg.addEventListener("pointerdown", (e) => (e.pointerType === "touch" ? this.touchDown(e) : this.pointerDown(e)));
+    svg.addEventListener("pointermove", (e) => (e.pointerType === "touch" ? this.touchMove(e) : this.pointerMove(e)));
+    svg.addEventListener("pointerup", (e) => (e.pointerType === "touch" ? this.touchUp(e) : this.pointerUp(e)));
+    svg.addEventListener("pointercancel", (e) => {
+      if (e.pointerType === "touch") this.touchUp(e, true);
+      else this.endDrag();
+    });
     svg.addEventListener("pointerleave", () => {
       this.cursor = null;
       this.hover = null;
@@ -513,8 +530,132 @@ export class PlanView {
     );
   }
 
+  // --- Touch: pinch to zoom, two fingers to pan, taps to place corners ------------------
+
+  /** Fingers on the plan, where they are on screen. */
+  private readonly touches = new Map<number, { x: number; y: number }>();
+  /** Two fingers down: the zoom and the plan point under their middle when they landed. */
+  private pinch: { distance: number; scale: number; anchor: Vec2 } | null = null;
+  /** A finger down with a drawing tool: a corner when it lifts without moving, a pan if it moves. */
+  private pendingTap: { id: number; x: number; y: number } | null = null;
+  /** After a pinch, the remaining finger does nothing until all are lifted. */
+  private touchIgnored = false;
+
+  private screenOf(t: { x: number; y: number }): [number, number] {
+    const r = this.svg.getBoundingClientRect();
+    return [t.x - r.left, t.y - r.top];
+  }
+
+  private touchDown(e: PointerEvent): void {
+    try {
+      this.svg.setPointerCapture(e.pointerId);
+    } catch {
+      // (Only an unknown pointer, as in tests: nothing to capture.)
+    }
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.touches.size === 2) {
+      // A second finger: whatever the first one started is dropped, and the pinch begins.
+      if (this.pendingTap) this.pendingTap = null;
+      else if (this.drag) {
+        // (Whatever it moved so far stays: one undo takes it back.)
+        if (this.drag.kind !== "pan" && this.drag.kind !== "room") this.store.endGesture();
+        this.drag = null;
+      }
+      this.down = null;
+      const [a, b] = [...this.touches.values()];
+      const [mx, my] = this.screenOf({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      this.pinch = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), scale: this.scale, anchor: this.toPlan(mx, my) };
+      this.requestRender();
+      return;
+    }
+    if (this.touches.size > 2 || this.touchIgnored) return;
+    const tool = this.store.tool;
+    if (drawsWalls(tool) || tool === "path") {
+      this.pendingTap = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      this.cursor = this.eventPoint(e);
+      this.requestRender();
+      return;
+    }
+    this.pointerDown(e);
+  }
+
+  private touchMove(e: PointerEvent): void {
+    if (!this.touches.has(e.pointerId)) return;
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pinch && this.touches.size >= 2) {
+      const [a, b] = [...this.touches.values()];
+      const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+      this.scale = Math.min(Math.max(this.pinch.scale * (distance / this.pinch.distance), 3), 300);
+      this.clampView();
+      // Keep the plan point that was under the fingers' middle under it still (this pans too).
+      const [mx, my] = this.screenOf({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      this.center = this.center.add(this.pinch.anchor.sub(this.toPlan(mx, my)));
+      this.clampView();
+      this.requestRender();
+      return;
+    }
+    if (this.touchIgnored) return;
+    const tap = this.pendingTap;
+    if (tap && tap.id === e.pointerId) {
+      // Moved too far for a tap: it pans the plan instead.
+      if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) {
+        this.pendingTap = null;
+        this.drag = { kind: "pan", x: tap.x, y: tap.y };
+        this.pointerMove(e);
+      } else {
+        this.cursor = this.eventPoint(e);
+        this.requestRender();
+      }
+      return;
+    }
+    this.pointerMove(e);
+  }
+
+  private touchUp(e: PointerEvent, cancelled = false): void {
+    if (!this.touches.delete(e.pointerId)) return;
+    if (this.pinch) {
+      if (this.touches.size < 2) {
+        this.pinch = null;
+        this.touchIgnored = this.touches.size > 0;
+      }
+      return;
+    }
+    if (this.touchIgnored) {
+      if (this.touches.size === 0) this.touchIgnored = false;
+      return;
+    }
+    const tap = this.pendingTap;
+    if (tap && tap.id === e.pointerId) {
+      this.pendingTap = null;
+      if (!cancelled) this.placeAt(this.eventPoint(e));
+      return;
+    }
+    if (cancelled) this.endDrag();
+    else this.pointerUp(e);
+  }
+
+  /** A corner (walls, open boundaries) or a point of a path, where a finger tapped. */
+  private placeAt(p: Vec2): void {
+    this.cursor = p;
+    if (drawsWalls(this.store.tool)) this.addDraftPoint(this.snap(p));
+    else if (this.store.tool === "path") {
+      const s = this.pathSnap(p);
+      const draft = this.pathDraft;
+      if (draft.length && s.point.distance(draft[draft.length - 1]) < 1e-6) this.finishPath();
+      else {
+        draft.push(s.point);
+        if (s.door && draft.length >= 2) this.finishPath();
+      }
+    }
+    this.requestRender();
+  }
+
   private pointerDown(e: PointerEvent): void {
-    this.svg.setPointerCapture(e.pointerId);
+    try {
+      this.svg.setPointerCapture(e.pointerId);
+    } catch {
+      // (Only an unknown pointer, as in tests: nothing to capture.)
+    }
     this.down = { x: e.clientX, y: e.clientY, button: e.button };
     this.freeSnap = e.altKey;
     const p = this.eventPoint(e);
@@ -733,7 +874,7 @@ export class PlanView {
     // A click (not a drag) opens the menu: left-click with the select tool, right-click with any tool.
     const down = this.down;
     this.down = null;
-    const clicked = down && down.button === e.button && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5;
+    const clicked = down && down.button === e.button && Math.hypot(e.clientX - down.x, e.clientY - down.y) < (e.pointerType === "touch" ? 12 : 5);
     if (clicked && e.button === 2) {
       this.endDrag();
       const hit = this.hitTest(this.eventPoint(e));
@@ -851,6 +992,7 @@ export class PlanView {
 
   private render(): void {
     if (this.width === 0) return;
+    this.draftActions.hidden = this.draft.length === 0 && this.pathDraft.length === 0;
     const { plot, tool, selection } = this.store;
     const house = this.house;
     const out: string[] = [];

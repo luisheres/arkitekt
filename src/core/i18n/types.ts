@@ -234,6 +234,7 @@ export interface Messages {
     soldTag: string;
     storageFull: string;
     cancel: string;
+    done: string;
     tools: Record<ToolName, string>;
     undo: string;
     undoTitle: string;
@@ -380,6 +381,10 @@ export interface Messages {
     playDayTitle: string;
     walk: string;
     walkTitle: string;
+    walkForward: string;
+    walkBack: string;
+    walkLeft: string;
+    walkRight: string;
     seasons: Record<"spring" | "summer" | "autumn" | "winter", string>;
     /** "☀ 7.5 h of sun in spring · evening sun in summer" */
     terraceSun(hours: string, sunset: boolean): string;

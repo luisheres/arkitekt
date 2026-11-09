@@ -471,6 +471,7 @@ export const sv: Messages = {
     soldTag: "Såld",
     storageFull: "Webbläsaren har inte plats för fler kopior. Ta bort en gammal i Mina ritningar först.",
     cancel: "Avbryt",
+    done: "Klar",
     foundationMenu: "Grund",
     foundationTitle: "Hur huset står i slänten: grundens höjd, sockel eller pelare",
     flatPlot: "Tomten är plan: huset står på en platta på marken.",
@@ -615,6 +616,10 @@ export const sv: Messages = {
     playDay: "Dag",
     playDayTitle: "Spela upp dagen: solen rör sig av sig själv",
     walk: "Gå",
+    walkForward: "Gå framåt",
+    walkBack: "Gå bakåt",
+    walkLeft: "Vrid åt vänster",
+    walkRight: "Vrid åt höger",
     walkTitle: "Gå runt i ögonhöjd: piltangenter eller WASD för att gå, dra för att titta, Esc för att sluta",
     sunTitle: "Var solen står: dra genom dagen för att se hur ljuset faller in i huset",
     seasons: { spring: "Vår", summer: "Sommar", autumn: "Höst", winter: "Vinter" },
@@ -680,7 +685,7 @@ export const sv: Messages = {
 
     hints: {
       select: "Klicka på något för att ändra det (högerklick fungerar med alla verktyg). Dra i hörn för att ändra formen, i väggar för att flytta dem och i fönster, dörrar och möbler för att flytta dem. Dra i tom yta för att panorera.",
-      wall: "Klicka för att sätta ut hörn; börja eller sluta på en vägg för att dela ett rum. Klicka på första hörnet för att sluta väggen runt. Enter eller dubbelklick avslutar, Esc avbryter.",
+      wall: "Klicka för att sätta ut hörn; börja eller sluta på en vägg för att dela ett rum. Klicka på första hörnet för att sluta väggen runt. ✓ Klar (eller Enter, eller dubbelklick) avslutar; ✕ Avbryt (eller Esc) slutar.",
       room: "Dra för att rita ett rektangulärt rum. Sidor längs befintliga väggar delas.",
       boundary: "Rita en öppen rumsgräns som en vägg: klicka ut hörn, börja och sluta på väggar. Den delar en öppen planlösning i rum utan att något byggs.",
       window: "Klicka på en yttervägg för att lägga till ett fönster.",

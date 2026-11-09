@@ -380,7 +380,39 @@ toggles.addEventListener("click", (e) => {
   if (action === "play") view3d.togglePlayingDay();
   else if (action === "walk") view3d.toggleWalking();
 });
-view3d.onModeChange = renderToggles;
+// While walking: a pad of arrows, for when there is no keyboard (a tablet).
+const walkPad = document.createElement("div");
+walkPad.className = "walk-pad";
+walkPad.hidden = true;
+walkPad.innerHTML = [
+  ["ArrowUp", "▲", m.ui.walkForward],
+  ["ArrowLeft", "◀", m.ui.walkLeft],
+  ["ArrowDown", "▼", m.ui.walkBack],
+  ["ArrowRight", "▶", m.ui.walkRight],
+]
+  .map(([code, arrow, title]) => `<button type="button" data-key="${code}" title="${title}" aria-label="${title}">${arrow}</button>`)
+  .join("");
+document.querySelector("#view3d")!.append(walkPad);
+const padKey = (e: PointerEvent, down: boolean) => {
+  const code = (e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
+  if (!code) return;
+  e.preventDefault();
+  view3d.walkKey(code, down);
+};
+walkPad.addEventListener("pointerdown", (e) => {
+  try {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  } catch {
+    // (Only an unknown pointer, as in tests: nothing to capture.)
+  }
+  padKey(e, true);
+});
+walkPad.addEventListener("pointerup", (e) => padKey(e, false));
+walkPad.addEventListener("pointercancel", (e) => padKey(e, false));
+view3d.onModeChange = () => {
+  walkPad.hidden = !view3d.walker;
+  renderToggles();
+};
 toggles.addEventListener("input", (e) => {
   const t = e.target as HTMLInputElement;
   if (t.classList.contains("sun-slider")) store.setSun(Number(t.value));

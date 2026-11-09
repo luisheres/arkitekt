@@ -79,11 +79,17 @@ export class View3D {
       this.tween = null;
       this.requestRender();
     });
-    // Walking: dragging looks round, the wheel steps forward or back.
+    // Walking: dragging looks round (a finger too: movement from positions, as Safari gives
+    // touches none), the wheel steps forward or back.
+    let lookFrom: { x: number; y: number } | null = null;
+    canvas.addEventListener("pointerdown", (e) => (lookFrom = e.isPrimary ? { x: e.clientX, y: e.clientY } : null));
+    canvas.addEventListener("pointerup", () => (lookFrom = null));
     canvas.addEventListener("pointermove", (e) => {
-      if (!this.walker || !(e.buttons & 1)) return;
-      this.walker.yaw -= e.movementX * 0.005;
-      this.walker.pitch = THREE.MathUtils.clamp(this.walker.pitch - e.movementY * 0.005, -1.2, 1.2);
+      if (!this.walker || !lookFrom || !e.isPrimary) return;
+      const [dx, dy] = [e.clientX - lookFrom.x, e.clientY - lookFrom.y];
+      lookFrom = { x: e.clientX, y: e.clientY };
+      this.walker.yaw -= dx * 0.005;
+      this.walker.pitch = THREE.MathUtils.clamp(this.walker.pitch - dy * 0.005, -1.2, 1.2);
       this.requestRender();
     });
     canvas.addEventListener("wheel", (e) => {
@@ -94,7 +100,7 @@ export class View3D {
     let down: { x: number; y: number; button: number } | null = null;
     canvas.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY, button: e.button }));
     canvas.addEventListener("pointerup", (e) => {
-      if (down && down.button === e.button && (e.button === 0 || e.button === 2) && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) {
+      if (down && down.button === e.button && (e.button === 0 || e.button === 2) && Math.hypot(e.clientX - down.x, e.clientY - down.y) < (e.pointerType === "touch" ? 12 : 5)) {
         this.onPick(this.pick(e.clientX, e.clientY), e.clientX, e.clientY);
       }
       down = null;

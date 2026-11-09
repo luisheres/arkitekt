@@ -463,6 +463,7 @@ export const en: Messages = {
     soldTag: "Sold",
     storageFull: "This browser has no room left for more copies. Delete an old one from My designs first.",
     cancel: "Cancel",
+    done: "Done",
     foundationMenu: "Foundation",
     foundationTitle: "How the house stands on the slope: the platform's height, a plinth or columns",
     flatPlot: "This plot is flat: the house stands on a slab on the ground.",
@@ -607,6 +608,10 @@ export const en: Messages = {
     playDay: "Day",
     playDayTitle: "Play the day: the sun moves on its own",
     walk: "Walk",
+    walkForward: "Walk forward",
+    walkBack: "Walk back",
+    walkLeft: "Turn left",
+    walkRight: "Turn right",
     walkTitle: "Walk round at eye height: arrow keys or WASD to move, drag to look, Esc to stop",
     sunTitle: "Where the sun is: drag through the day to see how the light falls into the house",
     seasons: { spring: "Spring", summer: "Summer", autumn: "Autumn", winter: "Winter" },
@@ -672,7 +677,7 @@ export const en: Messages = {
 
     hints: {
       select: "Click anything to edit it (right-click works with every tool). Drag corners to reshape, walls to push them, windows, doors and furniture to move them. Drag empty space to pan.",
-      wall: "Click to place corners; start or end on a wall to divide a room. Click the first corner to close a loop. Enter or double-click finishes, Esc cancels.",
+      wall: "Click to place corners; start or end on a wall to divide a room. Click the first corner to close a loop. ✓ Done (or Enter, or a double-click) finishes; ✕ Cancel (or Esc) stops.",
       room: "Drag to draw a rectangular room. Sides along existing walls are shared.",
       boundary: "Draw an open room boundary, like a wall: click corners, start and end on walls. It divides open-plan space into rooms without building anything.",
       window: "Click an exterior wall to add a window.",

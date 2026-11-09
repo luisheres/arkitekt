@@ -60,31 +60,66 @@ export function placeCamera(camera: THREE.Camera, orbit: Orbit, ground?: (x: num
 /** Wire mouse input on `el` to `orbit`. `onChange` runs after every change. */
 export function attachOrbitControls(el: HTMLElement, orbit: Orbit, onChange: () => void): void {
   let dragButton: number | null = null;
+  /** Where each pointer was last (movement is worked out from these: Safari gives touches none). */
+  const pointers = new Map<number, { x: number; y: number }>();
+  /** Two fingers: their distance apart and middle, last time. */
+  let pinch: { distance: number; x: number; y: number } | null = null;
+
+  const pan = (dx: number, dy: number) => {
+    // Pan in the ground plane, relative to where the camera is looking.
+    const right = new THREE.Vector3(Math.cos(orbit.yaw), 0, -Math.sin(orbit.yaw));
+    const forward = new THREE.Vector3(-Math.sin(orbit.yaw), 0, -Math.cos(orbit.yaw));
+    const speed = orbit.distance * 0.0015;
+    orbit.target.addScaledVector(right, -dx * speed).addScaledVector(forward, dy * speed);
+  };
+  const twoFingers = () => {
+    const [a, b] = [...pointers.values()];
+    return { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
 
   el.addEventListener("contextmenu", (e) => e.preventDefault());
   el.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.button !== 2) return;
-    dragButton = e.button;
-    el.setPointerCapture(e.pointerId);
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // (Only an unknown pointer, as in tests: nothing to capture.)
+    }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (e.pointerType === "touch" && pointers.size === 2) {
+      // A second finger: pinch to zoom, drag both to pan.
+      dragButton = null;
+      pinch = twoFingers();
+      return;
+    }
+    if (pointers.size === 1) dragButton = e.button;
   });
-  el.addEventListener("pointerup", (e) => {
-    if (e.button === dragButton) dragButton = null;
-  });
-  el.addEventListener("pointercancel", () => (dragButton = null));
+  const up = (e: PointerEvent) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    // (After a pinch the last finger does not start orbiting.)
+    if (pointers.size === 0 || e.button === dragButton) dragButton = null;
+  };
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
   el.addEventListener("pointermove", (e) => {
-    if (dragButton === null) return;
-    const [dx, dy] = [e.movementX, e.movementY];
-    if (dx === 0 && dy === 0) return;
+    const last = pointers.get(e.pointerId);
+    if (!last) return;
+    const [dx, dy] = [e.clientX - last.x, e.clientY - last.y];
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size >= 2) {
+      const now = twoFingers();
+      orbit.distance = THREE.MathUtils.clamp(orbit.distance * (pinch.distance / now.distance), 5, 120);
+      pan(now.x - pinch.x, now.y - pinch.y);
+      pinch = now;
+      onChange();
+      return;
+    }
+    if (dragButton === null || (dx === 0 && dy === 0)) return;
     if (dragButton === 0) {
       orbit.yaw -= dx * 0.006;
       orbit.pitch = THREE.MathUtils.clamp(orbit.pitch + dy * 0.006, 0.02, Math.PI / 2 - 0.05);
-    } else {
-      // Pan in the ground plane, relative to where the camera is looking.
-      const right = new THREE.Vector3(Math.cos(orbit.yaw), 0, -Math.sin(orbit.yaw));
-      const forward = new THREE.Vector3(-Math.sin(orbit.yaw), 0, -Math.cos(orbit.yaw));
-      const speed = orbit.distance * 0.0015;
-      orbit.target.addScaledVector(right, -dx * speed).addScaledVector(forward, dy * speed);
-    }
+    } else pan(dx, dy);
     onChange();
   });
   el.addEventListener(

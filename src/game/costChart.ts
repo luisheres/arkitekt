@@ -319,6 +319,8 @@ export class CostPanel {
 
   /** Move the panel by dragging its title bar, keeping it inside the views. */
   private enableDragging(handle: HTMLElement): void {
+    // (A finger drags the panel; the browser must not scroll the page instead.)
+    handle.style.touchAction = "none";
     handle.addEventListener("pointerdown", (e) => {
       if ((e.target as HTMLElement).closest("button") || e.button !== 0) return;
       e.preventDefault();
