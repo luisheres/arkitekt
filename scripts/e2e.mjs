@@ -641,7 +641,7 @@ try {
   assert.equal(await page.evaluate(() => window.architect.store.house.levels), 1);
   assert.equal(await page.evaluate(() => window.architect.store.house.stairs.length), 0);
 
-  // Save the design, clear the plot, and open it again from the saved designs.
+  // Keep a copy of the design, clear the plot, and open the copy again from My designs.
   const walls = (await model()).walls;
   await page.keyboard.press("Control+s");
   await page.fill("#modal input.design-name", "Two storeys for the Anderssons");
@@ -650,14 +650,14 @@ try {
   assert.match(await page.locator("#sidebar header").innerText(), /Two storeys for the Anderssons/);
   await page.click("text=Clear plot");
   assert.equal((await model()).walls, 0);
-  await page.click('#sidebar header button:has-text("Open")');
+  await page.click('#sidebar header button:has-text("My designs")');
   assert.equal(await page.locator("#modal .design-card").count(), 1);
   assert.ok((await page.locator("#modal .design-card img").getAttribute("src")).startsWith("data:image/jpeg"), "a picture of the house");
   await page.click('#modal .design-card button[data-cmd="open"]');
   assert.equal((await model()).walls, walls, "the design is back");
 
   // Designs live in the browser: no files to download or upload.
-  await page.click('#sidebar header button:has-text("Open")');
+  await page.click('#sidebar header button:has-text("My designs")');
   assert.equal(await page.locator('#modal [data-cmd="export"], #modal input[type=file]').count(), 0);
   await shot("saved-designs");
   await page.keyboard.press("Escape");
@@ -739,7 +739,7 @@ try {
 
   // Players: a new player starts from nothing; switching back finds everything as it was.
   const designsOf = async () => {
-    await page.click('#sidebar header button:has-text("Open")');
+    await page.click('#sidebar header button:has-text("My designs")');
     const n = await page.locator("#modal .design-card").count();
     await page.keyboard.press("Escape");
     return n;
