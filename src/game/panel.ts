@@ -72,7 +72,6 @@ export class Panel {
   private readonly clientActions: HTMLElement;
   private readonly brief: HTMLElement;
   private readonly status: HTMLElement;
-  private readonly saveBtn: HTMLButtonElement;
   private readonly designName: HTMLElement;
 
   constructor(
@@ -97,13 +96,9 @@ export class Panel {
     });
     const langSelect = el("select", { title: m.ui.language, ariaLabel: m.ui.language }, ...LANGS.map((l) => el("option", { value: l, selected: l === lang }, messages(l).languageName)));
     langSelect.addEventListener("change", () => setLang(langSelect.value as (typeof LANGS)[number], actions.beforeReload));
-    this.saveBtn = el("button", { type: "button", title: m.ui.saveTitle }, m.ui.save);
-    this.saveBtn.addEventListener("click", actions.save);
-    const openBtn = el("button", { type: "button", title: m.ui.openTitle }, m.ui.open);
-    openBtn.addEventListener("click", actions.openDesigns);
     this.designName = el("span", { className: "sub design-name" });
     root.append(
-      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.studio, el("div", { className: "row files" }, this.saveBtn, openBtn, this.designName), el("p", { className: "sub auto-saved" }, m.progress.autoSaved)),
+      el("header", {}, el("div", { className: "title-row" }, el("h1", {}, m.ui.title), langSelect), this.studio, el("div", { className: "row files" }, this.designName)),
     );
 
     // The client and their brief.
@@ -211,7 +206,6 @@ export class Panel {
       b.classList.toggle("active", tool === store.tool);
       setLocked(b, store.toolLock(tool), b.dataset.title ?? "");
     }
-    this.saveBtn.disabled = !store.working;
     this.designName.textContent = store.design?.name ?? "";
     this.undoBtn.disabled = !store.canUndo();
     this.redoBtn.disabled = !store.canRedo();

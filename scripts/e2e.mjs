@@ -650,14 +650,18 @@ try {
   assert.match(await page.locator("#sidebar header").innerText(), /Two storeys for the Anderssons/);
   await page.click("text=Clear plot");
   assert.equal((await model()).walls, 0);
-  await page.click('#sidebar header button:has-text("My designs")');
+  await page.click('.studio [data-action="menu"]');
+  await page.click('#modal [data-action="myDesigns"]');
   assert.equal(await page.locator("#modal .design-card").count(), 1);
   assert.ok((await page.locator("#modal .design-card img").getAttribute("src")).startsWith("data:image/jpeg"), "a picture of the house");
   await page.click('#modal .design-card button[data-cmd="open"]');
   assert.equal((await model()).walls, walls, "the design is back");
 
+  // Keeping copies lives in the Menu, not the sidebar.
+  assert.equal(await page.locator('#sidebar button:has-text("Keep a copy")').count(), 0);
   // Designs live in the browser: no files to download or upload.
-  await page.click('#sidebar header button:has-text("My designs")');
+  await page.click('.studio [data-action="menu"]');
+  await page.click('#modal [data-action="myDesigns"]');
   assert.equal(await page.locator('#modal [data-cmd="export"], #modal input[type=file]').count(), 0);
   await shot("saved-designs");
   await page.keyboard.press("Escape");
@@ -739,7 +743,8 @@ try {
 
   // Players: a new player starts from nothing; switching back finds everything as it was.
   const designsOf = async () => {
-    await page.click('#sidebar header button:has-text("My designs")');
+    await page.click('.studio [data-action="menu"]');
+    await page.click('#modal [data-action="myDesigns"]');
     const n = await page.locator("#modal .design-card").count();
     await page.keyboard.press("Escape");
     return n;

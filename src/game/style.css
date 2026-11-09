@@ -2190,6 +2190,15 @@ button.locked::after,
   margin-top: 8px;
 }
 
+.welcome-designs {
+  margin: 14px 0 4px;
+  text-align: center;
+}
+
+.welcome-designs .row {
+  justify-content: center;
+}
+
 .auto-saved {
   margin: 4px 0 0;
   font-size: 11px;

@@ -213,6 +213,8 @@ function showMenu(): void {
       store.setFreePlot(plotId);
     },
     players: showPlayersDialog,
+    keepCopy: store.working ? () => askToSave() : null,
+    myDesigns: () => openDesigns(),
   }, nowPlaying, currentProfile());
 }
 

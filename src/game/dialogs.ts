@@ -225,6 +225,10 @@ export interface WelcomeActions {
   startOver(difficulty: Difficulty): void;
   /** Free play on a plot. */
   free(plotId: string): void;
+  /** Keep a copy of the design being worked on (null when there is none). */
+  keepCopy: (() => void) | null;
+  /** The copies kept. */
+  myDesigns(): void;
 }
 
 const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🌱", moderate: "🏗️", hard: "🔥" };
@@ -295,6 +299,14 @@ export function showWelcome(
            <span>${esc(p.freePlayText)}</span>
          </button>
        </div>
+       ${
+         nowPlaying
+           ? `<div class="welcome-designs">
+                <p class="sub">${esc(p.autoSaved)}</p>
+                <div class="row"><button type="button" data-action="keepCopy" title="${esc(m.ui.saveTitle)}"${actions.keepCopy ? "" : " disabled"}>${esc(m.ui.save)}</button><button type="button" data-action="myDesigns" title="${esc(m.ui.openTitle)}">${esc(m.ui.open)}</button></div>
+              </div>`
+           : ""
+       }
        ${progress ? `<div class="actions start-over"><button type="button" class="link" data-action="startOver">${esc(p.startOver)}</button></div>` : ""}
        <p class="version">${esc(p.version(__APP_VERSION__))}</p>
      </div>`,
@@ -309,6 +321,8 @@ export function showWelcome(
         ),
       free: () => choosePlot(again, actions.free),
       players: actions.players,
+      keepCopy: () => actions.keepCopy?.(),
+      myDesigns: actions.myDesigns,
     },
     actions.dismiss,
   );
